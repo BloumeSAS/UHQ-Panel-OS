@@ -10,7 +10,7 @@
 FROM node:20-alpine AS web-builder
 WORKDIR /web
 COPY web/package*.json ./
-RUN npm install --no-audit --no-fund
+RUN npm install --no-audit --no-fund --legacy-peer-deps
 COPY web/ ./
 RUN npm run build
 
@@ -25,7 +25,7 @@ RUN apk add --no-cache openssl
 # Install ALL deps (dev included) — needed to compile TS
 COPY api/package*.json ./
 COPY api/prisma ./prisma
-RUN npm install --no-audit --no-fund
+RUN npm install --no-audit --no-fund --legacy-peer-deps
 
 # Generate the Prisma client against the schema
 RUN npx prisma generate

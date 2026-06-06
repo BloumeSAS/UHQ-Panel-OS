@@ -30,7 +30,7 @@ jobs:
 
       - name: Install API dependencies
         working-directory: api
-        run: npm install
+        run: npm install --legacy-peer-deps
 
       - name: Build API
         working-directory: api
@@ -38,7 +38,7 @@ jobs:
 
       - name: Install Web dependencies
         working-directory: web
-        run: npm install
+        run: npm install --legacy-peer-deps
 
       - name: Build Web
         working-directory: web
