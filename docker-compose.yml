@@ -1,0 +1,72 @@
+# ---------------------------------------------------------------
+# UHQ Panel OS — déploiement AUTO-HÉBERGÉ (base embarquée)
+#
+# Tout-en-un : l'app + un PostgreSQL 18 démarré et connecté automatiquement.
+# La base est détectée comme « configurée » (host `db`) → pas d'écran de
+# configuration base, on arrive directement sur le setup wizard.
+#
+#   docker compose up -d
+#   → panel http://localhost:8000   ·   proxy TCP :990
+#
+# Pour une base EXTERNE (Coolify, base managée…), voir docker-compose.yaml.
+# ---------------------------------------------------------------
+
+services:
+  db:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=uhq
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-uhqpanel}
+      - POSTGRES_DB=uhqpanel
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U uhq -d uhqpanel"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8000:8000/tcp"   # panel + API
+      - "990:990/tcp"     # proxy TCP
+    ulimits:
+      nofile:
+        soft: 200000
+        hard: 200000
+    environment:
+      - DATABASE_URL=postgresql://uhq:${POSTGRES_PASSWORD:-uhqpanel}@db:5432/uhqpanel
+      - JWT_SECRET=${JWT_SECRET:-change-me-with-a-long-random-string}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin123}
+      # Réseau (le reste est configurable depuis le panel)
+      - PROXY_HOST=0.0.0.0
+      - PROXY_PORT=990
+      - API_PORT=8000
+      - DATA_DIR=/app/data
+      - TZ=Europe/Paris
+    volumes:
+      # Persistance de la config runtime (lien base saisi à la main, etc.)
+      - appdata:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/api/panel/setup/db-status"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 45s
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+
+volumes:
+  pgdata:
+  appdata:

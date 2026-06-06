@@ -1,0 +1,45 @@
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Build
+dist/
+coverage/
+*.tsbuildinfo
+.cache/
+
+# Env (DO NOT commit real secrets)
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Editors
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Prisma
+prisma/migrations/dev/
+
+# Runtime data (lien base saisi au setup)
+data/
+
+# Web (deps & build — buildés dans l'image Docker)
+web/node_modules/
+web/dist/
+
+# Wallet addon local runtime and dependencies
+addons/
+docs/
+
+claude/
+CLAUDE.md
+.claude/
+scripts/
+logs/

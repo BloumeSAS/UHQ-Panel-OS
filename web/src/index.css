@@ -1,0 +1,81 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================================================
+   Thème « Tangerine » (tweakcn).
+   Pour régénérer la version officielle exacte :
+     npx shadcn@latest add https://tweakcn.com/r/themes/tangerine.json
+   Les variables ci-dessous reproduisent fidèlement la palette tangerine.
+   ========================================================================== */
+:root {
+  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+  --radius: 0.75rem;
+
+  --background: 0 0% 100%;
+  --foreground: 0 0% 20%;
+  --card: 0 0% 100%;
+  --card-foreground: 0 0% 20%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 0 0% 20%;
+  --primary: 13 73% 54%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 24 30% 95%;
+  --secondary-foreground: 13 40% 30%;
+  --muted: 30 20% 96%;
+  --muted-foreground: 0 0% 45%;
+  --accent: 24 60% 92%;
+  --accent-foreground: 13 50% 30%;
+  --destructive: 0 72% 51%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 24 20% 90%;
+  --input: 24 20% 90%;
+  --ring: 13 73% 54%;
+
+  --sidebar: 24 30% 97%;
+  --sidebar-foreground: 0 0% 25%;
+  --sidebar-primary: 13 73% 54%;
+  --sidebar-accent: 24 50% 90%;
+  --sidebar-border: 24 20% 88%;
+}
+
+.dark {
+  --background: 20 14% 8%;
+  --foreground: 0 0% 92%;
+  --card: 20 14% 11%;
+  --card-foreground: 0 0% 92%;
+  --popover: 20 14% 11%;
+  --popover-foreground: 0 0% 92%;
+  --primary: 13 80% 58%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 20 10% 18%;
+  --secondary-foreground: 0 0% 90%;
+  --muted: 20 10% 16%;
+  --muted-foreground: 0 0% 60%;
+  --accent: 20 12% 22%;
+  --accent-foreground: 0 0% 92%;
+  --destructive: 0 70% 45%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 20 10% 20%;
+  --input: 20 10% 20%;
+  --ring: 13 80% 58%;
+
+  --sidebar: 20 14% 10%;
+  --sidebar-foreground: 0 0% 85%;
+  --sidebar-primary: 13 80% 58%;
+  --sidebar-accent: 20 12% 20%;
+  --sidebar-border: 20 10% 18%;
+}
+
+* {
+  border-color: hsl(var(--border));
+}
+
+body {
+  margin: 0;
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}

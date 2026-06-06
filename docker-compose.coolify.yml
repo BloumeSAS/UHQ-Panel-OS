@@ -1,0 +1,100 @@
+# ---------------------------------------------------------------
+# UHQ Panel OS — déploiement Coolify (BASE EXTERNE)
+#
+# Surfaces :
+#   * API REST + panel sur 8000  — exposé via Coolify Traefik (HTTPS)
+#   * Proxy TCP sur 990          — mappé directement à l'hôte
+#
+# PostgreSQL EXTERNE : fournir DATABASE_URL dans l'éditeur d'env Coolify
+# (OU laisser vide et saisir le lien à la 1re ouverture du panel).
+# Pour une base EMBARQUÉE (tout-en-un Docker), utiliser docker-compose.yml.
+# ---------------------------------------------------------------
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+
+    # --- Port mapping ---------------------------------------------------------
+    # The HTTP API does NOT need a host port — Coolify's Traefik reaches the
+    # container on the internal Docker network. Only the raw TCP proxy is
+    # published to the VPS network interface.
+    ports:
+      - "990:990/tcp"
+
+    # --- File-descriptor headroom --------------------------------------------
+    # The engine holds thousands of concurrent sockets during racing.
+    ulimits:
+      nofile:
+        soft: 200000
+        hard: 200000
+
+    # --- Environment ---------------------------------------------------------
+    # No SERVICE_FQDN_* magic var here — we define Traefik routing manually
+    # via labels below (see "Plan C" comment). This bypasses a Coolify
+    # quirk where the magic var fails to emit `loadbalancer.server.port`
+    # on multi-port containers, causing Traefik to route HTTP traffic to
+    # the TCP proxy on 990 and return 504.
+    environment:
+      # --- Coolify-managed (UI) ---
+      - DATABASE_URL=${DATABASE_URL}
+      - JWT_SECRET=${JWT_SECRET}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+      - SCRAPER_PROXY=${SCRAPER_PROXY:-}
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+      - PUBLIC_PROXY_HOST=${PUBLIC_PROXY_HOST}
+
+      # --- Hardcoded (Git-versioned) ---
+      - PROXY_HOST=0.0.0.0
+      - PROXY_PORT=990
+      - API_PORT=8000
+      - PUBLIC_PROXY_PORT=990
+      - PROXY_TIMEOUT=3
+      - PROXY_RACING_TIMEOUT=1.5
+      - PROXY_CHECK_INTERVAL=900
+      - CHECKER_CONCURRENCY=500
+      - SCRAPE_INTERVAL=3600
+      - GEO_RESOLVE_INTERVAL=600
+      - DATA_DIR=/app/data
+      - TZ=Europe/Paris
+
+    # Persistance de la config runtime (lien base saisi à la main si DATABASE_URL vide).
+    volumes:
+      - appdata:/app/data
+
+    # --- Traefik labels (manual) ---------------------------------------------
+    # We tell Traefik EXPLICITLY:
+    #   - There's a service named `uhq-api` on the container's port 8000.
+    #   - There's a router that catches Host=`api.82.22.2.154.sslip.io`
+    #     and routes to that service.
+    # Coolify's auto-generated labels (if any) are bypassed by setting a
+    # higher priority on our router.
+    #
+    # If your VPS IP ever changes, update the Host rule below to match.
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.services.uhq-api.loadbalancer.server.port=8000"
+      - "traefik.http.routers.uhq-api.rule=Host(`prx.uhq.monster`)"
+      - "traefik.http.routers.uhq-api.entrypoints=http"
+      - "traefik.http.routers.uhq-api.service=uhq-api"
+      - "traefik.http.routers.uhq-api.priority=100"
+
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 45s
+
+    # --- Logging --------------------------------------------------------------
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+
+volumes:
+  appdata:

@@ -1,0 +1,250 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model UserProxy {
+  id                 String   @id @default(uuid())
+  name               String   @default("My Proxy")
+  username           String   @unique
+  password           String
+  ipWhitelist        String?
+  threadsLimit       Int      @default(100)
+  totalBytesSent     BigInt   @default(0)
+  totalBytesReceived BigInt   @default(0)
+  trafficLimit       BigInt?
+  usedGb             Float    @default(0)
+  totalGb            Float    @default(0)
+  countryFilter      String?
+  isBlocked          Boolean  @default(false)
+  stickySessionTtl   Int      @default(1800)
+  createdAt          DateTime @default(now())
+  // Liste privée d'upstreams (1 par ligne : [proto://][user:pass@]ip:port). Si
+  // renseignée, le moteur fait courir CETTE liste au lieu du pool partagé.
+  customProxies      String?
+  // Panel : compte proxy assigné à au plus un utilisateur du panel (nullable = non assigné).
+  ownerId            String?
+  owner              PanelUser? @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+  usageStats         ProxyUsage[]
+  // Tags (comma-separated list of tag IDs or names stored as JSON array string)
+  tags               String?
+  // Bandwidth throttle in KB/s (null = unlimited)
+  bandwidthLimit     Int?
+  // Account expiry date (null = never expires)
+  expiresAt          DateTime?
+
+  @@index([ownerId])
+}
+
+// Utilisateur du panel (login email/mot de passe). Distinct des comptes proxy (UserProxy).
+model PanelUser {
+  id                  String               @id @default(uuid())
+  email               String               @unique
+  passwordHash        String
+  role                String               @default("USER") // "ADMIN" | "USER"
+  isActive            Boolean              @default(true)
+  createdAt           DateTime             @default(now())
+  // Account expiration date (null = never expires)
+  expiresAt           DateTime?
+  // 2FA / TOTP
+  totpEnabled         Boolean              @default(false)
+  totpSecret          String?
+  assignedProxies     UserProxy[]
+  passwordResetTokens PasswordResetToken[]
+  sessions            ActiveSession[]
+  apiKeys             ApiKey[]
+  notifications       Notification[]
+}
+
+// Token de réinitialisation de mot de passe (TTL 1 h, usage unique).
+model PasswordResetToken {
+  id        String    @id @default(uuid())
+  userId    String
+  token     String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      PanelUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// Sessions actives du panel
+model ActiveSession {
+  id        String    @id @default(uuid())
+  userId    String
+  token     String    @unique
+  userAgent String?
+  ip        String?
+  createdAt DateTime  @default(now())
+  lastSeen  DateTime  @default(now())
+  user      PanelUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// Clés API multi-scopes avec expiry
+model ApiKey {
+  id        String    @id @default(uuid())
+  userId    String
+  name      String
+  keyHash   String    @unique
+  keyPrefix String    // first 8 chars for display
+  scopes    String    @default("[]") // JSON array of scope strings
+  expiresAt DateTime?
+  lastUsed  DateTime?
+  createdAt DateTime  @default(now())
+  isActive  Boolean   @default(true)
+  user      PanelUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// Journal d'audit — qui a fait quoi et quand
+model AuditLog {
+  id         String   @id @default(uuid())
+  userId     String?
+  userEmail  String?
+  action     String   // e.g. "user.create", "proxy.delete", "settings.update"
+  target     String?  // e.g. resource id or name
+  details    String?  // JSON extra context
+  ip         String?
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([userId])
+}
+
+// Invitation par e-mail (inscription contrôlée)
+model Invitation {
+  id        String    @id @default(uuid())
+  email     String
+  token     String    @unique
+  role      String    @default("USER")
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+}
+
+// Notifications in-app (cloche + historique)
+model Notification {
+  id        String    @id @default(uuid())
+  userId    String?   // null = global/admin broadcast
+  type      String    // "info" | "warning" | "error" | "success"
+  title     String
+  message   String
+  read      Boolean   @default(false)
+  link      String?   // optional action link
+  createdAt DateTime  @default(now())
+  user      PanelUser? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+// Snapshot de la santé du pool (historique dans le temps)
+model PoolHealthSnapshot {
+  id           String   @id @default(cuid())
+  total        Int
+  working      Int
+  dead         Int
+  healthPct    Float
+  createdAt    DateTime @default(now())
+
+  @@index([createdAt])
+}
+
+// Configuration éditable depuis le panel admin (clé/valeur). Fallback sur process.env.
+model Setting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @default(now()) @updatedAt
+}
+
+// Métadonnées applicatives (ligne unique id="singleton") : pilote le setup wizard + version.
+model AppMeta {
+  id             String   @id @default("singleton")
+  setupCompleted Boolean  @default(false)
+  version        String   @default("2.0.0")
+  updatedAt      DateTime @default(now()) @updatedAt
+}
+
+model BackendProxy {
+  id             String        @id @default(uuid())
+  url            String        @unique
+  protocol       String        @default("http")
+  ip             String
+  port           Int
+  country        String?
+  provider       String?
+  lastChecked    DateTime      @default(now())
+  isWorking      Boolean       @default(true)
+  isBlacklisted  Boolean       @default(false)
+  failCount      Int           @default(0)
+  averageLatency Float?
+  successCount   Int           @default(0)
+  failureCount   Int           @default(0)
+  // Comma-separated tags (e.g. "residential,fr,mobile")
+  tags           String?
+  targetBlocks   TargetBlock[]
+}
+
+model TargetBlock {
+  id        String       @id @default(cuid())
+  proxyId   String
+  hostname  String
+  blockedAt DateTime     @default(now())
+  reason    String?
+  proxy     BackendProxy @relation(fields: [proxyId], references: [id], onDelete: Cascade)
+
+  @@unique([proxyId, hostname])
+}
+
+model ProxyUsage {
+  id            String    @id @default(cuid())
+  userProxyId   String
+  hostname      String
+  bytesSent     Float     @default(0)
+  bytesReceived Float     @default(0)
+  requests      Int       @default(0)
+  date          DateTime  @default(now())
+  userProxy     UserProxy @relation(fields: [userProxyId], references: [id], onDelete: Cascade)
+
+  @@unique([userProxyId, hostname, date])
+}
+
+// Source de scraping configurable depuis le panel admin. Le provider IA (Groq)
+// est intégré ; toutes les autres sources sont définies ici (URL + regex).
+model ScraperSource {
+  id        String   @id @default(uuid())
+  name      String
+  url       String
+  protocol  String   @default("http") // http | socks4 | socks5
+  // Regex avec 2 groupes de capture (ip, port). Vide = regex ip:port par défaut.
+  pattern   String?
+  enabled   Boolean  @default(true)
+  createdAt DateTime @default(now())
+}
+
+// Addon externe : service tiers avec sa propre DB/front.
+// Le panel charge le manifest depuis baseUrl/uhq-manifest.json
+// et injecte les pages (iframe) + nav items décrits dedans.
+model Addon {
+  id            String    @id @default(uuid())
+  // URL de base de l'addon (ex: https://shop.example.com)
+  baseUrl       String    @unique
+  // Manifest mis en cache (JSON brut)
+  manifest      Json?
+  // Dernière erreur lors du fetch du manifest
+  manifestError String?
+  fetchedAt     DateTime?
+  enabled       Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  // Gestion des mises à jour
+  // Version connue au moment de la connexion ou du dernier "apply update"
+  lastVersion   String?
+  // true = une nouvelle version a été détectée lors du dernier refresh
+  hasUpdate     Boolean   @default(false)
+}
