@@ -1,0 +1,9 @@
+{
+  "name": "uhq-panel-os",
+  "version": "2.0.0",
+  "description": "UHQ Panel OS — Panel principal",
+  "private": true,
+  "scripts": {
+    "version": "node bump-version.js && git add api/package.json web/package.json"
+  }
+}
