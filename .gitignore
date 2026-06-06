@@ -35,7 +35,8 @@ web/node_modules/
 web/dist/
 
 # Wallet addon local runtime and dependencies
-addons/
+addons/wallet
+
 docs/
 
 claude/
