@@ -81,7 +81,7 @@ USER app
 EXPOSE 8000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
-  CMD curl -fsS http://localhost:8000/health || exit 1
+  CMD curl -fsS http://127.0.0.1:8000/health || exit 1
 
 # `prisma db push` compares schema.prisma to the live database and applies
 # any drift idempotently (no-op if nothing changed). Safer than migrate
