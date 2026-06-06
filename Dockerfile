@@ -37,7 +37,7 @@ COPY api/static ./static
 RUN npm run build
 
 # Drop dev dependencies — keeps the runtime image lean
-RUN npm prune --production
+RUN npm prune --production --legacy-peer-deps
 
 
 # ----- Stage 3 : runner -----------------------------------------
