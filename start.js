@@ -16,15 +16,20 @@ const WEB  = join(ROOT, 'web');
 const API  = join(ROOT, 'api');
 const DIST = join(API, 'dist');
 
-const args     = process.argv.slice(2);
+const args      = process.argv.slice(2);
 const skipBuild = args.includes('--start');
 const skipStart = args.includes('--build');
 
+// Nixpacks/Coolify injecte NODE_ENV=production qui empêche l'install des
+// devDependencies (nest-cli, typescript, vite…). On force development pour
+// le build uniquement, puis on remet production au démarrage.
+const buildEnv = { ...process.env, NODE_ENV: 'development', NPM_CONFIG_PRODUCTION: 'false' };
+
 // ─── helpers ───────────────────────────────────────────────────────────────
 
-function run(cmd, cwd) {
+function run(cmd, cwd, env) {
   console.log(`\n▶ ${cmd}  (${cwd})`);
-  execSync(cmd, { cwd, stdio: 'inherit' });
+  execSync(cmd, { cwd, stdio: 'inherit', env: env ?? process.env });
 }
 
 function header(msg) {
@@ -38,13 +43,14 @@ function header(msg) {
 
 if (!skipBuild) {
   header('Build web (Vite)');
-  run('npm install --prefer-offline', WEB);
-  run('npm run build', WEB);
+  // --legacy-peer-deps : contourne les conflits de peer deps entre packages
+  run('npm install --prefer-offline --legacy-peer-deps', WEB, buildEnv);
+  run('npm run build', WEB, buildEnv);
 
   header('Build API (NestJS)');
-  run('npm install --prefer-offline', API);
-  run('npx prisma generate --schema=prisma/schema.prisma', API);
-  run('npm run build', API);
+  run('npm install --prefer-offline --legacy-peer-deps', API, buildEnv);
+  run('npx prisma generate --schema=prisma/schema.prisma', API, buildEnv);
+  run('npm run build', API, buildEnv);
 }
 
 if (skipStart) {
@@ -81,7 +87,6 @@ header('Démarrage UHQ Panel OS');
 
 const env = {
   ...process.env,
-  // Ports par défaut — tous configurables via le panel
   PROXY_HOST: process.env.PROXY_HOST ?? '0.0.0.0',
   PROXY_PORT: process.env.PROXY_PORT ?? '990',
   API_PORT:   process.env.API_PORT   ?? '8000',
@@ -99,9 +104,6 @@ child.on('exit', (code) => {
   process.exit(code ?? 1);
 });
 
-// Propagation des signaux pour un arrêt propre (Ctrl+C, Docker stop…)
 for (const sig of ['SIGINT', 'SIGTERM']) {
-  process.on(sig, () => {
-    child.kill(sig);
-  });
+  process.on(sig, () => child.kill(sig));
 }
