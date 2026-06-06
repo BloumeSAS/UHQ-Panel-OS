@@ -47,7 +47,7 @@ export class ProxyServerService implements OnModuleDestroy {
 
   // Config ---------------------------------------------------------------
   private readonly host = process.env.PROXY_HOST ?? '0.0.0.0';
-  private readonly port = Number(process.env.PROXY_PORT ?? 8080);
+  private readonly port = Number(process.env.PROXY_PORT ?? 990);
   // Timeouts lus dynamiquement depuis la config DB (fallback env).
   private get timeoutMs(): number {
     return this.settings.getNumber('proxyTimeout') * 1000 || TIMEOUT_DEFAULT_MS;

@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, randomBytes, readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
 
 /**
@@ -31,6 +31,7 @@ function runtimeFile(): string {
 
 interface RuntimeConfig {
   databaseUrl?: string;
+  jwtSecret?: string;
 }
 
 export function loadRuntimeConfig(): RuntimeConfig {
@@ -73,6 +74,25 @@ export function applyDatabaseEnv(): { configured: boolean; source: DbSource } {
   // Aucune base : placeholder pour permettre la construction du client.
   process.env.DATABASE_URL = PLACEHOLDER_DB_URL;
   return { configured: false, source: 'none' };
+}
+
+/**
+ * Retourne le JWT secret : env → fichier → génère + persiste.
+ * Appelé au bootstrap avant l'init de Nest.
+ */
+export function ensureJwtSecret(): string {
+  const fromEnv = process.env.JWT_SECRET;
+  if (fromEnv && fromEnv.trim()) return fromEnv.trim();
+
+  const runtime = loadRuntimeConfig();
+  if (runtime.jwtSecret) return runtime.jwtSecret;
+
+  // Premier boot sans env var : génère un secret fort et le persiste.
+  const generated = randomBytes(48).toString('hex');
+  const dir = dataDir();
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+  writeFileSync(runtimeFile(), JSON.stringify({ ...runtime, jwtSecret: generated }, null, 2), 'utf8');
+  return generated;
 }
 
 /** Validation basique d'une URL de connexion PostgreSQL. */

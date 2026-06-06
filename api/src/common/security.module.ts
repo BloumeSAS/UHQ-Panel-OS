@@ -5,10 +5,12 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RolesGuard } from './guards/roles.guard';
 import { MaintenanceGuard } from './guards/maintenance.guard';
 import { SettingsModule } from '../config/settings.module';
+import { ensureJwtSecret } from '../database/db-config';
 
 /**
- * Fournit JwtModule + guards à toute l'app. Le secret JWT vient de
- * `JWT_SECRET` (à défaut `ADMIN_PASSWORD`, puis un repli de dev).
+ * Fournit JwtModule + guards à toute l'app.
+ * Le secret JWT est auto-généré au premier boot et persisté dans runtime.json
+ * — aucune variable d'env requise.
  */
 @Global()
 @Module({
@@ -16,10 +18,7 @@ import { SettingsModule } from '../config/settings.module';
     SettingsModule,
     JwtModule.register({
       global: true,
-      secret:
-        process.env.JWT_SECRET ||
-        process.env.ADMIN_PASSWORD ||
-        'uhq-panel-os-dev-secret-change-me',
+      secret: ensureJwtSecret(),
       signOptions: { expiresIn: '7d' },
     }),
   ],

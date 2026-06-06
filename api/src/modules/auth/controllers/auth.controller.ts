@@ -26,6 +26,7 @@ import { MailService } from '../../mail/mail.service';
 const SINGLETON = 'singleton';
 
 import { NotificationService } from '../../notifications/notification.service';
+import { APP_VERSION } from '../../../version';
 
 @ApiTags('panel-auth')
 @Controller('api/panel')
@@ -50,7 +51,7 @@ export class PanelAuthController {
       siteName: this.settings.get('siteName'),
       logoUrl: this.settings.get('logoUrl'),
       defaultLang: this.settings.get('defaultLang'),
-      version: meta?.version ?? process.env.npm_package_version ?? '2.0.0',
+      version: meta?.version ?? APP_VERSION,
       captchaProvider: this.settings.get('captchaProvider'),
       captchaSiteKey: this.settings.get('captchaSiteKey'),
       captchaCapEndpoint: this.settings.get('captchaCapEndpoint'),
@@ -251,7 +252,7 @@ export class PanelAuthController {
     const meta = await this.prisma.appMeta.findUnique({ where: { id: SINGLETON } });
     return {
       status: 'success',
-      version: meta?.version ?? process.env.npm_package_version ?? '2.0.0',
+      version: meta?.version ?? APP_VERSION,
     };
   }
 

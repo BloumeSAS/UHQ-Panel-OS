@@ -1,13 +1,14 @@
 # ---------------------------------------------------------------
-# UHQ Panel OS — déploiement Coolify (BASE EXTERNE)
+# UHQ Panel OS — déploiement Coolify
+#
+# Aucune variable d'env requise : tout se configure via le panel.
+#   * Base de données  → écran de configuration au 1er démarrage
+#   * JWT secret       → généré automatiquement au 1er boot
+#   * Paramètres app   → panel admin (Settings)
 #
 # Surfaces :
 #   * API REST + panel sur 8000  — exposé via Coolify Traefik (HTTPS)
 #   * Proxy TCP sur 990          — mappé directement à l'hôte
-#
-# PostgreSQL EXTERNE : fournir DATABASE_URL dans l'éditeur d'env Coolify
-# (OU laisser vide et saisir le lien à la 1re ouverture du panel).
-# Pour une base EMBARQUÉE (tout-en-un Docker), utiliser docker-compose.yml.
 # ---------------------------------------------------------------
 
 services:
@@ -32,38 +33,20 @@ services:
         hard: 200000
 
     # --- Environment ---------------------------------------------------------
-    # No SERVICE_FQDN_* magic var here — we define Traefik routing manually
-    # via labels below (see "Plan C" comment). This bypasses a Coolify
-    # quirk where the magic var fails to emit `loadbalancer.server.port`
-    # on multi-port containers, causing Traefik to route HTTP traffic to
-    # the TCP proxy on 990 and return 504.
+    # Seules les valeurs d'infra qui ne peuvent pas être stockées en base
+    # sont définies ici. Tout le reste se configure via le panel admin.
     environment:
-      # --- Coolify-managed (UI) ---
-      - DATABASE_URL=${DATABASE_URL}
-      - JWT_SECRET=${JWT_SECRET}
-      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
-      - SCRAPER_PROXY=${SCRAPER_PROXY:-}
-      - GROQ_API_KEY=${GROQ_API_KEY:-}
-      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
-      - PUBLIC_PROXY_HOST=${PUBLIC_PROXY_HOST}
-
-      # --- Hardcoded (Git-versioned) ---
       - PROXY_HOST=0.0.0.0
       - PROXY_PORT=990
       - API_PORT=8000
-      - PUBLIC_PROXY_PORT=990
-      - PROXY_TIMEOUT=3
-      - PROXY_RACING_TIMEOUT=1.5
-      - PROXY_CHECK_INTERVAL=900
-      - CHECKER_CONCURRENCY=500
-      - SCRAPE_INTERVAL=3600
-      - GEO_RESOLVE_INTERVAL=600
       - DATA_DIR=/app/data
       - TZ=Europe/Paris
 
     # Persistance de la config runtime (lien base saisi à la main si DATABASE_URL vide).
+    # Bind mount vers un chemin fixe sur le VPS — survive aux redéploiements Coolify
+    # qui préfixent les volumes nommés et perdent les données entre projets.
     volumes:
-      - appdata:/app/data
+      - /data/uhq-panel:/app/data
 
     # --- Traefik labels (manual) ---------------------------------------------
     # We tell Traefik EXPLICITLY:
@@ -77,7 +60,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.services.uhq-api.loadbalancer.server.port=8000"
-      - "traefik.http.routers.uhq-api.rule=Host(`prx.uhq.monster`)"
+      - "traefik.http.routers.uhq-api.rule=Host(`uhq.bloume.fr`)"
       - "traefik.http.routers.uhq-api.entrypoints=http"
       - "traefik.http.routers.uhq-api.service=uhq-api"
       - "traefik.http.routers.uhq-api.priority=100"
@@ -96,5 +79,4 @@ services:
         max-size: "20m"
         max-file: "5"
 
-volumes:
-  appdata:
+# Pas de volume nommé — bind mount défini inline dans le service.

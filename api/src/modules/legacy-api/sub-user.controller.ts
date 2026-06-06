@@ -14,6 +14,7 @@ import { Scopes } from '../../common/decorators/scopes.decorator';
 import { PrismaService } from '../../database/prisma.service';
 import { ProxyServerService } from '../proxy-engine/proxy-server.service';
 import { buildStickyList, formatSubUser, randomString } from '../../common/utils/proxy-format';
+import { SettingsService } from '../../config/settings.service';
 import {
   AllowedIpsAddDto,
   SubUserBlockDto,
@@ -30,6 +31,7 @@ export class SubUserController {
   constructor(
     private readonly prisma: PrismaService,
     private readonly engine: ProxyServerService,
+    private readonly settings: SettingsService,
   ) {}
 
   @Get('list')
@@ -161,8 +163,8 @@ export class SubUserController {
     const c = Math.max(1, Math.min(1000, parseInt(count, 10) || 100));
     const user = await this.prisma.userProxy.findUnique({ where: { id } });
     if (!user) throw new HttpException('Sub-user not found', HttpStatus.NOT_FOUND);
-    const host = process.env.PUBLIC_PROXY_HOST ?? 'prx.uhq.monster';
-    const port = process.env.PUBLIC_PROXY_PORT ?? '999';
+    const host = this.settings.get('publicProxyHost');
+    const port = this.settings.get('publicProxyPort');
     const lines = buildStickyList(user, host, port, c);
     return {
       status: 'success',

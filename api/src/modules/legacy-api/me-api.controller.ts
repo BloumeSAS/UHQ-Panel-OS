@@ -13,6 +13,7 @@ import { Scopes } from '../../common/decorators/scopes.decorator';
 import { PrismaService } from '../../database/prisma.service';
 import { ProxyServerService } from '../proxy-engine/proxy-server.service';
 import { buildStickyList, formatSubUser } from '../../common/utils/proxy-format';
+import { SettingsService } from '../../config/settings.service';
 
 /**
  * Endpoints API v1 accessibles par clé API pour un simple USER.
@@ -28,6 +29,7 @@ export class MeApiController {
   constructor(
     private readonly prisma: PrismaService,
     private readonly engine: ProxyServerService,
+    private readonly settings: SettingsService,
   ) {}
 
   @Get('balance')
@@ -94,8 +96,8 @@ export class MeApiController {
     if (!user) {
       throw new HttpException('Proxy introuvable ou non autorisé', HttpStatus.NOT_FOUND);
     }
-    const host = process.env.PUBLIC_PROXY_HOST ?? 'prx.uhq.monster';
-    const port = process.env.PUBLIC_PROXY_PORT ?? '999';
+    const host = this.settings.get('publicProxyHost');
+    const port = this.settings.get('publicProxyPort');
     const lines = buildStickyList(user, host, port, c);
     return {
       status: 'success',

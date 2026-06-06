@@ -83,7 +83,7 @@ export function SiteProvider({ children }: { children: React.ReactNode }) {
         siteName: 'UHQ Panel OS',
         logoUrl: '/static/logo.png',
         defaultLang: 'fr',
-        version: '2.0.0',
+        version: '',
       });
     }
     setLoading(false);
