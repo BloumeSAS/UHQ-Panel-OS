@@ -43,4 +43,4 @@ claude/
 CLAUDE.md
 .claude/
 scripts/
-logs/
+api/logs/
