@@ -1,4 +1,5 @@
-import { existsSync, mkdirSync, randomBytes, readFileSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { randomBytes } from 'crypto';
 import { join } from 'path';
 
 /**
