@@ -88,6 +88,7 @@ export default function Settings() {
         'slackAlertsEnabled',
         'backupDatabaseEnabled',
         'invitationsEnabled',
+        'skipDeadProxies',
       ])
         payload[b] = payload[b] === true || payload[b] === 'true';
       await api.put('/settings', payload);
@@ -288,6 +289,23 @@ export default function Settings() {
                 <Input value={form.checkerConcurrency ?? ''} onChange={(e) => set('checkerConcurrency', e.target.value)} placeholder="500" />
               </F>
             </Grid>
+
+            <Separator label={t('settings.deadProxies')} />
+
+            <Row>
+              <Toggle
+                label={t('settings.skipDeadProxies')}
+                hint={t('settings.skipDeadProxiesHint')}
+                k="skipDeadProxies" form={form} set={set}
+              />
+            </Row>
+            {(form.skipDeadProxies === true || form.skipDeadProxies === 'true') && (
+              <Grid>
+                <F label={t('settings.deadProxyMaxRetries')} hint={t('settings.deadProxyMaxRetriesHint')}>
+                  <Input value={form.deadProxyMaxRetries ?? ''} onChange={(e) => set('deadProxyMaxRetries', e.target.value)} placeholder="3" />
+                </F>
+              </Grid>
+            )}
 
             <Separator label={t('settings.integrations')} />
 

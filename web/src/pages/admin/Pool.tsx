@@ -9,8 +9,9 @@ import {
   Network,
   Copy,
   Check,
-  Globe,
-  RefreshCw
+  RefreshCw,
+  RotateCcw,
+  AlertTriangle,
 } from 'lucide-react';
 import { api, apiError } from '@/lib/api';
 import { useT } from '@/lib/i18n';
@@ -45,20 +46,32 @@ interface Proxy {
   country: string | null;
   provider: string | null;
   is_working: boolean;
+  is_blacklisted: boolean;
+  fail_count: number;
   latency: number | null;
   url?: string;
 }
+
+type StatusFilter = 'all' | 'working' | 'dead' | 'permanent';
 
 export default function Pool() {
   const t = useT();
   const qc = useQueryClient();
   const [country, setCountry] = useState('');
   const [protocol, setProtocol] = useState('');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [search, setSearch] = useState('');
   const [cleaning, setCleaning] = useState(false);
+  const [revivedAll, setRevivedAll] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  // Queries pool list
+  const { data: settings } = useQuery({
+    queryKey: ['settings-dead'],
+    queryFn: async () => (await api.get('/settings')).data.data as Record<string, any>,
+  });
+  const maxRetries = parseInt(settings?.deadProxyMaxRetries ?? '3', 10) || 3;
+  const skipDead = settings?.skipDeadProxies === true || settings?.skipDeadProxies === 'true';
+
   const key = ['pool-proxies', country, protocol];
   const { data, isFetching } = useQuery({
     queryKey: key,
@@ -71,19 +84,25 @@ export default function Pool() {
     refetchInterval: 30000,
   });
 
-  // Queries live pool health
-  const { data: liveData, isFetching: isFetchingLive } = useQuery({
+  const { data: liveRaw, isFetching: isFetchingLive } = useQuery({
     queryKey: ['monitoring-live-pool'],
-    queryFn: async () => {
-      return (await api.get('/monitoring/live')).data.data;
-    },
+    queryFn: async () => (await api.get('/monitoring/live')).data.live as any,
     refetchInterval: 10000,
   });
 
-  const del = async (id: string) => {
-    await api.delete(`/monitoring/proxies/${id}`);
+  const invalidate = () => {
     qc.invalidateQueries({ queryKey: ['pool-proxies'] });
     qc.invalidateQueries({ queryKey: ['monitoring-live-pool'] });
+  };
+
+  const del = async (id: string) => {
+    await api.delete(`/monitoring/proxies/${id}`);
+    invalidate();
+  };
+
+  const revive = async (id: string) => {
+    await api.patch(`/monitoring/proxies/${id}/revive`);
+    invalidate();
   };
 
   const clearDead = async () => {
@@ -91,12 +110,24 @@ export default function Pool() {
     setCleaning(true);
     try {
       await api.delete('/monitoring/proxies?working=false');
-      qc.invalidateQueries({ queryKey: ['pool-proxies'] });
-      qc.invalidateQueries({ queryKey: ['monitoring-live-pool'] });
+      invalidate();
     } catch (err) {
       alert(apiError(err));
     } finally {
       setCleaning(false);
+    }
+  };
+
+  const reviveAllDead = async () => {
+    if (!window.confirm(t('pool.reviveDeadConfirm') || 'Réinitialiser tous les proxies morts (failCount → 0, isWorking → true) ?')) return;
+    setRevivedAll(true);
+    try {
+      await api.post('/monitoring/proxies/revive-dead');
+      invalidate();
+    } catch (err) {
+      alert(apiError(err));
+    } finally {
+      setRevivedAll(false);
     }
   };
 
@@ -105,9 +136,7 @@ export default function Pool() {
     try {
       const u = new URL(proxyUrl);
       return u.username ? `${decodeURIComponent(u.username)}:${decodeURIComponent(u.password)}` : '';
-    } catch {
-      return '';
-    }
+    } catch { return ''; }
   };
 
   const formatAsStandard = (p: Proxy) => {
@@ -116,24 +145,15 @@ export default function Pool() {
         const u = new URL(p.url);
         const creds = u.username ? `${decodeURIComponent(u.username)}:${decodeURIComponent(u.password)}` : '';
         return creds ? `${u.hostname}:${u.port}:${creds}` : `${u.hostname}:${u.port}`;
-      } catch {
-        return `${p.ip}:${p.port}`;
-      }
+      } catch { return `${p.ip}:${p.port}`; }
     }
     return `${p.ip}:${p.port}`;
   };
 
   const getFlagEmoji = (countryCode: string | null) => {
     if (!countryCode || countryCode === '—' || countryCode === 'Unknown') return '🌐';
-    const codePoints = countryCode
-      .toUpperCase()
-      .split('')
-      .map((char) => 127397 + char.charCodeAt(0));
-    try {
-      return String.fromCodePoint(...codePoints);
-    } catch {
-      return '🌐';
-    }
+    const codePoints = countryCode.toUpperCase().split('').map((c) => 127397 + c.charCodeAt(0));
+    try { return String.fromCodePoint(...codePoints); } catch { return '🌐'; }
   };
 
   const copyToClipboard = (text: string, id: string) => {
@@ -142,25 +162,33 @@ export default function Pool() {
     setTimeout(() => setCopiedId(null), 1500);
   };
 
-  // Local filtering based on search text
+  const isPermanentDead = (p: Proxy) => !p.is_working && !p.is_blacklisted && p.fail_count >= maxRetries;
+
   const filteredData = data?.filter((p) => {
     const s = search.toLowerCase();
     const creds = getCredentials(p.url).toLowerCase();
-    return (
+    const textMatch =
       p.ip.toLowerCase().includes(s) ||
       p.port.toString().includes(s) ||
       (p.country || '').toLowerCase().includes(s) ||
       (p.provider || '').toLowerCase().includes(s) ||
-      creds.includes(s)
-    );
+      creds.includes(s);
+    if (!textMatch) return false;
+    if (statusFilter === 'working') return p.is_working;
+    if (statusFilter === 'dead') return !p.is_working && !isPermanentDead(p);
+    if (statusFilter === 'permanent') return isPermanentDead(p);
+    return true;
   });
 
-  const totalPool = liveData?.total ?? 0;
-  const workingPool = liveData?.working ?? 0;
-  const bannedPool = liveData?.banned ?? 0;
-  const activeThreads = liveData?.threads ?? 0;
-  const activeSessions = liveData?.sessions ?? 0;
+  const totalPool = liveRaw?.pool?.total ?? 0;
+  const workingPool = liveRaw?.pool?.working ?? 0;
+  const bannedPool = liveRaw?.pool?.banned ?? 0;
+  const activeThreads = liveRaw?.active_threads ?? 0;
+  const activeSessions = liveRaw?.active_sessions ?? 0;
   const workingPercent = totalPool ? Math.round((workingPool / totalPool) * 100) : 0;
+
+  const permanentDeadCount = data?.filter(isPermanentDead).length ?? 0;
+  const deadCount = data?.filter((p) => !p.is_working).length ?? 0;
 
   return (
     <div className="space-y-6">
@@ -226,23 +254,37 @@ export default function Pool() {
           <CardContent className="p-5">
             <div className="flex items-center justify-between">
               <div className="space-y-1">
-                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Hors ligne / Bannis</p>
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                  {t('pool.dead')}
+                </p>
                 <h3 className="text-2xl font-bold font-mono tracking-tight text-destructive">
-                  {bannedPool}
+                  {deadCount}
+                  {permanentDeadCount > 0 && (
+                    <span className="ml-1.5 text-sm font-normal text-amber-500">({permanentDeadCount} {t('pool.permanent')})</span>
+                  )}
                 </h3>
               </div>
               <div className="rounded-full bg-destructive/10 p-2.5 text-destructive">
-                <Trash2 className="h-5 w-5" />
+                <AlertTriangle className="h-5 w-5" />
               </div>
             </div>
-            <div className="mt-3 text-xs">
+            <div className="mt-3 flex flex-wrap gap-2 text-xs">
               <button
-                disabled={cleaning || bannedPool === 0}
+                disabled={cleaning || deadCount === 0}
                 onClick={clearDead}
                 className="font-medium text-destructive hover:underline disabled:opacity-50 disabled:no-underline"
               >
-                Supprimer les proxies KO
+                {t('pool.deleteDead')}
               </button>
+              {deadCount > 0 && (
+                <button
+                  disabled={revivedAll}
+                  onClick={reviveAllDead}
+                  className="font-medium text-emerald-500 hover:underline disabled:opacity-50 disabled:no-underline"
+                >
+                  {t('pool.reviveAll')}
+                </button>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -259,13 +301,11 @@ export default function Pool() {
             <RefreshCw className={`h-3.5 w-3.5 ${isFetching || isFetchingLive ? 'animate-spin' : ''}`} />
             Actualiser
           </Button>
-          <ImportDialog onDone={() => {
-            qc.invalidateQueries({ queryKey: ['pool-proxies'] });
-            qc.invalidateQueries({ queryKey: ['monitoring-live-pool'] });
-          }} />
+          <ImportDialog onDone={invalidate} />
         </div>
       </div>
 
+      {/* Filters */}
       <div className="flex flex-wrap gap-3 items-center justify-between">
         <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
           <div className="relative flex-1 sm:w-64 sm:flex-initial">
@@ -293,6 +333,16 @@ export default function Pool() {
             <option value="socks4">socks4</option>
             <option value="socks5">socks5</option>
           </select>
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+            className="h-9 rounded-md border border-input bg-background px-3 text-sm focus:ring-1 focus:ring-ring"
+          >
+            <option value="all">{t('pool.statusAll')}</option>
+            <option value="working">{t('pool.statusWorking')}</option>
+            <option value="dead">{t('pool.statusDead')}</option>
+            {skipDead && <option value="permanent">{t('pool.statusPermanent')}</option>}
+          </select>
         </div>
         <div className="text-xs text-muted-foreground font-mono">
           Affichage : {filteredData?.length ?? 0} / {data?.length ?? 0}
@@ -306,30 +356,32 @@ export default function Pool() {
             <Table>
               <THead>
                 <TR>
-                  <TH className="w-10">Détails</TH>
+                  <TH className="w-10"></TH>
                   <TH>Hôte (Host/IP)</TH>
                   <TH>Port</TH>
-                  <TH>Identification (User:Pass)</TH>
+                  <TH>User:Pass</TH>
                   <TH>{t('scraper.protocol')}</TH>
                   <TH>{t('reports.country')}</TH>
                   <TH>{t('reports.provider')}</TH>
                   <TH>{t('reports.status')}</TH>
+                  <TH>{t('pool.failCount')}</TH>
                   <TH>{t('reports.latency')}</TH>
-                  <TH className="text-right w-16">{t('common.actions')}</TH>
+                  <TH className="text-right w-20">{t('common.actions')}</TH>
                 </TR>
               </THead>
               <TBody>
                 {filteredData?.map((p) => {
                   const creds = getCredentials(p.url);
                   const proxyStr = formatAsStandard(p);
+                  const permDead = isPermanentDead(p);
                   return (
-                    <TR key={p.id} className="hover:bg-muted/30 transition-colors">
+                    <TR key={p.id} className={`hover:bg-muted/30 transition-colors ${permDead ? 'opacity-60' : ''}`}>
                       <TD>
                         <Button
                           variant="ghost"
                           size="icon"
                           className="h-6 w-6 rounded-md hover:bg-muted"
-                          title="Copier le format standard host:port:user:pass"
+                          title="Copier host:port:user:pass"
                           onClick={() => copyToClipboard(proxyStr, `${p.id}-std`)}
                         >
                           {copiedId === `${p.id}-std` ? (
@@ -369,12 +421,29 @@ export default function Pool() {
                         )}
                       </TD>
                       <TD>
-                        <Badge
-                          variant={p.is_working ? 'default' : 'destructive'}
-                          className={`text-[10px] px-2 py-0.5 rounded-full ${p.is_working ? 'bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/15 border-emerald-500/20' : ''}`}
-                        >
-                          {p.is_working ? 'OK' : 'KO'}
-                        </Badge>
+                        {p.is_blacklisted ? (
+                          <Badge variant="destructive" className="text-[10px] px-2 py-0.5 rounded-full">BAN</Badge>
+                        ) : permDead ? (
+                          <Badge className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-500 border border-amber-500/20">
+                            {t('pool.statusPermanent')}
+                          </Badge>
+                        ) : (
+                          <Badge
+                            variant={p.is_working ? 'default' : 'destructive'}
+                            className={`text-[10px] px-2 py-0.5 rounded-full ${p.is_working ? 'bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/15 border-emerald-500/20' : ''}`}
+                          >
+                            {p.is_working ? 'OK' : 'KO'}
+                          </Badge>
+                        )}
+                      </TD>
+                      <TD className="font-mono text-xs">
+                        {p.fail_count > 0 ? (
+                          <span className={p.fail_count >= maxRetries ? 'text-amber-500 font-semibold' : 'text-muted-foreground'}>
+                            {p.fail_count}/{maxRetries}
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground/40">0</span>
+                        )}
                       </TD>
                       <TD className="font-mono text-xs font-semibold">
                         {p.latency ? (
@@ -386,21 +455,34 @@ export default function Pool() {
                         )}
                       </TD>
                       <TD className="text-right">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => del(p.id)}
-                          className="h-7 w-7 rounded-md hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
+                        <div className="flex items-center justify-end gap-1">
+                          {!p.is_working && !p.is_blacklisted && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => revive(p.id)}
+                              title={t('pool.revive')}
+                              className="h-7 w-7 rounded-md hover:bg-emerald-500/10 text-muted-foreground hover:text-emerald-500 transition-colors"
+                            >
+                              <RotateCcw className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => del(p.id)}
+                            className="h-7 w-7 rounded-md hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
                       </TD>
                     </TR>
                   );
                 })}
                 {!filteredData?.length && (
                   <TR>
-                    <TD colSpan={10} className="py-12 text-center text-muted-foreground">
+                    <TD colSpan={11} className="py-12 text-center text-muted-foreground">
                       {t('common.none')}
                     </TD>
                   </TR>
@@ -433,11 +515,7 @@ function ImportDialog({ onDone }: { onDone: () => void }) {
       });
       setResult(data.message);
       setText('');
-      // close on success after a short delay
-      setTimeout(() => {
-        setOpen(false);
-        setResult('');
-      }, 1500);
+      setTimeout(() => { setOpen(false); setResult(''); }, 1500);
       onDone();
     } catch (err) {
       setResult(apiError(err));

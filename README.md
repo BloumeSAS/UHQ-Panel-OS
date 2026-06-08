@@ -6,20 +6,20 @@ Dépôt officiel : https://github.com/BloumeSAS/UHQ-Panel-OS
 Documentation en ligne : https://uhq-panel-os-docs.bloume.fr
 Dépôt de la documentation : https://github.com/BloumeSAS/UHQ-Panel-OS-Docs
 
-UHQ Panel OS est une plateforme complète pour gérer des proxies et des sous-utilisateurs via un panneau d’administration moderne. Elle combine :
+UHQ Panel OS est une plateforme complète pour gérer des proxies et des sous-utilisateurs via un panneau d'administration moderne. Elle combine :
 
 - une API NestJS robuste (`api/`)
 - un panneau React/Vite moderne (`web/`)
 - un moteur proxy TCP intégré
-- une architecture d’addons pour étendre les capacités
+- une architecture d'addons pour étendre les capacités
 
 Cette solution est développée en open source par Bloume SAS.
 
 ---
 
-## 🚀 Vue d’ensemble
+## 🚀 Vue d'ensemble
 
-UHQ Panel OS fournit un panneau d’administration configurable pour :
+UHQ Panel OS fournit un panneau d'administration configurable pour :
 
 - gérer les utilisateurs et sous-utilisateurs
 - importer et surveiller des proxys
@@ -36,10 +36,11 @@ Le système est conçu pour rester simple à déployer en local, en container ou
 - Interface panel React moderne + backend NestJS
 - Authentification JWT pour le panel et clé API legacy pour les routes `/api/v1/*`
 - Architecture feature-based avec modules métier isolés
-- Prise en charge des langues (i18n) pour le panel et l’API
+- Prise en charge des langues (i18n) pour le panel et l'API
 - Addons modulaires (`addons/`) pour étendre le système
 - Support des scrapers dynamiques et des listes privées par sous-user
 - Démarrage possible même sans base de données entièrement connectée
+- Zéro configuration requise : PostgreSQL embarqué, JWT auto-généré, wizard de setup au premier boot
 
 ---
 
@@ -48,51 +49,123 @@ Le système est conçu pour rester simple à déployer en local, en container ou
 - `api/` : backend NestJS, Prisma, API REST, moteur proxy
 - `web/` : panneau React / Vite / Tailwind
 - `addons/` : composants additionnels et extensions (ex. wallet)
-- `docs/` : documentation du produit et de l’API
+- `docs/` : documentation du produit et de l'API
 - `static/` : ressources publiques servies par NestJS
 - `docker-compose.yml` : déploiement tout-en-un (local et Coolify, zéro configuration)
 - `Dockerfile` : image Docker unique
 
 ---
 
-## ⚙️ Installation locale
+## ⚙️ Installation
 
-### Prérequis
+### Option 1 — Docker Compose (recommandé, local ou VPS)
 
-- Node.js 20+ (ou compatible)
-- npm
-- Docker / docker-compose (optionnel pour déploiement)
-
-### Backend
+**Prérequis :** Docker + Docker Compose installés.
 
 ```bash
-cd api
-npm install
-npm run build
-npm run start:dev
+git clone https://github.com/BloumeSAS/UHQ-Panel-OS.git
+cd UHQ-Panel-OS
+docker compose up -d --build
 ```
 
-### Frontend
+L'application démarre sur `http://localhost:8000`. Un wizard de configuration s'affiche au premier boot pour définir le mot de passe admin. La base PostgreSQL embarquée est détectée automatiquement.
+
+Pour suivre les logs en direct :
 
 ```bash
+docker compose logs -f app
+```
+
+Pour mettre à jour :
+
+```bash
+git pull
+docker compose up -d --build
+```
+
+---
+
+### Option 2 — Coolify (déploiement cloud)
+
+1. Dans Coolify, créez un nouveau service → **Docker Compose**.
+2. Pointez vers ce dépôt GitHub (ou collez le contenu de `docker-compose.yml`).
+3. Ajoutez le **FQDN** de votre domaine dans Coolify (ex. `https://panel.mondomaine.fr`).
+4. Déployez — Traefik route automatiquement le trafic HTTP/HTTPS vers le port `8000`.
+5. Ouvrez l'URL configurée dans votre navigateur : le wizard de setup s'affiche.
+
+> Le port `990` (proxy TCP) est publié directement sur l'hôte. Coolify n'a rien de spécial à configurer pour ce port.
+
+**Données persistantes :** les volumes `uhq-panel-pgdata` et `uhq-panel-appdata` sont nommés explicitement — ils survivent aux redéploiements sans aucune configuration supplémentaire.
+
+---
+
+### Option 3 — Développement local (sans Docker)
+
+**Prérequis :** Node.js 20+, npm, PostgreSQL.
+
+```bash
+# Backend
+cd api
+npm install
+cp .env.example .env   # puis éditer DATABASE_URL
+npm run start:dev
+
+# Frontend (autre terminal)
 cd web
 npm install
 npm run dev
 ```
 
-### Déploiement Docker
+Le panel est accessible sur `http://localhost:5173` (proxy Vite → API `:8000`).
 
-```bash
-docker compose up --build
-```
+---
 
-> Le backend NestJS sert le panel React buildé et expose l’API sur `:8000`.
+## 🌐 Configuration DNS et Cloudflare
+
+UHQ Panel OS utilise **deux ports distincts** :
+
+| Port | Usage | Protocole |
+|------|-------|-----------|
+| `8000` (ou votre FQDN) | Panel web + API | HTTP/HTTPS (géré par Traefik/Coolify) |
+| `990` | Moteur proxy TCP | TCP brut (HTTP CONNECT) |
+
+### ⚠️ Compatibilité Cloudflare
+
+**Cloudflare ne proxifie pas le port 990.** Si votre domaine est derrière Cloudflare (nuage orange), les connexions proxy des clients échoueront silencieusement.
+
+**Solution recommandée :**
+
+Utilisez **deux enregistrements DNS distincts** :
+
+| Enregistrement | Valeur | Proxy Cloudflare |
+|----------------|--------|-----------------|
+| `panel.mondomaine.fr` | IP de votre VPS | ✅ Activé (nuage orange) |
+| `prx.mondomaine.fr` | IP de votre VPS | ❌ Désactivé (nuage gris) |
+
+1. Dans Cloudflare DNS → ajoutez un enregistrement `A` → `prx.mondomaine.fr` → IP du VPS → **nuage gris (DNS only)**.
+2. Dans le panel UHQ → **Settings** → `publicProxyHost` → `prx.mondomaine.fr`.
+
+Les clients proxy se connecteront à `prx.mondomaine.fr:990` directement sur votre VPS, sans passer par Cloudflare. Le panel web reste protégé par Cloudflare sur son propre sous-domaine.
+
+> C'est le fonctionnement standard de tous les fournisseurs de proxies (Bright Data, Oxylabs, etc.). Le trafic proxy TCP ne peut pas passer par un CDN HTTP.
+
+**Cloudflare Spectrum** (plan Pro+, payant) permet de proxifier du TCP arbitraire si vous souhaitez absolument garder Cloudflare devant le port proxy.
+
+---
+
+## 🔧 Premier démarrage
+
+Au premier accès, un wizard de configuration guide :
+
+1. **Base de données** — si vous utilisez `docker compose`, la base embarquée est détectée automatiquement (bouton "Continuer avec la base intégrée"). Sinon, saisissez une URL PostgreSQL externe.
+2. **Compte admin** — définissez le mot de passe administrateur.
+3. **Settings** — configurez `publicProxyHost` et `publicProxyPort` pour indiquer aux clients comment se connecter.
 
 ---
 
 ## 🧩 Addons
 
-UHQ Panel OS supporte une architecture d’addons open source et gratuite pour enrichir le produit sans modifier le cœur.
+UHQ Panel OS supporte une architecture d'addons open source et gratuite pour enrichir le produit sans modifier le cœur.
 
 - Les addons sont stockés dans `addons/`
 - Exemple inclus : `addons/wallet`
@@ -105,7 +178,7 @@ UHQ Panel OS supporte une architecture d’addons open source et gratuite pour e
 2. Ajouter le manifest et les fichiers nécessaires
 3. Suivre le format des addons existants
 
-### Exemples d’usage
+### Exemples d'usage
 
 - modules de paiement
 - widgets embarqués
@@ -116,7 +189,7 @@ UHQ Panel OS supporte une architecture d’addons open source et gratuite pour e
 
 ## 🌍 Communauté
 
-UHQ Panel OS est un projet open source. Nous encourageons les contributions, les retours et les développements d’addons.
+UHQ Panel OS est un projet open source. Nous encourageons les contributions, les retours et les développements d'addons.
 
 - Dépôt officiel : https://github.com/BloumeSAS/UHQ-Panel-OS
 - Site de la documentation : https://uhq-panel-os-docs.bloume.fr
@@ -129,8 +202,8 @@ UHQ Panel OS est un projet open source. Nous encourageons les contributions, les
 ### Support et reporting
 
 - Bugs et problèmes : ouvrez une issue sur GitHub
-- Demandes d’ajout ou questions : ouvrez une issue ou proposez un PR
-- Pour les addons : documentez bien l’usage et le format dans `addons/` avant de soumettre
+- Demandes d'ajout ou questions : ouvrez une issue ou proposez un PR
+- Pour les addons : documentez bien l'usage et le format dans `addons/` avant de soumettre
 - Mise à jour : vérifiez les releases sur GitHub pour les dernières versions
 
 ### Contact et ressources
@@ -145,10 +218,10 @@ UHQ Panel OS est un projet open source. Nous encourageons les contributions, les
 
 ## 🌐 Langues et i18n
 
-Le projet est conçu pour être multilingue :
+Le projet est conçu pour être multilingue :
 
 - le panel React utilise le dossier `web/src/lib/i18n/`
-- l’API utilise `api/src/i18n/` avec `nestjs-i18n`
+- l'API utilise `api/src/i18n/` avec `nestjs-i18n`
 - ajouter une langue = copier `api/src/i18n/en/` vers une nouvelle langue + ajouter le fichier UI correspondant dans `web/src/lib/i18n/`
 
 ---
@@ -157,18 +230,18 @@ Le projet est conçu pour être multilingue :
 
 Consultez la [documentation en ligne](https://uhq-panel-os-docs.bloume.fr), le dépôt de documentation [UHQ-Panel-OS-Docs](https://github.com/BloumeSAS/UHQ-Panel-OS-Docs) ou localement dans `docs/` pour :
 
-- l’installation avancée
-- les variables d’environnement
+- l'installation avancée
+- les variables d'environnement
 - les routes API
-- le développement d’addons
-- l’architecture du système
+- le développement d'addons
+- l'architecture du système
 
 ---
 
 ## 🛡️ Règles importantes
 
 - La configuration doit passer par `SettingsService` dans `api/src/config/settings.service.ts`
-- Ne pas exposer les secrets en clair dans l’API
+- Ne pas exposer les secrets en clair dans l'API
 - `apiKey` ne doit pas être modifiée via `PUT /settings`
 - Le logo reste toujours `/static/logo.png`
 - Le panneau principal `/` appartient au SPA React, ne pas ajouter de route serveur à `/`
@@ -179,4 +252,4 @@ Consultez la [documentation en ligne](https://uhq-panel-os-docs.bloume.fr), le d
 
 UHQ Panel OS est construit pour proposer une solution gratuite, libre et extensible aux opérateurs de proxies. Bloume SAS maintient le projet et fournit une base stable pour développer des addons, des intégrations et des interfaces personnalisées.
 
-Merci d’utiliser UHQ Panel OS.
+Merci d'utiliser UHQ Panel OS.

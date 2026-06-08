@@ -56,8 +56,15 @@ export class CheckerService implements OnModuleInit {
     const startTime = Date.now();
     try {
       await this.prisma.ensureConnection();
+      const skipDead = this.settings.getBool('skipDeadProxies');
+      const maxRetries = this.settings.getNumber('deadProxyMaxRetries');
       const rawCandidates = await this.prisma.backendProxy.findMany({
-        where: { isBlacklisted: false },
+        where: {
+          isBlacklisted: false,
+          ...(skipDead
+            ? { OR: [{ isWorking: true }, { failCount: { lt: maxRetries } }] }
+            : {}),
+        },
         orderBy: { lastChecked: 'asc' },
         take: 150_000,
       });
@@ -256,7 +263,7 @@ export class CheckerService implements OnModuleInit {
         await this.prisma.withRetry(() =>
           this.prisma.backendProxy.updateMany({
             where: { id: { in: dead } },
-            data: { isWorking: false, lastChecked: new Date() },
+            data: { isWorking: false, lastChecked: new Date(), failCount: { increment: 1 } },
           }),
         );
       }
@@ -264,7 +271,7 @@ export class CheckerService implements OnModuleInit {
         await this.prisma.withRetry(() =>
           this.prisma.backendProxy.updateMany({
             where: { id: { in: aliveNoCountry } },
-            data: { isWorking: true, lastChecked: new Date() },
+            data: { isWorking: true, lastChecked: new Date(), failCount: 0 },
           }),
         );
       }
@@ -274,7 +281,7 @@ export class CheckerService implements OnModuleInit {
           await this.prisma.withRetry(() =>
             this.prisma.backendProxy.updateMany({
               where: { id: { in: slice } },
-              data: { isWorking: true, lastChecked: new Date(), country: cc },
+              data: { isWorking: true, lastChecked: new Date(), country: cc, failCount: 0 },
             }),
           );
         }

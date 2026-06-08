@@ -26,6 +26,8 @@ export const SETTING_DEFS = {
   proxyCheckInterval: { def: '900', env: 'PROXY_CHECK_INTERVAL', secret: false },
   geoResolveInterval: { def: '600', env: 'GEO_RESOLVE_INTERVAL', secret: false },
   checkerConcurrency: { def: '500', env: 'CHECKER_CONCURRENCY', secret: false },
+  skipDeadProxies: { def: 'true', env: undefined, secret: false },
+  deadProxyMaxRetries: { def: '3', env: undefined, secret: false },
   scraperProxy: { def: '', env: 'SCRAPER_PROXY', secret: true },
   groqApiKey: { def: '', env: 'GROQ_API_KEY', secret: true },
   // Clé API de l'API legacy /api/v1 — générée au setup, régénérable depuis le panel.

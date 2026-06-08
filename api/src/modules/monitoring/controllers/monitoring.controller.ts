@@ -4,6 +4,7 @@ import {
   Delete,
   Get,
   Param,
+  Patch,
   Post,
   Query,
   UseGuards,
@@ -144,6 +145,8 @@ export class PanelMonitoringController {
         country: p.country,
         provider: p.provider,
         is_working: p.isWorking,
+        is_blacklisted: p.isBlacklisted,
+        fail_count: p.failCount,
         latency: p.averageLatency,
         url: p.url,
       })),
@@ -183,6 +186,27 @@ export class PanelMonitoringController {
       imported += res.count;
     }
     return { status: 'success', imported, message: `${imported} proxies importés` };
+  }
+
+  /** Réinitialise un proxy mort : failCount → 0, isWorking → true. */
+  @ApiParam({ name: 'id', description: 'ID du proxy dans le pool' })
+  @Patch('proxies/:id/revive')
+  async reviveProxy(@Param('id') id: string) {
+    await this.prisma.backendProxy.update({
+      where: { id },
+      data: { isWorking: true, failCount: 0 },
+    }).catch(() => undefined);
+    return { status: 'success' };
+  }
+
+  /** Réinitialise en masse tous les proxies morts (failCount → 0, isWorking → true). */
+  @Post('proxies/revive-dead')
+  async reviveDeadProxies() {
+    const res = await this.prisma.backendProxy.updateMany({
+      where: { isWorking: false, isBlacklisted: false },
+      data: { isWorking: true, failCount: 0 },
+    });
+    return { status: 'success', revived: res.count };
   }
 
   /** Supprime un proxy du pool. */

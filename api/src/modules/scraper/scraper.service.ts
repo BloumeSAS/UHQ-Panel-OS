@@ -113,6 +113,11 @@ export class ScraperService implements OnModuleInit {
 
   private async bulkUpsert(items: ProxyItem[]): Promise<void> {
     if (items.length === 0) return;
+    const skipDead = this.settings.getBool('skipDeadProxies');
+    const maxRetries = this.settings.getNumber('deadProxyMaxRetries');
+    const deadSkipClause = skipDead
+      ? `WHEN "BackendProxy"."isWorking" = FALSE AND "BackendProxy"."failCount" >= ${maxRetries} THEN FALSE`
+      : '';
     const CHUNK = 1000;
     for (let i = 0; i < items.length; i += CHUNK) {
       const slice = items.slice(i, i + CHUNK);
@@ -144,7 +149,9 @@ export class ScraperService implements OnModuleInit {
             VALUES ${values.join(', ')}
             ON CONFLICT (url) DO UPDATE SET
               "lastChecked" = "BackendProxy"."lastChecked",
-              "isWorking"   = CASE WHEN "BackendProxy"."isBlacklisted" = TRUE THEN FALSE ELSE EXCLUDED."isWorking" END,
+              "isWorking"   = CASE WHEN "BackendProxy"."isBlacklisted" = TRUE THEN FALSE
+                                   ${deadSkipClause}
+                                   ELSE EXCLUDED."isWorking" END,
               "country"     = COALESCE(NULLIF(EXCLUDED."country", 'Unknown'), "BackendProxy"."country")
           `;
           await this.prisma.$executeRawUnsafe(sql, ...params);
