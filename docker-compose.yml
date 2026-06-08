@@ -9,7 +9,12 @@
 #
 # JWT secret   → généré automatiquement au 1er boot
 # Mot de passe → défini pendant le wizard de setup
+#
 # Port proxy   → modifiable dans Settings → publicProxyPort
+#   Par défaut : 990. Pour changer (ex: 8888) :
+#     1. Dans Coolify : ajouter PROXY_PORT=8888 dans les variables d'env
+#     2. Dans le panel : Settings → publicProxyPort = 8888
+#     3. Redéployer
 # ---------------------------------------------------------------
 
 services:
@@ -37,11 +42,16 @@ services:
       db:
         condition: service_healthy
     ports:
-      # Port 8000 : PAS de mapping hôte — Traefik (Coolify) y accède via le
-      # réseau Docker interne. En local sans Traefik, ajoutez "8000:8000/tcp".
-      - "990:990/tcp"     # proxy TCP brut — doit être mappé directement sur l'hôte
+      # Port proxy TCP — suit automatiquement PROXY_PORT (défaut 990).
+      # Même valeur que publicProxyPort dans les settings du panel.
+      - "${PROXY_PORT:-990}:${PROXY_PORT:-990}/tcp"
+      # Port 8000 : PAS de mapping hôte — Traefik (Coolify) y accède via
+      # le réseau Docker interne. En local sans Traefik : décommentez :
+      # - "8000:8000/tcp"
     expose:
-      - "8000"            # visible de Traefik via le réseau interne
+      - "8000"
+    labels:
+      - "traefik.http.services.uhq-panel-app.loadbalancer.server.port=8000"
     ulimits:
       nofile:
         soft: 200000

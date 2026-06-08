@@ -19,7 +19,7 @@ export const SETTING_DEFS = {
   // Vide = utilisation automatique des releases GitHub officielles.
   updateCheckUrl: { def: '', env: 'UPDATE_CHECK_URL', secret: false },
   publicProxyHost: { def: 'prx.uhq.monster', env: 'PUBLIC_PROXY_HOST', secret: false },
-  publicProxyPort: { def: '990', env: 'PUBLIC_PROXY_PORT', secret: false },
+  publicProxyPort: { def: '990', env: 'PROXY_PORT', secret: false },
   proxyTimeout: { def: '3', env: 'PROXY_TIMEOUT', secret: false },
   proxyRacingTimeout: { def: '1.5', env: 'PROXY_RACING_TIMEOUT', secret: false },
   scrapeInterval: { def: '3600', env: 'SCRAPE_INTERVAL', secret: false },
