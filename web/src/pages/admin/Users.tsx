@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2, Link2, Download, CheckSquare, Square, ShieldCheck, UserPlus, Clock } from 'lucide-react';
+import { Plus, Trash2, Link2, Download, CheckSquare, Square, ShieldCheck, UserPlus, Clock, Pencil } from 'lucide-react';
 import { AddonPageBar } from '@/components/AddonPageBar';
 import { api, apiError } from '@/lib/api';
 import { useT } from '@/lib/i18n';
@@ -36,6 +36,7 @@ interface PanelUser {
   is_active: boolean;
   expires_at: string | null;
   totp_enabled: boolean;
+  created_at: string;
   assigned_proxies: { id: string; username: string; name: string }[];
 }
 
@@ -58,6 +59,7 @@ export default function Users() {
   });
 
   const [assignFor, setAssignFor] = useState<PanelUser | null>(null);
+  const [editFor, setEditFor] = useState<PanelUser | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
   // Bulk operations
@@ -154,6 +156,7 @@ export default function Users() {
                 <TH>{t('users.role')}</TH>
                 <TH>{t('users.active')}</TH>
                 <TH>{t('users.expiry')}</TH>
+                <TH>{t('users.createdAt')}</TH>
                 <TH>{t('users.security')}</TH>
                 <TH>{t('users.assignedProxies')}</TH>
                 <TH className="text-right">{t('common.actions')}</TH>
@@ -195,6 +198,11 @@ export default function Users() {
                     }
                   </TD>
                   <TD>
+                    <span className="text-xs text-muted-foreground">
+                      {new Date(u.created_at).toLocaleDateString()}
+                    </span>
+                  </TD>
+                  <TD>
                     {u.totp_enabled && (
                       <ShieldCheck className="h-4 w-4 text-green-500" />
                     )}
@@ -208,6 +216,9 @@ export default function Users() {
                     </div>
                   </TD>
                   <TD className="flex justify-end gap-1">
+                    <Button variant="ghost" size="icon" onClick={() => setEditFor(u)} title={t('common.edit')}>
+                      <Pencil className="h-4 w-4" />
+                    </Button>
                     <Button variant="ghost" size="icon" onClick={() => setAssignFor(u)} title={t('users.assign')}>
                       <Link2 className="h-4 w-4" />
                     </Button>
@@ -219,7 +230,7 @@ export default function Users() {
               ))}
               {!data?.length && (
                 <TR>
-                  <TD colSpan={8} className="py-8 text-center text-muted-foreground">{t('common.none')}</TD>
+                  <TD colSpan={9} className="py-8 text-center text-muted-foreground">{t('common.none')}</TD>
                 </TR>
               )}
             </TBody>
@@ -227,10 +238,85 @@ export default function Users() {
         </CardContent>
       </Card>
 
+      {editFor && <EditDialog user={editFor} onClose={() => setEditFor(null)} onChanged={invalidate} />}
       {assignFor && <AssignDialog user={assignFor} onClose={() => setAssignFor(null)} onChanged={invalidate} />}
 
       <AddonPageBar />
     </div>
+  );
+}
+
+function EditDialog({ user, onClose, onChanged }: { user: PanelUser; onClose: () => void; onChanged: () => void }) {
+  const t = useT();
+  const [form, setForm] = useState({
+    email: user.email,
+    role: user.role,
+    password: '',
+    expiresAt: user.expires_at ? new Date(user.expires_at).toISOString().split('T')[0] : '',
+    isActive: user.is_active,
+  });
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  const set = (k: string, v: any) => setForm((f) => ({ ...f, [k]: v }));
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+    try {
+      const body: any = {
+        email: form.email,
+        role: form.role,
+        isActive: form.isActive,
+        expiresAt: form.expiresAt ? new Date(form.expiresAt).toISOString() : null,
+      };
+      if (form.password) body.password = form.password;
+      await api.patch(`/users/${user.id}`, body);
+      onChanged();
+      onClose();
+    } catch (err) {
+      setError(apiError(err));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>{t('users.editTitle')}</DialogTitle></DialogHeader>
+        <form onSubmit={submit} className="space-y-4">
+          <div className="space-y-1.5">
+            <Label>{t('auth.email')}</Label>
+            <Input type="email" value={form.email} onChange={(e) => set('email', e.target.value)} required />
+          </div>
+          <div className="space-y-1.5">
+            <Label>{t('users.role')}</Label>
+            <select value={form.role} onChange={(e) => set('role', e.target.value)} className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm">
+              <option value="USER">USER</option>
+              <option value="ADMIN">ADMIN</option>
+            </select>
+          </div>
+          <div className="space-y-1.5">
+            <Label>{t('users.newPassword')}</Label>
+            <Input type="password" value={form.password} onChange={(e) => set('password', e.target.value)} placeholder={t('users.passwordOptional')} minLength={8} />
+          </div>
+          <div className="space-y-1.5">
+            <Label>{t('users.expiresAt')}</Label>
+            <Input type="date" value={form.expiresAt} onChange={(e) => set('expiresAt', e.target.value)} />
+          </div>
+          <div className="flex items-center justify-between">
+            <Label>{t('users.active')}</Label>
+            <Switch checked={form.isActive} onCheckedChange={(v) => set('isActive', v)} />
+          </div>
+          {error && <p className="text-sm text-destructive">{error}</p>}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>{t('common.cancel')}</Button>
+            <Button type="submit" disabled={loading}>{t('common.save')}</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
 

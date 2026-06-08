@@ -547,6 +547,10 @@ const en: Language = {
     'users.expiresAt': 'Expiry date (optional)',
     'users.expired': 'Expired',
     'users.security': '2FA',
+    'users.createdAt': 'Created',
+    'users.editTitle': 'Edit user',
+    'users.newPassword': 'New password',
+    'users.passwordOptional': 'Leave blank to keep unchanged',
 
     // ── Settings invitations ───────────────────────────────────────────────
     'settings.invitations': 'Email Invitations',

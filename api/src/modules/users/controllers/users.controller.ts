@@ -121,11 +121,17 @@ export class PanelUserController {
   @Patch(':id')
   async update(@Param('id') id: string, @Body() dto: UpdatePanelUserDto) {
     const data: any = {};
+    if (dto.email !== undefined) {
+      const normalized = dto.email.toLowerCase();
+      const exists = await this.prisma.panelUser.findFirst({ where: { email: normalized, NOT: { id } } });
+      if (exists) throw new BadRequestException(t('errors.emailTaken'));
+      data.email = normalized;
+    }
     if (dto.role !== undefined) data.role = dto.role;
     if (dto.isActive !== undefined) data.isActive = dto.isActive;
     if (dto.password !== undefined) data.passwordHash = await bcrypt.hash(dto.password, 10);
-    if ((dto as any).expiresAt !== undefined) {
-      data.expiresAt = (dto as any).expiresAt ? new Date((dto as any).expiresAt) : null;
+    if (dto.expiresAt !== undefined) {
+      data.expiresAt = dto.expiresAt ? new Date(dto.expiresAt) : null;
     }
     try {
       const u = await this.prisma.panelUser.update({ where: { id }, data });

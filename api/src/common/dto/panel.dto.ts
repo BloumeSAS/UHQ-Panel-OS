@@ -153,12 +153,14 @@ export class CreatePanelUserDto {
 }
 
 export class UpdatePanelUserDto {
+  @ApiPropertyOptional() @IsOptional() @IsEmail() email?: string;
   @ApiPropertyOptional({ enum: ['ADMIN', 'USER'] })
   @IsOptional()
   @IsIn(['ADMIN', 'USER'])
   role?: 'ADMIN' | 'USER';
   @ApiPropertyOptional() @IsOptional() @IsBoolean() isActive?: boolean;
   @ApiPropertyOptional({ minLength: 8 }) @IsOptional() @IsString() @MinLength(8) password?: string;
+  @ApiPropertyOptional() @IsOptional() expiresAt?: string | null;
 }
 
 export class AssignProxyDto {
