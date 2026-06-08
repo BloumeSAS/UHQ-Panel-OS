@@ -44,7 +44,7 @@ services:
     ports:
       # Port proxy TCP — suit automatiquement PROXY_PORT (défaut 990).
       # Même valeur que publicProxyPort dans les settings du panel.
-      - "${PROXY_PORT:-990}:${PROXY_PORT:-990}/tcp"
+      - "990:990/tcp"
       # Port 8000 : PAS de mapping hôte — Traefik (Coolify) y accède via
       # le réseau Docker interne. En local sans Traefik : décommentez :
       # - "8000:8000/tcp"
