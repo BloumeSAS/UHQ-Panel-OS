@@ -439,6 +439,7 @@ const fr: Language = {
     // Scraper placeholders
     'scraper.urlPlaceholder': 'https://exemple.com/proxies.txt',
     'scraper.patternPlaceholder': 'Regex optionnelle, ex: (ip):(port)',
+    'scraper.editTitle': 'Modifier la source',
 
     // Pool & Checker additions
     'pool.countryPlaceholder': 'FR, US...',

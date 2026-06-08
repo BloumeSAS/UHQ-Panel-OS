@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2, FlaskConical, Play } from 'lucide-react';
+import { Plus, Trash2, FlaskConical, Play, Pencil } from 'lucide-react';
 import { api, apiError } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import {
@@ -54,6 +54,8 @@ export default function Scraper() {
     mutationFn: (id: string) => api.delete(`/scraper-sources/${id}`),
     onSuccess: invalidate,
   });
+
+  const [editing, setEditing] = useState<Source | null>(null);
 
   const [testResult, setTestResult] = useState<string>('');
   const test = async (id: string) => {
@@ -118,20 +120,90 @@ export default function Scraper() {
                     <Button variant="ghost" size="icon" onClick={() => test(s.id)} title={t('scraper.test')}>
                       <FlaskConical className="h-4 w-4" />
                     </Button>
+                    <Button variant="ghost" size="icon" onClick={() => setEditing(s)} title={t('common.edit')}>
+                      <Pencil className="h-4 w-4" />
+                    </Button>
                     <Button variant="ghost" size="icon" onClick={() => confirm(t('common.confirmDelete')) && del.mutate(s.id)}>
                       <Trash2 className="h-4 w-4 text-destructive" />
                     </Button>
                   </TD>
                 </TR>
               ))}
-              {!data?.length && (
+                      {!data?.length && (
                 <TR><TD colSpan={5} className="py-8 text-center text-muted-foreground">{t('common.none')}</TD></TR>
               )}
             </TBody>
           </Table>
         </CardContent>
       </Card>
+      {editing && (
+        <EditDialog source={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); invalidate(); }} />
+      )}
     </div>
+  );
+}
+
+function EditDialog({ source, onClose, onSaved }: { source: Source; onClose: () => void; onSaved: () => void }) {
+  const t = useT();
+  const [form, setForm] = useState({ name: source.name, url: source.url, protocol: source.protocol, pattern: source.pattern ?? '' });
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  const set = (k: string, v: any) => setForm((f) => ({ ...f, [k]: v }));
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+    try {
+      await api.patch(`/scraper-sources/${source.id}`, {
+        name: form.name,
+        url: form.url,
+        protocol: form.protocol,
+        pattern: form.pattern || undefined,
+      });
+      onSaved();
+    } catch (err) {
+      setError(apiError(err));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>{t('scraper.editTitle')}</DialogTitle></DialogHeader>
+        <form onSubmit={submit} className="space-y-4">
+          <div className="space-y-1.5">
+            <Label>{t('scraper.name')}</Label>
+            <Input value={form.name} onChange={(e) => set('name', e.target.value)} required />
+          </div>
+          <div className="space-y-1.5">
+            <Label>{t('scraper.url')}</Label>
+            <Input value={form.url} onChange={(e) => set('url', e.target.value)} required />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <Label>{t('scraper.protocol')}</Label>
+              <select value={form.protocol} onChange={(e) => set('protocol', e.target.value)} className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm">
+                <option value="http">http</option>
+                <option value="socks4">socks4</option>
+                <option value="socks5">socks5</option>
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>{t('scraper.pattern')}</Label>
+              <Input value={form.pattern} onChange={(e) => set('pattern', e.target.value)} placeholder={t('scraper.patternPlaceholder')} />
+            </div>
+          </div>
+          {error && <p className="text-sm text-destructive">{error}</p>}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>{t('common.cancel')}</Button>
+            <Button type="submit" disabled={loading}>{t('common.save')}</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
 
