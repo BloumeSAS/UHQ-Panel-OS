@@ -16,7 +16,7 @@ import { RolesGuard } from '../../../common/guards/roles.guard';
 import { Roles } from '../../../common/decorators/roles.decorator';
 import { PrismaService } from '../../../database/prisma.service';
 import { ProxyServerService } from '../../proxy-engine/proxy-server.service';
-import { parseProxyList } from '../../../common/utils/proxy-parse';
+import { parseProxyList, parseProxyLine } from '../../../common/utils/proxy-parse';
 import { ImportProxiesDto } from '../../../common/dto/panel.dto';
 import { PoolHealthSnapshotService } from '../pool-health-snapshot.service';
 
@@ -154,6 +154,44 @@ export class PanelMonitoringController {
   }
 
   /**
+   * Exporte les proxies du pool sous forme de texte (un par ligne).
+   * format=standard → `ip:port[:user:pass]` ; format=url → `proto://[user:pass@]ip:port`.
+   * Respecte les filtres pays / protocole / état (working=true exclut les blacklistés).
+   * Déclaré avant `proxies/:id/...` (route littérale).
+   */
+  @ApiQuery({ name: 'format', required: false, enum: ['standard', 'url'] })
+  @ApiQuery({ name: 'country', required: false, description: 'Code pays à 2 lettres (ex. FR)' })
+  @ApiQuery({ name: 'protocol', required: false, enum: ['http', 'socks4', 'socks5'] })
+  @ApiQuery({ name: 'working', required: false, type: Boolean })
+  @Get('proxies/export')
+  async exportProxies(
+    @Query('format') format = 'standard',
+    @Query('country') country?: string,
+    @Query('protocol') protocol?: string,
+    @Query('working') working?: string,
+  ) {
+    const where: any = {};
+    if (country) where.country = country.toUpperCase();
+    if (protocol) where.protocol = protocol.toLowerCase();
+    if (working === 'true') {
+      where.isWorking = true;
+      where.isBlacklisted = false;
+    }
+    if (working === 'false') where.isWorking = false;
+    const rows = await this.prisma.backendProxy.findMany({
+      where,
+      select: { url: true, ip: true, port: true },
+      orderBy: { lastChecked: 'desc' },
+    });
+    const lines = rows.map((p) => {
+      if (format === 'url') return p.url;
+      const auth = parseProxyLine(p.url)?.auth;
+      return auth ? `${p.ip}:${p.port}:${auth}` : `${p.ip}:${p.port}`;
+    });
+    return { status: 'success', count: lines.length, text: lines.join('\n') };
+  }
+
+  /**
    * Import MANUEL de proxies dans le pool (sans scraper). Une ligne par proxy
    * (`[proto://]ip:port`). Provider « Manual ». Validés ensuite par le checker.
    */
@@ -207,6 +245,25 @@ export class PanelMonitoringController {
       data: { isWorking: true, failCount: 0 },
     });
     return { status: 'success', revived: res.count };
+  }
+
+  /**
+   * Blackliste / déblackliste un proxy. Blacklister le marque aussi hors-ligne ;
+   * déblacklister le réactive (isWorking → true, failCount → 0).
+   */
+  @ApiParam({ name: 'id', description: 'ID du proxy dans le pool' })
+  @Patch('proxies/:id/blacklist')
+  async blacklistProxy(@Param('id') id: string, @Body() body: { blacklisted?: boolean }) {
+    const blacklisted = body?.blacklisted === true;
+    await this.prisma.backendProxy
+      .update({
+        where: { id },
+        data: blacklisted
+          ? { isBlacklisted: true, isWorking: false }
+          : { isBlacklisted: false, isWorking: true, failCount: 0 },
+      })
+      .catch(() => undefined);
+    return { status: 'success' };
   }
 
   /** Supprime un proxy du pool. */

@@ -22,6 +22,14 @@ const en = {
     tokenRequired: "Missing token",
     captchaFailed: "Captcha verification failed",
     addonNotFound: "Addon not found"
+  },
+  info: {
+    emailRequired: "Email address required.",
+    smtpTestSent: "Test email sent.",
+    smtpTestFailed: "Failed — check your SMTP settings.",
+    webhookTestSent: "Test message sent.",
+    webhookNotConfigured: "No webhook URL configured for this service.",
+    webhookTestFailed: "Failed to send webhook"
   }
 } as const;
 

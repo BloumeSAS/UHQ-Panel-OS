@@ -82,6 +82,88 @@ export class NotificationService {
         }
       }
     }
+
+    // Dispatch to BloumeChat (format Discord-compatible : content/username/avatar_url)
+    if (this.settings.getBool('bloumechatAlertsEnabled')) {
+      const url = this.settings.get('bloumechatWebhookUrl');
+      if (url) {
+        try {
+          const res = await request(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content: payloads.slack?.text ?? 'UHQ Panel OS', username: 'UHQ Panel OS Alerts' }),
+          });
+          if (res.statusCode >= 400) {
+            this.logger.warn(`BloumeChat webhook returned status ${res.statusCode}: ${await res.body.text()}`);
+          }
+        } catch (err) {
+          this.logger.error(`Failed to send BloumeChat webhook alert: ${err.message}`);
+        }
+      }
+    }
+  }
+
+  /**
+   * Envoie un message de TEST sur le webhook choisi, en ignorant le flag
+   * *AlertsEnabled (l'admin teste explicitement la config). Renvoie le statut
+   * pour que le contrôleur puisse remonter une erreur claire.
+   */
+  async sendTestWebhook(target: 'discord' | 'slack' | 'bloumechat'): Promise<{ ok: boolean; status?: number; error?: string }> {
+    const urlKey =
+      target === 'discord'
+        ? 'discordWebhookUrl'
+        : target === 'slack'
+          ? 'slackWebhookUrl'
+          : 'bloumechatWebhookUrl';
+    const url = this.settings.get(urlKey);
+    if (!url) return { ok: false, error: 'not_configured' };
+
+    const testText =
+      'Ceci est un message de test envoyé depuis UHQ Panel OS. Votre webhook est correctement configuré.';
+    let payload: any;
+    if (target === 'discord') {
+      payload = {
+        username: 'UHQ Panel OS Alerts',
+        embeds: [
+          {
+            title: '✅ Webhook de test',
+            description: testText,
+            color: 3066993, // Green
+            timestamp: new Date().toISOString(),
+          },
+        ],
+      };
+    } else if (target === 'slack') {
+      payload = {
+        text: 'UHQ Panel OS — webhook de test',
+        blocks: [
+          {
+            type: 'section',
+            text: { type: 'mrkdwn', text: `:white_check_mark: ${testText}` },
+          },
+        ],
+      };
+    } else {
+      // BloumeChat — format Discord-compatible (content / username / avatar_url)
+      payload = { content: `✅ ${testText}`, username: 'UHQ Panel OS Alerts' };
+    }
+
+    try {
+      const res = await request(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (res.statusCode >= 400) {
+        const body = await res.body.text();
+        this.logger.warn(`Test ${target} webhook returned status ${res.statusCode}: ${body}`);
+        return { ok: false, status: res.statusCode, error: body.slice(0, 200) };
+      }
+      return { ok: true, status: res.statusCode };
+    } catch (err: any) {
+      this.logger.error(`Failed to send test ${target} webhook: ${err.message}`);
+      return { ok: false, error: err.message };
+    }
   }
 
   /**

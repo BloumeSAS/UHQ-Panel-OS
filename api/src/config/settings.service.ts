@@ -56,11 +56,13 @@ export const SETTING_DEFS = {
   captchaCapEndpoint: { def: '', env: undefined, secret: false },
   // ── Maintenance Mode ────────────────────────────────────────────────────────
   maintenanceModeEnabled: { def: 'false', env: undefined, secret: false },
-  // ── Discord / Slack Webhooks ───────────────────────────────────────────────
+  // ── Discord / Slack / BloumeChat Webhooks ──────────────────────────────────
   discordWebhookUrl: { def: '', env: undefined, secret: true },
   discordAlertsEnabled: { def: 'false', env: undefined, secret: false },
   slackWebhookUrl: { def: '', env: undefined, secret: true },
   slackAlertsEnabled: { def: 'false', env: undefined, secret: false },
+  bloumechatWebhookUrl: { def: '', env: undefined, secret: true },
+  bloumechatAlertsEnabled: { def: 'false', env: undefined, secret: false },
   // ── Database Backups ────────────────────────────────────────────────────────
   backupDatabaseEnabled: { def: 'false', env: undefined, secret: false },
   backupIntervalCron: { def: '0 0 * * *', env: undefined, secret: false },

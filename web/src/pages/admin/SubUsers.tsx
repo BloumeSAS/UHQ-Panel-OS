@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2, List, Copy, Pencil, Tag, Calendar, Zap } from 'lucide-react';
+import { Plus, Trash2, List, Copy, Check, Pencil, Tag, Calendar, Zap, CheckSquare, Square, RotateCcw } from 'lucide-react';
 import { AddonPageBar } from '@/components/AddonPageBar';
 import { api, apiError } from '@/lib/api';
 import { useT } from '@/lib/i18n';
@@ -27,6 +27,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/dialog';
+import { toast } from '@/lib/toast';
 
 interface SubUser {
   id: string;
@@ -80,6 +81,37 @@ export default function SubUsers() {
 
   const [sticky, setSticky] = useState<string[] | null>(null);
   const [editing, setEditing] = useState<SubUser | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  const resetTraffic = useMutation({
+    mutationFn: (id: string) => api.post(`/subusers/${id}/reset-traffic`),
+    onSuccess: invalidate,
+  });
+  const bulkMutation = useMutation({
+    mutationFn: (v: { action: string; ids: string[] }) => api.post('/subusers/bulk', v),
+    onSuccess: () => {
+      invalidate();
+      setSelected(new Set());
+      toast.success(t('users.bulkDone'));
+    },
+    onError: (e: any) => toast.error(e.response?.data?.message || t('common.error')),
+  });
+
+  const toggleSelect = (id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const copyCreds = (u: SubUser) => {
+    navigator.clipboard.writeText(`${u.username}:${u.password}`);
+    setCopiedId(u.id);
+    setTimeout(() => setCopiedId(null), 1500);
+  };
 
   const showSticky = async (id: string) => {
     const { data } = await api.get(`/subusers/${id}/sticky-list?count=50`);
@@ -106,6 +138,13 @@ export default function SubUsers() {
     const utags = (u.tags ?? '').split(',').map((t) => t.trim().toLowerCase());
     return utags.includes(selectedTag.trim().toLowerCase());
   });
+
+  const toggleAll = () => {
+    const ids = filteredData?.map((u) => u.id) ?? [];
+    if (ids.length > 0 && ids.every((id) => selected.has(id))) setSelected(new Set());
+    else setSelected(new Set(ids));
+  };
+  const allSelected = (filteredData?.length ?? 0) > 0 && (filteredData ?? []).every((u) => selected.has(u.id));
 
   return (
     <div className="space-y-6">
@@ -154,11 +193,37 @@ export default function SubUsers() {
         </div>
       )}
 
+      {/* Bulk actions bar */}
+      {selected.size > 0 && (
+        <div className="flex items-center gap-2 p-3 rounded-lg bg-accent/40 border">
+          <span className="text-sm font-medium">{selected.size} {t('users.selected')}</span>
+          <div className="ml-auto flex flex-wrap gap-2">
+            <Button size="sm" variant="outline" onClick={() => bulkMutation.mutate({ action: 'block', ids: Array.from(selected) })}>
+              {t('sub.bulkBlock')}
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => bulkMutation.mutate({ action: 'unblock', ids: Array.from(selected) })}>
+              {t('sub.bulkUnblock')}
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => confirm(t('sub.confirmResetTraffic')) && bulkMutation.mutate({ action: 'reset-traffic', ids: Array.from(selected) })}>
+              {t('sub.resetTraffic')}
+            </Button>
+            <Button size="sm" variant="destructive" onClick={() => confirm(t('common.confirmDelete')) && bulkMutation.mutate({ action: 'delete', ids: Array.from(selected) })}>
+              {t('common.delete')}
+            </Button>
+          </div>
+        </div>
+      )}
+
       <Card>
         <CardContent className="p-0">
           <Table>
             <THead>
               <TR>
+                <TH className="w-8">
+                  <button onClick={toggleAll} className="flex items-center justify-center">
+                    {allSelected ? <CheckSquare className="h-4 w-4" /> : <Square className="h-4 w-4" />}
+                  </button>
+                </TH>
                 <TH>{t('sub.label')}</TH>
                 <TH>{t('sub.username')}</TH>
                 <TH>{t('sub.password')}</TH>
@@ -174,6 +239,13 @@ export default function SubUsers() {
                 const isExpired = u.expires_at && new Date(u.expires_at) < new Date();
                 return (
                   <TR key={u.id}>
+                    <TD>
+                      <button onClick={() => toggleSelect(u.id)} className="flex items-center justify-center">
+                        {selected.has(u.id)
+                          ? <CheckSquare className="h-4 w-4 text-primary" />
+                          : <Square className="h-4 w-4 text-muted-foreground" />}
+                      </button>
+                    </TD>
                     <TD className="font-medium">
                       <div>{u.label}</div>
                       <div className="flex flex-wrap gap-1 mt-1.5 text-[10px]">
@@ -238,11 +310,24 @@ export default function SubUsers() {
                       />
                     </TD>
                     <TD className="flex justify-end gap-1">
+                      <Button variant="ghost" size="icon" onClick={() => copyCreds(u)} title={t('common.copy')}>
+                        {copiedId === u.id
+                          ? <Check className="h-4 w-4 text-emerald-500" />
+                          : <Copy className="h-4 w-4" />}
+                      </Button>
                       <Button variant="ghost" size="icon" onClick={() => setEditing(u)} title={t('common.edit')}>
                         <Pencil className="h-4 w-4" />
                       </Button>
                       <Button variant="ghost" size="icon" onClick={() => showSticky(u.id)} title={t('sub.stickyList')}>
                         <List className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => confirm(t('sub.confirmResetTraffic')) && resetTraffic.mutate(u.id)}
+                        title={t('sub.resetTraffic')}
+                      >
+                        <RotateCcw className="h-4 w-4" />
                       </Button>
                       <Button
                         variant="ghost"
@@ -257,7 +342,7 @@ export default function SubUsers() {
               })}
               {!filteredData?.length && (
                 <TR>
-                  <TD colSpan={8} className="py-8 text-center text-muted-foreground">
+                  <TD colSpan={9} className="py-8 text-center text-muted-foreground">
                     {t('common.none')}
                   </TD>
                 </TR>

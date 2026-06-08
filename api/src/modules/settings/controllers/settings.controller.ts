@@ -4,8 +4,10 @@ import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../../common/guards/roles.guard';
 import { Roles } from '../../../common/decorators/roles.decorator';
 import { SettingsService } from '../../../config/settings.service';
-import { UpdateSettingsDto, SmtpTestDto } from '../../../common/dto/panel.dto';
+import { UpdateSettingsDto, SmtpTestDto, WebhookTestDto } from '../../../common/dto/panel.dto';
 import { MailService } from '../../mail/mail.service';
+import { NotificationService } from '../../notifications/notification.service';
+import { t } from '../../../common/utils/i18n';
 
 @ApiTags('panel-settings')
 @ApiBearerAuth()
@@ -16,6 +18,7 @@ export class PanelSettingsController {
   constructor(
     private readonly settings: SettingsService,
     private readonly mail: MailService,
+    private readonly notifications: NotificationService,
   ) {}
 
   /** Toutes les clés résolues, secrets masqués. */
@@ -40,7 +43,7 @@ export class PanelSettingsController {
     // L'URL de mise à jour ne peut pas être modifiée depuis le panel.
     delete (patch as any).updateCheckUrl;
     // Ne pas écraser un secret avec une valeur vide ou le masque.
-    for (const secret of ['scraperProxy', 'groqApiKey', 'smtpPass', 'captchaSecretKey', 'discordWebhookUrl', 'slackWebhookUrl', 'backupS3SecretKey'] as const) {
+    for (const secret of ['scraperProxy', 'groqApiKey', 'smtpPass', 'captchaSecretKey', 'discordWebhookUrl', 'slackWebhookUrl', 'bloumechatWebhookUrl', 'backupS3SecretKey'] as const) {
       const val = patch[secret];
       if (val !== undefined && (val.trim() === '' || /^•+$/.test(val))) {
         delete patch[secret];
@@ -65,10 +68,22 @@ export class PanelSettingsController {
   /** Envoie un e-mail de test à l'adresse fournie pour vérifier la config SMTP. */
   @Post('smtp/test')
   async testSmtp(@Body() body: SmtpTestDto) {
-    if (!body.email) return { status: 'error', message: 'Adresse e-mail requise.' };
+    if (!body.email) return { status: 'error', message: t('info.emailRequired') };
     const ok = await this.mail.sendTest(body.email, this.settings.get('siteName'));
     return ok
-      ? { status: 'success', message: 'E-mail de test envoyé.' }
-      : { status: 'error', message: 'Échec — vérifiez la configuration SMTP.' };
+      ? { status: 'success', message: t('info.smtpTestSent') }
+      : { status: 'error', message: t('info.smtpTestFailed') };
+  }
+
+  /** Envoie un message de test sur le webhook Discord, Slack ou BloumeChat configuré. */
+  @Post('webhook/test')
+  async testWebhook(@Body() body: WebhookTestDto) {
+    const target = body.target as 'discord' | 'slack' | 'bloumechat';
+    const res = await this.notifications.sendTestWebhook(target);
+    if (res.ok) return { status: 'success', message: t('info.webhookTestSent') };
+    if (res.error === 'not_configured') {
+      return { status: 'error', message: t('info.webhookNotConfigured') };
+    }
+    return { status: 'error', message: `${t('info.webhookTestFailed')} (${res.status ?? res.error ?? 'erreur'}).` };
   }
 }

@@ -12,6 +12,8 @@ import {
   RefreshCw,
   RotateCcw,
   AlertTriangle,
+  Ban,
+  Download,
 } from 'lucide-react';
 import { api, apiError } from '@/lib/api';
 import { useT } from '@/lib/i18n';
@@ -103,6 +105,35 @@ export default function Pool() {
   const revive = async (id: string) => {
     await api.patch(`/monitoring/proxies/${id}/revive`);
     invalidate();
+  };
+
+  const blacklist = async (id: string, value: boolean) => {
+    await api.patch(`/monitoring/proxies/${id}/blacklist`, { blacklisted: value });
+    invalidate();
+  };
+
+  const [exporting, setExporting] = useState(false);
+  const exportProxies = async () => {
+    setExporting(true);
+    try {
+      const params = new URLSearchParams({ format: 'standard' });
+      if (country) params.set('country', country);
+      if (protocol) params.set('protocol', protocol);
+      if (statusFilter === 'working') params.set('working', 'true');
+      else if (statusFilter === 'dead' || statusFilter === 'permanent') params.set('working', 'false');
+      const { data: res } = await api.get(`/monitoring/proxies/export?${params}`);
+      const blob = new Blob([res.text ?? ''], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'proxies.txt';
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      alert(apiError(err));
+    } finally {
+      setExporting(false);
+    }
   };
 
   const clearDead = async () => {
@@ -301,6 +332,10 @@ export default function Pool() {
             <RefreshCw className={`h-3.5 w-3.5 ${isFetching || isFetchingLive ? 'animate-spin' : ''}`} />
             Actualiser
           </Button>
+          <Button variant="outline" size="sm" onClick={exportProxies} disabled={exporting} className="h-9 gap-1.5">
+            <Download className="h-3.5 w-3.5" />
+            {t('pool.export')}
+          </Button>
           <ImportDialog onDone={invalidate} />
         </div>
       </div>
@@ -467,6 +502,15 @@ export default function Pool() {
                               <RotateCcw className="h-3.5 w-3.5" />
                             </Button>
                           )}
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => blacklist(p.id, !p.is_blacklisted)}
+                            title={t(p.is_blacklisted ? 'pool.unblacklist' : 'pool.blacklist')}
+                            className={`h-7 w-7 rounded-md transition-colors hover:bg-amber-500/10 hover:text-amber-500 ${p.is_blacklisted ? 'text-amber-500' : 'text-muted-foreground'}`}
+                          >
+                            <Ban className="h-3.5 w-3.5" />
+                          </Button>
                           <Button
                             variant="ghost"
                             size="icon"

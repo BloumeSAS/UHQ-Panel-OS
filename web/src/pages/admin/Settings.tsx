@@ -66,6 +66,7 @@ export default function Settings() {
     'captchaSecretKey',
     'discordWebhookUrl',
     'slackWebhookUrl',
+    'bloumechatWebhookUrl',
     'backupS3SecretKey',
   ];
 
@@ -444,13 +445,16 @@ export default function Settings() {
               k="discordAlertsEnabled" form={form} set={set}
             />
             {(form.discordAlertsEnabled === true || form.discordAlertsEnabled === 'true') && (
-              <F label={t('settings.discordWebhook')} hint={t('settings.discordWebhookHint')}>
-                <Input
-                  value={form.discordWebhookUrl ?? ''}
-                  onChange={(e) => set('discordWebhookUrl', e.target.value)}
-                  placeholder="https://discord.com/api/webhooks/..."
-                />
-              </F>
+              <>
+                <F label={t('settings.discordWebhook')} hint={t('settings.discordWebhookHint')}>
+                  <Input
+                    value={form.discordWebhookUrl ?? ''}
+                    onChange={(e) => set('discordWebhookUrl', e.target.value)}
+                    placeholder="https://discord.com/api/webhooks/..."
+                  />
+                </F>
+                <WebhookTestButton target="discord" />
+              </>
             )}
 
             <Separator label={t('settings.slackAlerts')} />
@@ -460,13 +464,35 @@ export default function Settings() {
               k="slackAlertsEnabled" form={form} set={set}
             />
             {(form.slackAlertsEnabled === true || form.slackAlertsEnabled === 'true') && (
-              <F label={t('settings.slackWebhook')} hint={t('settings.slackWebhookHint')}>
-                <Input
-                  value={form.slackWebhookUrl ?? ''}
-                  onChange={(e) => set('slackWebhookUrl', e.target.value)}
-                  placeholder="https://hooks.slack.com/services/..."
-                />
-              </F>
+              <>
+                <F label={t('settings.slackWebhook')} hint={t('settings.slackWebhookHint')}>
+                  <Input
+                    value={form.slackWebhookUrl ?? ''}
+                    onChange={(e) => set('slackWebhookUrl', e.target.value)}
+                    placeholder="https://hooks.slack.com/services/..."
+                  />
+                </F>
+                <WebhookTestButton target="slack" />
+              </>
+            )}
+
+            <Separator label={t('settings.bloumechatAlerts')} />
+            <Toggle
+              label={t('settings.enableBloumechat')}
+              hint={t('settings.enableBloumechatHint')}
+              k="bloumechatAlertsEnabled" form={form} set={set}
+            />
+            {(form.bloumechatAlertsEnabled === true || form.bloumechatAlertsEnabled === 'true') && (
+              <>
+                <F label={t('settings.bloumechatWebhook')} hint={t('settings.bloumechatWebhookHint')}>
+                  <Input
+                    value={form.bloumechatWebhookUrl ?? ''}
+                    onChange={(e) => set('bloumechatWebhookUrl', e.target.value)}
+                    placeholder="https://bloumechat.com/api/v2/webhooks/.../..."
+                  />
+                </F>
+                <WebhookTestButton target="bloumechat" />
+              </>
             )}
           </>
         )}
@@ -782,6 +808,32 @@ function SmtpTestCard() {
         <Send className="h-3.5 w-3.5 mr-1.5" />{t('settings.smtpTest')}
       </Button>
       {msg && <p className="w-full text-xs text-primary">{msg}</p>}
+    </div>
+  );
+}
+
+// ── Webhook test ───────────────────────────────────────────────────────────────
+
+function WebhookTestButton({ target }: { target: 'discord' | 'slack' | 'bloumechat' }) {
+  const t = useT();
+  const [msg, setMsg] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const test = async () => {
+    setBusy(true); setMsg('');
+    try {
+      const { data } = await api.post('/settings/webhook/test', { target });
+      setMsg(data.status === 'success' ? t('settings.webhookTestSent') : (data.message || t('settings.webhookTestFailed')));
+    } catch { setMsg(t('settings.webhookTestFailed')); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <div className="flex flex-wrap items-center gap-3">
+      <Button type="button" variant="outline" size="sm" onClick={test} disabled={busy}>
+        <Send className="h-3.5 w-3.5 mr-1.5" />{t('settings.testWebhook')}
+      </Button>
+      {msg && <p className="text-xs text-muted-foreground">{msg}</p>}
     </div>
   );
 }

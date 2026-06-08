@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
+  IsArray,
   IsBoolean,
   IsEmail,
   IsIn,
@@ -202,10 +203,27 @@ export class SmtpTestDto {
   email!: string;
 }
 
+export class WebhookTestDto {
+  @ApiProperty({ enum: ['discord', 'slack', 'bloumechat'], example: 'discord' })
+  @IsIn(['discord', 'slack', 'bloumechat'])
+  target!: string;
+}
+
 export class SetBlockedDto {
   @ApiProperty()
   @IsBoolean()
   is_blocked!: boolean;
+}
+
+export class BulkSubUsersDto {
+  @ApiProperty({ enum: ['block', 'unblock', 'delete', 'reset-traffic'], example: 'block' })
+  @IsIn(['block', 'unblock', 'delete', 'reset-traffic'])
+  action!: string;
+
+  @ApiProperty({ type: [String] })
+  @IsArray()
+  @IsString({ each: true })
+  ids!: string[];
 }
 
 export class ImportProxiesDto {

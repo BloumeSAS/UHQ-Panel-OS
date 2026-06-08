@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -19,7 +20,7 @@ import { SettingsService } from '../../../config/settings.service';
 import { ProxyServerService } from '../../proxy-engine/proxy-server.service';
 import { buildStickyList, formatSubUser, randomString } from '../../../common/utils/proxy-format';
 import { SubUserCreateDto, SubUserUpdateDto } from '../../legacy-api/dto';
-import { SetBlockedDto } from '../../../common/dto/panel.dto';
+import { SetBlockedDto, BulkSubUsersDto } from '../../../common/dto/panel.dto';
 import { t } from '../../../common/utils/i18n';
 
 /**
@@ -70,6 +71,40 @@ export class PanelSubUserController {
     return { status: 'success', data: formatSubUser(user) };
   }
 
+  /**
+   * Opérations en masse sur plusieurs comptes proxy.
+   * Déclaré avant les routes `:id` (route littérale prioritaire).
+   */
+  @Post('bulk')
+  async bulk(@Body() dto: BulkSubUsersDto) {
+    if (!dto.ids?.length) throw new BadRequestException('No sub-user IDs provided');
+    const targets = await this.prisma.userProxy.findMany({
+      where: { id: { in: dto.ids } },
+      select: { username: true },
+    });
+    switch (dto.action) {
+      case 'block':
+        await this.prisma.userProxy.updateMany({ where: { id: { in: dto.ids } }, data: { isBlocked: true } });
+        break;
+      case 'unblock':
+        await this.prisma.userProxy.updateMany({ where: { id: { in: dto.ids } }, data: { isBlocked: false } });
+        break;
+      case 'reset-traffic':
+        await this.prisma.userProxy.updateMany({
+          where: { id: { in: dto.ids } },
+          data: { totalBytesSent: 0n, totalBytesReceived: 0n, usedGb: 0 },
+        });
+        break;
+      case 'delete':
+        await this.prisma.userProxy.deleteMany({ where: { id: { in: dto.ids } } });
+        break;
+      default:
+        throw new BadRequestException(`Unknown action: ${dto.action}`);
+    }
+    for (const u of targets) this.engine.invalidateUserCache(u.username);
+    return { status: 'success', affected: dto.ids.length };
+  }
+
   @ApiParam({ name: 'id', description: 'ID du sous-utilisateur proxy' })
   @Patch(':id')
   async update(@Param('id') id: string, @Body() dto: SubUserUpdateDto) {
@@ -104,6 +139,22 @@ export class PanelSubUserController {
       const user = await this.prisma.userProxy.update({
         where: { id },
         data: { isBlocked: !!body.is_blocked },
+      });
+      this.engine.invalidateUserCache(user.username);
+      return { status: 'success', data: formatSubUser(user) };
+    } catch {
+      throw new NotFoundException(t('errors.proxyNotFound'));
+    }
+  }
+
+  /** Réinitialise les compteurs de trafic d'un compte (bytes + usedGb → 0). */
+  @ApiParam({ name: 'id', description: 'ID du sous-utilisateur proxy' })
+  @Post(':id/reset-traffic')
+  async resetTraffic(@Param('id') id: string) {
+    try {
+      const user = await this.prisma.userProxy.update({
+        where: { id },
+        data: { totalBytesSent: 0n, totalBytesReceived: 0n, usedGb: 0 },
       });
       this.engine.invalidateUserCache(user.username);
       return { status: 'success', data: formatSubUser(user) };
