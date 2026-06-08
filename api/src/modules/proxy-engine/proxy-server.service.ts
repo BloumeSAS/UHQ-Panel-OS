@@ -47,11 +47,7 @@ export class ProxyServerService implements OnModuleDestroy {
 
   // Config ---------------------------------------------------------------
   private readonly host = process.env.PROXY_HOST ?? '0.0.0.0';
-  // Port lu depuis publicProxyPort (Settings) → modifiable depuis le panel
-  // sans toucher au code. Doit correspondre au mapping Docker du compose.
-  private get port(): number {
-    return this.settings.getNumber('publicProxyPort') ?? 990;
-  }
+  private readonly port = Number(process.env.PROXY_PORT ?? 990);
   // Timeouts lus dynamiquement depuis la config DB (fallback env).
   private get timeoutMs(): number {
     return this.settings.getNumber('proxyTimeout') * 1000 || TIMEOUT_DEFAULT_MS;
