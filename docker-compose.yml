@@ -3,18 +3,13 @@
 #
 # Fonctionne en local ET sur Coolify sans rien modifier.
 #
-#   Local :
-#     docker compose up -d  →  http://localhost:8000  ·  TCP :990
+#   Local    :  docker compose up -d  →  http://localhost:8000  ·  TCP :990
+#   Coolify  :  importez ce fichier, configurez le FQDN dans l'interface
+#               Coolify → Traefik route vers le port 8000 en interne.
 #
-#   Coolify :
-#     Importez ce fichier, configurez le domaine dans l'interface
-#     Coolify (FQDN), c'est tout. Pas de labels à éditer.
-#     Le port 8000 est exposé en interne pour Traefik.
-#     Le port 990 (proxy TCP) est mappé directement sur l'hôte.
-#
-# JWT secret     → généré automatiquement au 1er boot
-# Mot de passe   → défini pendant le wizard de setup
-# Port proxy     → modifiable dans Settings → publicProxyPort
+# JWT secret   → généré automatiquement au 1er boot
+# Mot de passe → défini pendant le wizard de setup
+# Port proxy   → modifiable dans Settings → publicProxyPort
 # ---------------------------------------------------------------
 
 services:
@@ -42,8 +37,11 @@ services:
       db:
         condition: service_healthy
     ports:
-      - "8000:8000/tcp"   # panel + API — Traefik/reverse-proxy → ce port
-      - "990:990/tcp"     # proxy TCP brut — mappé directement sur l'hôte
+      # Port 8000 : PAS de mapping hôte — Traefik (Coolify) y accède via le
+      # réseau Docker interne. En local sans Traefik, ajoutez "8000:8000/tcp".
+      - "990:990/tcp"     # proxy TCP brut — doit être mappé directement sur l'hôte
+    expose:
+      - "8000"            # visible de Traefik via le réseau interne
     ulimits:
       nofile:
         soft: 200000
@@ -66,8 +64,7 @@ services:
         max-size: "20m"
         max-file: "5"
 
-# Noms explicites : Coolify ne les préfixe pas → données persistées
-# même après un redéploiement ou un changement de nom de projet.
+# Noms explicites — Coolify ne préfixe pas les volumes avec un name: absolu.
 volumes:
   pgdata:
     name: uhq-panel-pgdata
