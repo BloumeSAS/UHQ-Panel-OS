@@ -26,6 +26,13 @@ export class PanelDatabaseController {
     return { status: 'success', ...this.dbConfig.status() };
   }
 
+  /** Sonde la base embarquée Docker (service `db`). Public, pas de garde. */
+  @Get('db-probe')
+  async probe() {
+    const url = await this.dbConfig.probeBundled();
+    return { status: 'success', available: !!url, url };
+  }
+
   @Post('db')
   async configure(@Body() dto: DatabaseSetupDto) {
     if (this.dbConfig.status().configured) {

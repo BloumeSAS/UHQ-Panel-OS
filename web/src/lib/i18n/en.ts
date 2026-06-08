@@ -54,8 +54,12 @@ const en: Language = {
 
     'db.title': 'Database configuration',
     'db.subtitle': 'Choose where to store the panel data.',
+    'db.bundledDetected': 'Embedded database detected',
+    'db.bundledDetectedDesc': 'An integrated PostgreSQL service is available (docker compose). Click Continue to use it automatically.',
+    'db.bundledContinue': 'Continue with embedded database',
+    'db.bundledConnecting': 'Connecting to embedded database…',
     'db.selfhost': 'Self-hosted (Docker)',
-    'db.selfhostDesc': 'Use the provided docker-compose: a PostgreSQL 18 service is started and connected automatically. Nothing to do here — deploy with `docker compose up`.',
+    'db.selfhostDesc': 'Use the provided docker-compose: a PostgreSQL service is started and connected automatically. Deploy with `docker compose up`.',
     'db.external': 'External connection',
     'db.externalDesc': 'Enter the details of your existing PostgreSQL database.',
     'db.url': 'Connection string (DATABASE_URL)',

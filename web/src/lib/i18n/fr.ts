@@ -54,8 +54,12 @@ const fr: Language = {
 
     'db.title': 'Configuration de la base de données',
     'db.subtitle': 'Choisissez où stocker les données du panel.',
+    'db.bundledDetected': 'Base embarquée détectée',
+    'db.bundledDetectedDesc': 'Un service PostgreSQL intégré est disponible (docker compose). Cliquez sur Continuer pour l\'utiliser automatiquement.',
+    'db.bundledContinue': 'Continuer avec la base intégrée',
+    'db.bundledConnecting': 'Connexion à la base intégrée…',
     'db.selfhost': 'Auto-hébergée (Docker)',
-    'db.selfhostDesc': "Utilisez le docker-compose fourni : un service PostgreSQL 18 est démarré automatiquement et connecté. Aucune action ici — déployez avec `docker compose up`.",
+    'db.selfhostDesc': "Utilisez le docker-compose fourni : un service PostgreSQL est démarré et connecté automatiquement. Déployez avec `docker compose up`.",
     'db.external': 'Connexion externe',
     'db.externalDesc': 'Renseignez les informations de votre base PostgreSQL existante.',
     'db.url': 'Lien de connexion (DATABASE_URL)',

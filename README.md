@@ -50,8 +50,7 @@ Le système est conçu pour rester simple à déployer en local, en container ou
 - `addons/` : composants additionnels et extensions (ex. wallet)
 - `docs/` : documentation du produit et de l’API
 - `static/` : ressources publiques servies par NestJS
-- `docker-compose.yml` : déploiement local standard
-- `docker-compose.coolify.yml` : déploiement Coolify optimisé
+- `docker-compose.yml` : déploiement tout-en-un (local et Coolify, zéro configuration)
 - `Dockerfile` : image Docker unique
 
 ---

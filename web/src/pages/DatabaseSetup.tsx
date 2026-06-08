@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Database, Server } from 'lucide-react';
+import { Database, Server, CheckCircle2 } from 'lucide-react';
 import { useSite } from '@/lib/site';
 import { useT } from '@/lib/i18n';
 import { Button, Card, CardContent, CardHeader, CardTitle, Input, Label } from '@/components/ui';
@@ -8,7 +8,7 @@ import { Footer } from '@/components/Footer';
 
 /**
  * Premier démarrage, base non configurée. Deux options :
- *  - Auto-hébergée Docker (info : utiliser le compose fourni qui connecte tout seul).
+ *  - Base embarquée Docker (auto-détectée si le service `db` est dispo).
  *  - Connexion externe : saisir le lien, on teste, applique le schéma, persiste et redémarre.
  */
 export default function DatabaseSetup() {
@@ -26,7 +26,32 @@ export default function DatabaseSetup() {
   });
   const setField = (k: string, v: string) => setF((p) => ({ ...p, [k]: v }));
   const [error, setError] = useState('');
-  const [phase, setPhase] = useState<'idle' | 'connecting' | 'restarting'>('idle');
+  const [phase, setPhase] = useState<'idle' | 'connecting' | 'restarting' | 'bundled-connecting'>('idle');
+  const [bundledUrl, setBundledUrl] = useState<string | null>(null);
+
+  // Sonde la base embarquée Docker au montage (silencieux si indisponible).
+  useEffect(() => {
+    axios.get('/api/panel/setup/db-probe').then(({ data }) => {
+      if (data.available && data.url) setBundledUrl(data.url);
+    }).catch(() => undefined);
+  }, []);
+
+  const connectBundled = async () => {
+    if (!bundledUrl) return;
+    setError('');
+    setPhase('bundled-connecting');
+    try {
+      await axios.post('/api/panel/setup/db', { databaseUrl: bundledUrl }, { timeout: 45000 });
+      setPhase('restarting');
+      await waitConfigured();
+      await refresh();
+      location.href = '/setup';
+    } catch (err: any) {
+      const data = err?.response?.data;
+      setError((data?.message || data?.error) || err?.message || t('db.connectionError'));
+      setPhase('idle');
+    }
+  };
 
   // Assemble une URL PostgreSQL depuis les champs (user/pass encodés).
   const buildUrl = (maskPassword = false) => {
@@ -72,6 +97,29 @@ export default function DatabaseSetup() {
           <h1 className="text-2xl font-bold">{t('db.title')}</h1>
           <p className="text-sm text-muted-foreground">{t('db.subtitle')}</p>
         </div>
+
+        {/* Carte auto-détection base embarquée (visible uniquement si le service db est joignable) */}
+        {bundledUrl && (
+          <Card className="border-primary/50 bg-primary/5">
+            <CardHeader className="flex-row items-center gap-3 space-y-0">
+              <div className="rounded-lg bg-primary/15 p-2 text-primary"><CheckCircle2 className="h-5 w-5" /></div>
+              <CardTitle className="text-base text-primary">{t('db.bundledDetected')}</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <p className="text-sm text-muted-foreground">{t('db.bundledDetectedDesc')}</p>
+              {error && phase === 'idle' && <p className="text-sm text-destructive">{error}</p>}
+              {phase === 'bundled-connecting' && <p className="text-sm text-muted-foreground">{t('db.bundledConnecting')}</p>}
+              {phase === 'restarting' && <p className="text-sm text-primary">{t('db.restarting')}</p>}
+              <Button
+                onClick={connectBundled}
+                disabled={phase !== 'idle'}
+                className="w-full sm:w-auto"
+              >
+                {t('db.bundledContinue')}
+              </Button>
+            </CardContent>
+          </Card>
+        )}
 
         <Card>
           <CardHeader className="flex-row items-center gap-3 space-y-0">

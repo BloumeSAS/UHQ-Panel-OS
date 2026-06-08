@@ -1,24 +1,30 @@
 # ---------------------------------------------------------------
-# UHQ Panel OS — déploiement AUTO-HÉBERGÉ (base embarquée)
+# UHQ Panel OS — tout-en-un, zéro configuration requise
 #
-# Tout-en-un : l'app + un PostgreSQL 18 démarré et connecté automatiquement.
-# La base est détectée comme « configurée » (host `db`) → pas d'écran de
-# configuration base, on arrive directement sur le setup wizard.
+# Fonctionne en local ET sur Coolify sans rien modifier.
 #
-#   docker compose up -d
-#   → panel http://localhost:8000   ·   proxy TCP :990
+#   Local :
+#     docker compose up -d  →  http://localhost:8000  ·  TCP :990
 #
-# Pour une base EXTERNE (Coolify, base managée…), voir docker-compose.yaml.
+#   Coolify :
+#     Importez ce fichier, configurez le domaine dans l'interface
+#     Coolify (FQDN), c'est tout. Pas de labels à éditer.
+#     Le port 8000 est exposé en interne pour Traefik.
+#     Le port 990 (proxy TCP) est mappé directement sur l'hôte.
+#
+# JWT secret     → généré automatiquement au 1er boot
+# Mot de passe   → défini pendant le wizard de setup
+# Port proxy     → modifiable dans Settings → publicProxyPort
 # ---------------------------------------------------------------
 
 services:
   db:
-    image: postgres:18-alpine
+    image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      - POSTGRES_USER=uhq
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-uhqpanel}
-      - POSTGRES_DB=uhqpanel
+      POSTGRES_USER: uhq
+      POSTGRES_PASSWORD: uhqpanel_internal
+      POSTGRES_DB: uhqpanel
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -36,37 +42,34 @@ services:
       db:
         condition: service_healthy
     ports:
-      - "8000:8000/tcp"   # panel + API
-      - "990:990/tcp"     # proxy TCP
+      - "8000:8000/tcp"   # panel + API — Traefik/reverse-proxy → ce port
+      - "990:990/tcp"     # proxy TCP brut — mappé directement sur l'hôte
     ulimits:
       nofile:
         soft: 200000
         hard: 200000
     environment:
-      - DATABASE_URL=postgresql://uhq:${POSTGRES_PASSWORD:-uhqpanel}@db:5432/uhqpanel
-      - JWT_SECRET=${JWT_SECRET:-change-me-with-a-long-random-string}
-      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin123}
-      # Réseau (le reste est configurable depuis le panel)
-      - PROXY_HOST=0.0.0.0
-      - PROXY_PORT=990
-      - API_PORT=8000
-      - DATA_DIR=/app/data
-      - TZ=Europe/Paris
+      DATABASE_URL: postgresql://uhq:uhqpanel_internal@db:5432/uhqpanel
+      DATA_DIR: /app/data
+      TZ: Europe/Paris
     volumes:
-      # Persistance de la config runtime (lien base saisi à la main, etc.)
       - appdata:/app/data
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost:8000/api/panel/setup/db-status"]
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 45s
+      start_period: 60s
     logging:
       driver: json-file
       options:
         max-size: "20m"
         max-file: "5"
 
+# Noms explicites : Coolify ne les préfixe pas → données persistées
+# même après un redéploiement ou un changement de nom de projet.
 volumes:
   pgdata:
+    name: uhq-panel-pgdata
   appdata:
+    name: uhq-panel-appdata

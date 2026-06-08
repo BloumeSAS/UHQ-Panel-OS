@@ -110,6 +110,20 @@ export class DatabaseConfigService {
     }
   }
 
+  /**
+   * Tente de contacter la base embarquée Docker (service `db` du compose).
+   * Retourne l'URL si accessible, null sinon.
+   */
+  async probeBundled(): Promise<string | null> {
+    const BUNDLED_URL = 'postgresql://uhq:uhqpanel_internal@db:5432/uhqpanel';
+    try {
+      await this.testConnection(BUNDLED_URL);
+      return BUNDLED_URL;
+    } catch {
+      return null;
+    }
+  }
+
   /** Applique le schéma à la base cible (idempotent). */
   private async pushSchema(url: string): Promise<void> {
     await execFileAsync(
