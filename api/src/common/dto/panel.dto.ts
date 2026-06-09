@@ -103,6 +103,8 @@ export class UpdateSettingsDto {
   @ApiPropertyOptional() @IsOptional() @IsString() proxyCheckInterval?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() geoResolveInterval?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() checkerConcurrency?: string;
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() @Transform(({ value }) => value === undefined || value === null ? value : (value === 'true' || value === true)) skipDeadProxies?: boolean;
+  @ApiPropertyOptional() @IsOptional() @IsString() deadProxyMaxRetries?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() scraperProxy?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() groqApiKey?: string;
   // SMTP
@@ -130,6 +132,8 @@ export class UpdateSettingsDto {
   @ApiPropertyOptional() @IsOptional() @IsBoolean() @Transform(({ value }) => value === undefined || value === null ? value : (value === 'true' || value === true)) discordAlertsEnabled?: boolean;
   @ApiPropertyOptional() @IsOptional() @IsString() slackWebhookUrl?: string;
   @ApiPropertyOptional() @IsOptional() @IsBoolean() @Transform(({ value }) => value === undefined || value === null ? value : (value === 'true' || value === true)) slackAlertsEnabled?: boolean;
+  @ApiPropertyOptional() @IsOptional() @IsString() bloumechatWebhookUrl?: string;
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() @Transform(({ value }) => value === undefined || value === null ? value : (value === 'true' || value === true)) bloumechatAlertsEnabled?: boolean;
   // Backups
   @ApiPropertyOptional() @IsOptional() @IsBoolean() @Transform(({ value }) => value === undefined || value === null ? value : (value === 'true' || value === true)) backupDatabaseEnabled?: boolean;
   @ApiPropertyOptional() @IsOptional() @IsString() backupIntervalCron?: string;

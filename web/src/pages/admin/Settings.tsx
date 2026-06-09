@@ -87,6 +87,7 @@ export default function Settings() {
         'maintenanceModeEnabled',
         'discordAlertsEnabled',
         'slackAlertsEnabled',
+        'bloumechatAlertsEnabled',
         'backupDatabaseEnabled',
         'invitationsEnabled',
         'skipDeadProxies',
