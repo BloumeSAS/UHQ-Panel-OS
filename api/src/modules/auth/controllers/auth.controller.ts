@@ -51,7 +51,7 @@ export class PanelAuthController {
       siteName: this.settings.get('siteName'),
       logoUrl: this.settings.get('logoUrl'),
       defaultLang: this.settings.get('defaultLang'),
-      version: meta?.version ?? APP_VERSION,
+      version: APP_VERSION,
       captchaProvider: this.settings.get('captchaProvider'),
       captchaSiteKey: this.settings.get('captchaSiteKey'),
       captchaCapEndpoint: this.settings.get('captchaCapEndpoint'),
@@ -248,11 +248,10 @@ export class PanelAuthController {
 
   /** Version applicative (footer du panel, vérification de déploiement). */
   @Get('version')
-  async version() {
-    const meta = await this.prisma.appMeta.findUnique({ where: { id: SINGLETON } });
+  version() {
     return {
       status: 'success',
-      version: meta?.version ?? APP_VERSION,
+      version: APP_VERSION,
     };
   }
 

@@ -3,7 +3,6 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { request } from 'undici';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
 import { SettingsService } from '../../../config/settings.service';
-import { PrismaService } from '../../../database/prisma.service';
 import { APP_VERSION } from '../../../version';
 
 const CURRENT_VERSION = APP_VERSION;
@@ -14,21 +13,17 @@ const CURRENT_VERSION = APP_VERSION;
 @UseGuards(JwtAuthGuard)
 @Controller('api/panel/about')
 export class AboutController {
-  constructor(
-    private readonly settings: SettingsService,
-    private readonly prisma: PrismaService,
-  ) {}
+  constructor(private readonly settings: SettingsService) {}
 
   @Get()
-  async about() {
-    const meta = await this.prisma.appMeta.findUnique({ where: { id: 'singleton' } }).catch(() => null);
+  about() {
     return {
       status: 'success',
       data: {
         name: 'UHQ Panel OS',
         company: 'Bloume SAS',
         website: 'https://bloume.fr',
-        version: meta?.version ?? CURRENT_VERSION,
+        version: CURRENT_VERSION,
       },
     };
   }
