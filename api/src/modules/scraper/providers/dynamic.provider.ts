@@ -9,10 +9,6 @@ import { parseProxyList } from '../../../common/utils/proxy-parse';
  * est appliquée. C'est la seule source de proxies hors IA (Groq).
  */
 export class DynamicProvider extends BaseProxyProvider {
-  // ip suivie d'un séparateur (:, espace, tab…) puis le port.
-  private static readonly DEFAULT_PATTERN =
-    '(\\d{1,3}(?:\\.\\d{1,3}){3})[\\s:|,]+(\\d{2,5})';
-
   constructor(
     name: string,
     private readonly url: string,
@@ -25,18 +21,25 @@ export class DynamicProvider extends BaseProxyProvider {
   async fetch(): Promise<ProxyItem[]> {
     const text = await this.fetchText(this.url);
     const hasCustomPattern = !!this.pattern?.trim();
+    const isAuto = this.protocol === 'auto';
+
     if (!hasCustomPattern) {
       const parsed = parseProxyList(text);
       return parsed.map((p) => ({
         ip: p.ip,
         port: p.port,
-        protocol: this.protocol,
+        // Si 'auto' ou si le contenu indique explicitement le protocole, on le
+        // respecte. Sinon on applique le protocole configuré sur la source.
+        protocol: isAuto || p.schemeGiven ? p.protocol : this.protocol,
         country: null,
         provider: this.name,
         auth: p.auth,
       }));
     }
 
+    // Regex personnalisée : les groupes 1/2 ne transportent pas le protocole,
+    // donc on utilise le protocole configuré (fallback http si 'auto').
+    const effectiveProtocol = isAuto ? 'http' : this.protocol;
     const source = this.pattern!.trim();
     let re: RegExp;
     try {
@@ -54,7 +57,7 @@ export class DynamicProvider extends BaseProxyProvider {
       const key = `${ip}:${port}`;
       if (seen.has(key)) continue;
       seen.add(key);
-      out.push({ ip, port, protocol: this.protocol, country: null, provider: this.name });
+      out.push({ ip, port, protocol: effectiveProtocol, country: null, provider: this.name });
     }
     return out;
   }

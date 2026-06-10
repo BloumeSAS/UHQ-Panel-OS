@@ -455,6 +455,7 @@ const fr: Language = {
     'scraper.urlPlaceholder': 'https://exemple.com/proxies.txt',
     'scraper.patternPlaceholder': 'Regex optionnelle, ex: (ip):(port)',
     'scraper.editTitle': 'Modifier la source',
+    'scraper.protocolAuto': 'Auto-détection',
 
     // Pool & Checker additions
     'pool.countryPlaceholder': 'FR, US...',
@@ -474,6 +475,15 @@ const fr: Language = {
     'addons.preview': 'Prévisualiser le manifest',
     'addons.addAddon': 'Connecter cet addon',
     'addons.confirmRemove': 'Déconnecter cet addon ? Le service externe ne sera pas affecté.',
+    'addons.discover': 'Extensions officielles gratuites',
+    'addons.discoverHint': 'Déployez l\'addon avec Docker, puis connectez-le via le formulaire ci-dessus.',
+    'addons.officialBadge': 'Officiel',
+    'addons.freeBadge': 'Gratuit',
+    'addons.deployBtn': 'Déployer (GitHub)',
+    'addons.docsBtn': 'Docs',
+    'addons.requires': 'Nécessite',
+    'addons.features': 'Fonctionnalités',
+    'addons.alreadyConnected': 'Connecté',
     'errors.addonNotFound': 'Extension introuvable.',
 
     // ── Navigation nouvelle ────────────────────────────────────────────────

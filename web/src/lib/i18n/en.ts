@@ -455,6 +455,7 @@ const en: Language = {
     'scraper.urlPlaceholder': 'https://example.com/proxies.txt',
     'scraper.patternPlaceholder': 'Optional regex, e.g.: (ip):(port)',
     'scraper.editTitle': 'Edit source',
+    'scraper.protocolAuto': 'Auto-detect',
 
     // Pool & Checker additions
     'pool.countryPlaceholder': 'FR, US...',
@@ -474,6 +475,15 @@ const en: Language = {
     'addons.preview': 'Preview manifest',
     'addons.addAddon': 'Connect this addon',
     'addons.confirmRemove': 'Disconnect this addon? The external service will not be affected.',
+    'addons.discover': 'Official free extensions',
+    'addons.discoverHint': 'Deploy the addon with Docker, then connect it using the form above.',
+    'addons.officialBadge': 'Official',
+    'addons.freeBadge': 'Free',
+    'addons.deployBtn': 'Deploy (GitHub)',
+    'addons.docsBtn': 'Docs',
+    'addons.requires': 'Requires',
+    'addons.features': 'Features',
+    'addons.alreadyConnected': 'Connected',
     'errors.addonNotFound': 'Addon not found.',
 
     // ── New Navigation ────────────────────────────────────────────────────

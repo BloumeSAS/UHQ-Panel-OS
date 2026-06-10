@@ -395,6 +395,68 @@ CMD ["node", "api/dist/main"]
 
 ---
 
+## Communication inter-addons
+
+Les addons peuvent s'appeler entre eux via l'API legacy du panel (`PANEL_API_KEY`).
+
+### Pattern recommandé — clé partagée
+
+```typescript
+// Dans votre addon NestJS :
+// Variables d'env : PANEL_URL, PANEL_API_KEY (la même clé que pour le backup)
+
+async callPanel(method: string, path: string, body?: unknown) {
+  const res = await fetch(`${process.env.PANEL_URL}${path}`, {
+    method,
+    headers: { 'X-API-Key': process.env.PANEL_API_KEY!, 'Content-Type': 'application/json' },
+    body: body ? JSON.stringify(body) : undefined,
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!res.ok) throw new Error(`Panel HTTP ${res.status}`);
+  return res.json();
+}
+
+// Exemple : obtenir le point d'entrée proxy public
+const { data } = await callPanel('GET', '/api/v1/sub-user/endpoint');
+// → { host: 'proxy.exemple.com', port: '990' }
+
+// Exemple : créer un compte proxy
+const { data: account } = await callPanel('POST', '/api/v1/sub-user/create', {
+  label: 'Mon compte',
+  threads_limit: 10,
+});
+// → { id, username, password, ... }
+```
+
+### Pattern recommandé — appel entre addons
+
+```typescript
+// Addon B appelle l'addon A (ex: Orders débite le Wallet)
+// Protégez l'endpoint interne avec X-Panel-Key :
+@Post('internal/add')
+internalAdd(@Headers('x-panel-key') key: string, @Body() dto: AddFundsDto) {
+  if (key !== process.env.PANEL_API_KEY) throw new ForbiddenException();
+  // ...
+}
+```
+
+Avantage : **zéro token supplémentaire** — `PANEL_API_KEY` est déjà requis pour le backup.
+
+---
+
+## Endpoints panel utiles (clé API)
+
+| Méthode | Chemin | Description |
+|---|---|---|
+| `GET` | `/api/v1/sub-user/endpoint` | Host:port public du proxy |
+| `POST` | `/api/v1/sub-user/create` | Crée un compte proxy |
+| `POST` | `/api/v1/sub-user/set-blocked` | Bloque/débloque un compte |
+| `GET` | `/api/v1/sub-users` | Liste les comptes |
+
+Auth : header `X-API-Key: <PANEL_API_KEY>`.
+
+---
+
 ## Checklist avant publication
 
 - [ ] `uhq-manifest.json` avec `name`, `version`, `pages`

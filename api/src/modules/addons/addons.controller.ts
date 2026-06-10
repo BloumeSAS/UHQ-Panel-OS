@@ -122,4 +122,60 @@ export class AddonsController {
     await this.service.remove(id);
     return { status: 'success' };
   }
+
+  /**
+   * Registre des extensions officielles gratuites publiées par Bloume SAS.
+   * Permet au panel d'afficher la liste des addons disponibles à déployer.
+   */
+  @Get('registry')
+  @UseGuards(RolesGuard)
+  @Roles('ADMIN')
+  @ApiOperation({ summary: 'Registre des extensions officielles gratuites' })
+  registry() {
+    return { status: 'success', data: ADDON_REGISTRY };
+  }
 }
+
+const ADDON_REGISTRY = [
+  {
+    name: 'Wallet',
+    slug: 'wallet',
+    version: '1.1.0',
+    description: 'Système de portefeuille par compte proxy. Rechargement de solde, paiements et historique des transactions.',
+    icon: 'Wallet',
+    free: true,
+    official: true,
+    license: 'MIT',
+    author: { name: 'Bloume SAS', url: 'https://bloume.fr' },
+    repository: 'https://github.com/BloumeSAS/UHQ-Addon-Wallet',
+    homepage: 'https://docs.bloume.fr/uhq/addons/wallet',
+    tags: ['payments', 'wallet', 'balance'],
+    features: [
+      'Solde par compte proxy',
+      'Historique des transactions',
+      'Recharge manuelle (admin)',
+      'API interne pour autres addons',
+    ],
+  },
+  {
+    name: 'Orders',
+    slug: 'orders',
+    version: '1.1.0',
+    description: "Boutique interne — commandes payées via Wallet. Livraison automatique de comptes proxy après paiement.",
+    icon: 'ShoppingCart',
+    free: true,
+    official: true,
+    license: 'MIT',
+    author: { name: 'Bloume SAS', url: 'https://bloume.fr' },
+    repository: 'https://github.com/BloumeSAS/UHQ-Addon-Orders',
+    homepage: 'https://docs.bloume.fr/uhq/addons/orders',
+    tags: ['store', 'orders', 'delivery', 'proxy'],
+    requires: ['wallet'],
+    features: [
+      'Catalogue produits avec stock',
+      'Paiement via addon Wallet',
+      'Livraison automatique de comptes proxy',
+      'Révocation des accès à l\'annulation',
+    ],
+  },
+];

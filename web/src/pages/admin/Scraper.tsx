@@ -186,6 +186,7 @@ function EditDialog({ source, onClose, onSaved }: { source: Source; onClose: () 
             <div className="space-y-1.5">
               <Label>{t('scraper.protocol')}</Label>
               <select value={form.protocol} onChange={(e) => set('protocol', e.target.value)} className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm">
+                <option value="auto">{t('scraper.protocolAuto')}</option>
                 <option value="http">http</option>
                 <option value="socks4">socks4</option>
                 <option value="socks5">socks5</option>
@@ -256,6 +257,7 @@ function CreateDialog({ onCreated }: { onCreated: () => void }) {
                 onChange={(e) => set('protocol', e.target.value)}
                 className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
               >
+                <option value="auto">{t('scraper.protocolAuto')}</option>
                 <option value="http">http</option>
                 <option value="socks4">socks4</option>
                 <option value="socks5">socks5</option>

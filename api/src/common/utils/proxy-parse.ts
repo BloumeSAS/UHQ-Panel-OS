@@ -54,17 +54,53 @@ export function parseProxyLine(raw: string): ParsedProxy | null {
   return { protocol, ip, port, auth: auth || null, schemeGiven };
 }
 
-/** Parse une liste (texte multi-lignes) en proxies valides. */
+/**
+ * Retire les balises HTML d'un texte brut.
+ * Permet de parser des pages web qui embarquent des proxies dans leur HTML
+ * (ex : `<a href="http://1.2.3.4:8080">1.2.3.4:8080</a>`).
+ */
+function stripHtml(text: string): string {
+  // Remplace les balises par des sauts de ligne pour ne pas fusionner les tokens
+  return text.replace(/<[^>]+>/g, '\n');
+}
+
+/** Parse une liste (texte multi-lignes ou HTML) en proxies valides. */
 export function parseProxyList(text: string): ParsedProxy[] {
+  const clean = stripHtml(text);
   const out: ParsedProxy[] = [];
   const seen = new Set<string>();
-  for (const line of text.split(/\r?\n/)) {
-    const p = parseProxyLine(line);
-    if (!p) continue;
-    const key = `${p.protocol}://${p.ip}:${p.port}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push(p);
+  for (const raw of clean.split(/\r?\n/)) {
+    // Les URLs de scraping contiennent parfois des paramètres (`?proxy=…`) :
+    // on n'essaie pas de parser les lignes qui ressemblent à des URLs complètes
+    // mais on extrait les candidats `proto://host:port` embarqués dans une ligne.
+    const candidates = extractCandidates(raw);
+    for (const line of candidates) {
+      const p = parseProxyLine(line);
+      if (!p) continue;
+      const key = `${p.protocol}://${p.ip}:${p.port}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(p);
+    }
   }
   return out;
+}
+
+/**
+ * Extrait les candidats proxy d'une ligne de texte.
+ * Cas habituels :
+ *   - Ligne simple : `http://1.2.3.4:80` ou `1.2.3.4:80:user:pass`
+ *   - Ligne HTML résiduelle : `  href="socks5://1.2.3.4:1080" ...`
+ * Retourne au moins la ligne brute (pour ne pas casser les formats classiques).
+ */
+function extractCandidates(line: string): string[] {
+  line = line.trim();
+  if (!line || line.startsWith('#')) return [];
+
+  // Extraction de tous les `proto://...` ou `ip:port` trouvés dans la ligne
+  const schemeMatches = [...line.matchAll(/((?:https?|socks[45]?|socks4a):\/\/(?:[^\s"'<>]+))/gi)];
+  if (schemeMatches.length > 0) return schemeMatches.map((m) => m[1]);
+
+  // Ligne classique (ip:port, user:pass@ip:port, etc.)
+  return [line];
 }

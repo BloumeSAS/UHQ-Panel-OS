@@ -14,6 +14,8 @@ import {
   LayoutGrid,
   ShieldAlert,
   ArrowUpCircle,
+  Sparkles,
+  Github,
 } from 'lucide-react';
 import * as LucideIcons from 'lucide-react';
 import { api, apiError } from '@/lib/api';
@@ -194,6 +196,9 @@ export default function Addons() {
           ))}
         </div>
       )}
+
+      {/* Extensions officielles gratuites */}
+      <RegistrySection installedUrls={addons.map((a) => a.baseUrl)} />
 
       {/* Docs du format manifest */}
       <ManifestDocs />
@@ -539,6 +544,146 @@ function AddonCard({
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+// ─── Registre extensions officielles ─────────────────────────────────────────
+
+interface RegistryAddon {
+  name: string;
+  slug: string;
+  version: string;
+  description: string;
+  icon?: string;
+  free: boolean;
+  official: boolean;
+  license?: string;
+  author?: AddonAuthor | string;
+  repository?: string;
+  homepage?: string;
+  tags?: string[];
+  requires?: string[];
+  features?: string[];
+}
+
+function RegistrySection({ installedUrls }: { installedUrls: string[] }) {
+  const t = useT();
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['addon-registry'],
+    queryFn: async () => (await api.get('/addons/registry')).data.data as RegistryAddon[],
+    staleTime: 5 * 60 * 1000,
+  });
+
+  if (isLoading || !data?.length) return null;
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        <Sparkles className="h-4 w-4 text-primary" />
+        <h2 className="text-sm font-semibold">{t('addons.discover')}</h2>
+      </div>
+      <p className="text-xs text-muted-foreground -mt-1">{t('addons.discoverHint')}</p>
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        {data.map((addon) => {
+          const isConnected = installedUrls.some((u) =>
+            u.toLowerCase().includes(addon.slug.toLowerCase()),
+          );
+          return (
+            <Card key={addon.slug} className="relative overflow-hidden">
+              <CardContent className="p-4 space-y-3">
+                {/* Header */}
+                <div className="flex items-start gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                    <AddonIcon name={addon.icon} className="h-5 w-5" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <p className="font-semibold">{addon.name}</p>
+                      <Badge variant="secondary" className="text-xs">v{addon.version}</Badge>
+                      {addon.official && (
+                        <Badge className="text-xs bg-primary/15 text-primary border-primary/20 hover:bg-primary/15">
+                          {t('addons.officialBadge')}
+                        </Badge>
+                      )}
+                      {addon.free && (
+                        <Badge variant="outline" className="text-xs text-green-600 border-green-600/40">
+                          {t('addons.freeBadge')}
+                        </Badge>
+                      )}
+                      {isConnected && (
+                        <Badge variant="outline" className="text-xs text-primary border-primary/40 ml-auto">
+                          <CheckCircle2 className="h-3 w-3 mr-1" />
+                          {t('addons.alreadyConnected')}
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Description */}
+                <p className="text-xs text-muted-foreground leading-relaxed">{addon.description}</p>
+
+                {/* Features */}
+                {addon.features && addon.features.length > 0 && (
+                  <ul className="space-y-0.5">
+                    {addon.features.map((f) => (
+                      <li key={f} className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                        <CheckCircle2 className="h-3 w-3 shrink-0 text-green-500" />
+                        {f}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+
+                {/* Tags + requires */}
+                <div className="flex flex-wrap gap-1">
+                  {addon.tags?.map((tag) => (
+                    <span key={tag} className="rounded-full bg-muted px-2 py-0.5 text-[0.65rem] text-muted-foreground">
+                      {tag}
+                    </span>
+                  ))}
+                  {addon.requires && addon.requires.length > 0 && (
+                    <span className="rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[0.65rem] text-amber-600">
+                      {t('addons.requires')} : {addon.requires.join(', ')}
+                    </span>
+                  )}
+                </div>
+
+                {/* Actions */}
+                <div className="flex gap-2 pt-1">
+                  {addon.repository && (
+                    <a
+                      href={addon.repository}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex-1"
+                    >
+                      <Button variant="outline" size="sm" className="w-full text-xs gap-1.5">
+                        <Github className="h-3.5 w-3.5" />
+                        {t('addons.deployBtn')}
+                      </Button>
+                    </a>
+                  )}
+                  {addon.homepage && (
+                    <a
+                      href={addon.homepage}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <Button variant="ghost" size="sm" className="text-xs gap-1.5">
+                        <ExternalLink className="h-3.5 w-3.5" />
+                        {t('addons.docsBtn')}
+                      </Button>
+                    </a>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 

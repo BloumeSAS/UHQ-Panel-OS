@@ -10,9 +10,13 @@ export class CreateScraperSourceDto {
   @IsUrl({ require_tld: false })
   url!: string;
 
-  @ApiPropertyOptional({ enum: ['http', 'socks4', 'socks5'], default: 'http' })
+  @ApiPropertyOptional({
+    enum: ['auto', 'http', 'socks4', 'socks5'],
+    default: 'http',
+    description: "'auto' = détecte depuis le contenu (http://, socks5://…), fallback http.",
+  })
   @IsOptional()
-  @IsIn(['http', 'socks4', 'socks5'])
+  @IsIn(['auto', 'http', 'socks4', 'socks5'])
   protocol?: string;
 
   @ApiPropertyOptional({ description: 'Regex à 2 groupes (ip, port). Vide = ip:port par défaut.' })
@@ -29,9 +33,9 @@ export class CreateScraperSourceDto {
 export class UpdateScraperSourceDto {
   @ApiPropertyOptional() @IsOptional() @IsString() name?: string;
   @ApiPropertyOptional() @IsOptional() @IsUrl({ require_tld: false }) url?: string;
-  @ApiPropertyOptional({ enum: ['http', 'socks4', 'socks5'] })
+  @ApiPropertyOptional({ enum: ['auto', 'http', 'socks4', 'socks5'] })
   @IsOptional()
-  @IsIn(['http', 'socks4', 'socks5'])
+  @IsIn(['auto', 'http', 'socks4', 'socks5'])
   protocol?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() pattern?: string;
   @ApiPropertyOptional() @IsOptional() @IsBoolean() enabled?: boolean;
