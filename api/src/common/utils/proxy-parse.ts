@@ -12,6 +12,8 @@ export interface ParsedProxy {
   port: number;
   /** "user:pass" si présent, sinon null. */
   auth: string | null;
+  /** true si un schéma explicite (`http://`, `socks5://`…) était présent. */
+  schemeGiven: boolean;
 }
 
 function normProtocol(p: string): string {
@@ -26,9 +28,11 @@ export function parseProxyLine(raw: string): ParsedProxy | null {
   if (!line || line.startsWith('#')) return null;
 
   let protocol = 'http';
+  let schemeGiven = false;
   const scheme = line.match(/^([a-z0-9]+):\/\//i);
   if (scheme) {
     protocol = normProtocol(scheme[1]);
+    schemeGiven = true;
     line = line.slice(scheme[0].length);
   }
 
@@ -47,7 +51,7 @@ export function parseProxyLine(raw: string): ParsedProxy | null {
   // ip:port:user:pass
   if (!auth && parts.length >= 4) auth = `${parts[2]}:${parts[3]}`;
 
-  return { protocol, ip, port, auth: auth || null };
+  return { protocol, ip, port, auth: auth || null, schemeGiven };
 }
 
 /** Parse une liste (texte multi-lignes) en proxies valides. */

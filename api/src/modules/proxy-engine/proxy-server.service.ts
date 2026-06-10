@@ -685,15 +685,27 @@ export class ProxyServerService implements OnModuleDestroy {
   private getCustomUpstreams(raw: string): UpstreamProxy[] {
     const cached = this.customUpstreamCache.get(raw);
     if (cached) return cached;
-    const list: UpstreamProxy[] = parseProxyList(raw).map((p) => ({
-      id: `custom:${p.ip}:${p.port}`,
-      url: `${p.protocol}://${p.ip}:${p.port}`,
-      protocol: p.protocol,
-      ip: p.ip,
-      port: p.port,
-      auth: p.auth,
-      isWorking: true,
-    }));
+    const list: UpstreamProxy[] = [];
+    for (const p of parseProxyList(raw)) {
+      // Sans schéma explicite, on ne sait pas si le proxy parle HTTP ou SOCKS.
+      // On génère donc une variante par protocole : elles seront mises en
+      // concurrence (race) et celle qui répond gagne → auto-détection, quel que
+      // soit le fournisseur. Avec un schéma explicite, on respecte le choix.
+      const protocols = p.schemeGiven ? [p.protocol] : ['http', 'socks5', 'socks4'];
+      for (const protocol of protocols) {
+        list.push({
+          // id incluant le protocole pour éviter les collisions entre variantes
+          // et garder les sessions sticky stables sur le protocole gagnant.
+          id: `custom:${protocol}:${p.ip}:${p.port}`,
+          url: `${protocol}://${p.ip}:${p.port}`,
+          protocol,
+          ip: p.ip,
+          port: p.port,
+          auth: p.auth,
+          isWorking: true,
+        });
+      }
+    }
     this.customUpstreamCache.set(raw, list);
     return list;
   }
