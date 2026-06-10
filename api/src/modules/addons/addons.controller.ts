@@ -148,7 +148,7 @@ const ADDON_REGISTRY = [
     license: 'MIT',
     author: { name: 'Bloume SAS', url: 'https://bloume.fr' },
     repository: 'https://github.com/BloumeSAS/UHQ-Addon-Wallet',
-    homepage: 'https://docs.bloume.fr/uhq/addons/wallet',
+    homepage: 'https://uhq-panel-os-docs.bloume.fr/addons/official/wallet',
     tags: ['payments', 'wallet', 'balance'],
     features: [
       'Solde par compte proxy',
@@ -168,7 +168,7 @@ const ADDON_REGISTRY = [
     license: 'MIT',
     author: { name: 'Bloume SAS', url: 'https://bloume.fr' },
     repository: 'https://github.com/BloumeSAS/UHQ-Addon-Orders',
-    homepage: 'https://docs.bloume.fr/uhq/addons/orders',
+    homepage: 'https://uhq-panel-os-docs.bloume.fr/addons/official/orders',
     tags: ['store', 'orders', 'delivery', 'proxy'],
     requires: ['wallet'],
     features: [
