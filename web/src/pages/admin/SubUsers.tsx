@@ -611,19 +611,17 @@ function SubUserForm({
         />
       </div>
 
-      {pools && pools.length > 0 && (
-        <div className="space-y-1.5">
-          <Label>{t('pools.assign')}</Label>
-          <select
-            value={form.pool}
-            onChange={(e) => set('pool', e.target.value)}
-            className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus:ring-1 focus:ring-ring"
-          >
-            <option value="">{t('pools.noPool')}</option>
-            {pools.map((p) => <option key={p.id} value={p.name}>{p.name}</option>)}
-          </select>
-        </div>
-      )}
+      <div className="space-y-1.5">
+        <Label>{t('pools.assign')}</Label>
+        <select
+          value={form.pool}
+          onChange={(e) => set('pool', e.target.value)}
+          className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus:ring-1 focus:ring-ring"
+        >
+          <option value="">{t('pools.noPool')}</option>
+          {pools?.map((p) => <option key={p.id} value={p.name}>{p.name}</option>)}
+        </select>
+      </div>
 
       <div className="space-y-1.5">
         <Label>{t('sub.customProxies')}</Label>
