@@ -339,6 +339,10 @@ export class ProxyServerService implements OnModuleDestroy {
         } else if (customUpstreams) {
           // Liste privée : on tire NUM_RACERS upstreams au hasard.
           proxiesToTry.push(...this.sampleUpstreams(customUpstreams, NUM_RACERS, []));
+          // Les proxies privés sont souvent résidentiels/rotatifs (établissement
+          // du tunnel lent, 2-10 s). On leur laisse la fenêtre complète `timeoutMs`
+          // plutôt que le race agressif (1,5 s) réservé au pool partagé — sinon le
+          // race coupe avant la fin du handshake (comportement aligné sur le fallback).
         } else {
           const excluded: string[] = [];
           for (let i = 0; i < NUM_RACERS; i++) {
@@ -358,7 +362,12 @@ export class ProxyServerService implements OnModuleDestroy {
         }
         if (proxiesToTry.length === 0) continue;
 
-        winner = await this.race(proxiesToTry, method, path, headers);
+        // Fenêtre de race élargie pour les listes privées (résidentiel/rotatif lent).
+        // tryUpstream enchaîne tcpConnect (timeoutMs) PUIS handshake (timeoutMs) :
+        // on couvre les deux étapes (2×) pour ne pas couper avant la fin du tunnel,
+        // comme le fait le fallback (connexion directe sans race agressif).
+        const raceWindow = customUpstreams ? this.timeoutMs * 2 : this.racingTimeoutMs;
+        winner = await this.race(proxiesToTry, method, path, headers, raceWindow);
         if (winner && sessionKey) {
           this.sessions.set(sessionKey, {
             proxyId: winner.upstream.id,
@@ -470,6 +479,7 @@ export class ProxyServerService implements OnModuleDestroy {
     method: string,
     path: string,
     headers: string[],
+    raceTimeoutMs: number = this.racingTimeoutMs,
   ): Promise<{ upstream: UpstreamProxy; socket: Socket } | null> {
     const target =
       method === 'CONNECT' ? path : this.extractHost(path, headers);
@@ -504,7 +514,7 @@ export class ProxyServerService implements OnModuleDestroy {
           );
         }
         resolve(null);
-      }, this.racingTimeoutMs);
+      }, raceTimeoutMs);
 
       tasks.forEach((p, idx) =>
         p.then(
