@@ -569,10 +569,18 @@ interface RegistryAddon {
 function RegistrySection({ installedUrls }: { installedUrls: string[] }) {
   const t = useT();
 
+  const REGISTRY_URL =
+    'https://raw.githubusercontent.com/BloumeSAS/UHQ-Panel-OS/refs/heads/main/addons/addons.json';
+
   const { data, isLoading } = useQuery({
     queryKey: ['addon-registry'],
-    queryFn: async () => (await api.get('/addons/registry')).data.data as RegistryAddon[],
-    staleTime: 5 * 60 * 1000,
+    queryFn: async () => {
+      const res = await fetch(REGISTRY_URL);
+      if (!res.ok) throw new Error('Registry unreachable');
+      return res.json() as Promise<RegistryAddon[]>;
+    },
+    staleTime: 10 * 60 * 1000,
+    retry: 1,
   });
 
   if (isLoading || !data?.length) return null;
