@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2, FlaskConical, Play, Pencil, Layers } from 'lucide-react';
+import { Plus, Trash2, FlaskConical, Play, Pencil, Layers, CheckSquare, Square, Wand2 } from 'lucide-react';
 import { api, apiError } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import {
@@ -57,6 +57,30 @@ export default function Scraper() {
   });
 
   const [editing, setEditing] = useState<Source | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  const toggleSelect = (id: string) =>
+    setSelected((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const toggleAll = () => {
+    const ids = data?.map((s) => s.id) ?? [];
+    setSelected(ids.length > 0 && ids.every((id) => selected.has(id)) ? new Set() : new Set(ids));
+  };
+  const allSelected = (data?.length ?? 0) > 0 && (data ?? []).every((s) => selected.has(s.id));
+
+  const bulkDelete = async () => {
+    const n = selected.size;
+    if (!window.confirm(t('scraper.bulkDeleteConfirm').replace('{n}', String(n)))) return;
+    await api.post('/scraper-sources/bulk-delete', { ids: Array.from(selected) });
+    setSelected(new Set());
+    invalidate();
+  };
+
+  const deleteAll = async () => {
+    if (!window.confirm(t('scraper.deleteAllConfirm'))) return;
+    await api.delete('/scraper-sources');
+    setSelected(new Set());
+    invalidate();
+  };
 
   const [testResult, setTestResult] = useState<string>('');
   const test = async (id: string) => {
@@ -81,14 +105,28 @@ export default function Scraper() {
           <h1 className="text-2xl font-bold">{t('scraper.title')}</h1>
           <p className="text-sm text-muted-foreground">{t('scraper.subtitle')}</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={() => runNow()}>
             <Play className="h-4 w-4" /> {t('scraper.runNow')}
           </Button>
+          {(data?.length ?? 0) > 0 && (
+            <Button variant="outline" onClick={deleteAll}>
+              <Trash2 className="h-4 w-4 text-destructive" /> {t('scraper.deleteAll')}
+            </Button>
+          )}
           <BulkCreateDialog onCreated={invalidate} />
           <CreateDialog onCreated={invalidate} />
         </div>
       </div>
+
+      {selected.size > 0 && (
+        <div className="flex items-center gap-3 rounded-lg border bg-accent/40 p-3">
+          <span className="text-sm font-medium">{selected.size} sélectionnée{selected.size > 1 ? 's' : ''}</span>
+          <Button size="sm" variant="destructive" className="ml-auto" onClick={bulkDelete}>
+            <Trash2 className="h-3.5 w-3.5" /> {t('common.delete')}
+          </Button>
+        </div>
+      )}
 
       {testResult && (
         <div className="rounded-md border bg-muted/40 p-3 text-sm font-mono">{testResult}</div>
@@ -99,6 +137,11 @@ export default function Scraper() {
           <Table>
             <THead>
               <TR>
+                <TH className="w-8">
+                  <button onClick={toggleAll} className="flex items-center justify-center">
+                    {allSelected ? <CheckSquare className="h-4 w-4" /> : <Square className="h-4 w-4" />}
+                  </button>
+                </TH>
                 <TH>{t('scraper.name')}</TH>
                 <TH>{t('scraper.url')}</TH>
                 <TH>{t('scraper.protocol')}</TH>
@@ -110,6 +153,13 @@ export default function Scraper() {
             <TBody>
               {data?.map((s) => (
                 <TR key={s.id}>
+                  <TD>
+                    <button onClick={() => toggleSelect(s.id)} className="flex items-center justify-center">
+                      {selected.has(s.id)
+                        ? <CheckSquare className="h-4 w-4 text-primary" />
+                        : <Square className="h-4 w-4 text-muted-foreground" />}
+                    </button>
+                  </TD>
                   <TD className="font-medium">{s.name}</TD>
                   <TD className="max-w-xs truncate font-mono text-xs">{s.url}</TD>
                   <TD><Badge variant="secondary">{s.protocol}</Badge></TD>
@@ -139,8 +189,8 @@ export default function Scraper() {
                   </TD>
                 </TR>
               ))}
-                      {!data?.length && (
-                <TR><TD colSpan={6} className="py-8 text-center text-muted-foreground">{t('common.none')}</TD></TR>
+              {!data?.length && (
+                <TR><TD colSpan={7} className="py-8 text-center text-muted-foreground">{t('common.none')}</TD></TR>
               )}
             </TBody>
           </Table>
@@ -198,21 +248,16 @@ function EditDialog({ source, onClose, onSaved }: { source: Source; onClose: () 
             <Label>{t('scraper.url')}</Label>
             <Input value={form.url} onChange={(e) => set('url', e.target.value)} required />
           </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <Label>{t('scraper.protocol')}</Label>
-              <select value={form.protocol} onChange={(e) => set('protocol', e.target.value)} className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm">
-                <option value="auto">{t('scraper.protocolAuto')}</option>
-                <option value="http">http</option>
-                <option value="socks4">socks4</option>
-                <option value="socks5">socks5</option>
-              </select>
-            </div>
-            <div className="space-y-1.5">
-              <Label>{t('scraper.pattern')}</Label>
-              <Input value={form.pattern} onChange={(e) => set('pattern', e.target.value)} placeholder={t('scraper.patternPlaceholder')} />
-            </div>
+          <div className="space-y-1.5">
+            <Label>{t('scraper.protocol')}</Label>
+            <select value={form.protocol} onChange={(e) => set('protocol', e.target.value)} className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm">
+              <option value="auto">{t('scraper.protocolAuto')}</option>
+              <option value="http">http</option>
+              <option value="socks4">socks4</option>
+              <option value="socks5">socks5</option>
+            </select>
           </div>
+          <PatternField url={form.url} value={form.pattern} onChange={(v) => set('pattern', v)} />
           <div className="space-y-1.5">
             <Label>{t('pools.assign')}</Label>
             <select value={form.pool} onChange={(e) => set('pool', e.target.value)} className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm">
@@ -279,25 +324,20 @@ function CreateDialog({ onCreated }: { onCreated: () => void }) {
             <Label>{t('scraper.url')}</Label>
             <Input value={form.url} onChange={(e) => set('url', e.target.value)} required placeholder={t('scraper.urlPlaceholder')} />
           </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <Label>{t('scraper.protocol')}</Label>
-              <select
-                value={form.protocol}
-                onChange={(e) => set('protocol', e.target.value)}
-                className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
-              >
-                <option value="auto">{t('scraper.protocolAuto')}</option>
-                <option value="http">http</option>
-                <option value="socks4">socks4</option>
-                <option value="socks5">socks5</option>
-              </select>
-            </div>
-            <div className="space-y-1.5">
-              <Label>{t('scraper.pattern')}</Label>
-              <Input value={form.pattern} onChange={(e) => set('pattern', e.target.value)} placeholder={t('scraper.patternPlaceholder')} />
-            </div>
+          <div className="space-y-1.5">
+            <Label>{t('scraper.protocol')}</Label>
+            <select
+              value={form.protocol}
+              onChange={(e) => set('protocol', e.target.value)}
+              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+            >
+              <option value="auto">{t('scraper.protocolAuto')}</option>
+              <option value="http">http</option>
+              <option value="socks4">socks4</option>
+              <option value="socks5">socks5</option>
+            </select>
           </div>
+          <PatternField url={form.url} value={form.pattern} onChange={(v) => set('pattern', v)} />
           <div className="space-y-1.5">
             <Label>{t('pools.assign')}</Label>
             <select value={form.pool} onChange={(e) => set('pool', e.target.value)} className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm">
@@ -310,6 +350,52 @@ function CreateDialog({ onCreated }: { onCreated: () => void }) {
         </form>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function PatternField({ url, value, onChange }: { url: string; value: string; onChange: (v: string) => void }) {
+  const t = useT();
+  const [detecting, setDetecting] = useState(false);
+  const [hint, setHint] = useState('');
+
+  const detect = async () => {
+    if (!url) return;
+    setDetecting(true);
+    setHint('');
+    try {
+      const { data } = await api.post('/scraper-sources/detect-pattern', { url });
+      if (data.status === 'success') {
+        onChange(data.pattern);
+        setHint(t('scraper.patternDetected'));
+      } else {
+        setHint(`✗ ${data.message}`);
+      }
+    } catch (e) {
+      setHint(`✗ ${apiError(e)}`);
+    } finally {
+      setDetecting(false);
+    }
+  };
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between">
+        <Label>{t('scraper.pattern')}</Label>
+        <button
+          type="button"
+          onClick={detect}
+          disabled={detecting || !url}
+          className="flex items-center gap-1 text-xs text-primary hover:underline disabled:opacity-40 disabled:no-underline"
+        >
+          <Wand2 className="h-3 w-3" />
+          {detecting ? t('scraper.detecting') : t('scraper.detectPattern')}
+        </button>
+      </div>
+      <Input value={value} onChange={(e) => onChange(e.target.value)} placeholder={t('scraper.patternPlaceholder')} />
+      {hint && (
+        <p className={`text-xs ${hint.startsWith('✗') ? 'text-destructive' : 'text-emerald-500'}`}>{hint}</p>
+      )}
+    </div>
   );
 }
 

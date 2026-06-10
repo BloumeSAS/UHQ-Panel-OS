@@ -463,6 +463,12 @@ const fr: Language = {
     'scraper.bulkDone': 'sources ajoutées avec succès',
     'scraper.bulkErrors': 'erreur(s)',
     'scraper.applyToAll': 'Appliquer à toutes',
+    'scraper.deleteAll': 'Tout supprimer',
+    'scraper.deleteAllConfirm': 'Supprimer toutes les sources de scraping ?',
+    'scraper.bulkDeleteConfirm': 'Supprimer les {n} sources sélectionnées ?',
+    'scraper.detectPattern': 'Détecter avec Groq',
+    'scraper.detecting': 'Détection en cours…',
+    'scraper.patternDetected': 'Pattern détecté !',
 
     // Pool & Checker additions
     'pool.countryPlaceholder': 'FR, US...',

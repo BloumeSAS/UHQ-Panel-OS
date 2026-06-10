@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -9,11 +10,13 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
+import { request } from 'undici';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../../common/guards/roles.guard';
 import { Roles } from '../../../common/decorators/roles.decorator';
 import { PrismaService } from '../../../database/prisma.service';
+import { SettingsService } from '../../../config/settings.service';
 import { ScraperService } from '../scraper.service';
 import { DynamicProvider } from '../providers/dynamic.provider';
 import { CreateScraperSourceDto, UpdateScraperSourceDto } from '../dto/scraper-source.dto';
@@ -32,6 +35,7 @@ export class ScraperSourcesController {
   constructor(
     private readonly prisma: PrismaService,
     private readonly scraper: ScraperService,
+    private readonly settings: SettingsService,
   ) {}
 
   @Get()
@@ -53,6 +57,98 @@ export class ScraperSourcesController {
       },
     });
     return { status: 'success', data };
+  }
+
+  /** Supprime TOUTES les sources de scraping. */
+  @Delete()
+  async removeAll() {
+    const res = await this.prisma.scraperSource.deleteMany({});
+    return { status: 'success', deleted: res.count };
+  }
+
+  /** Supprime les sources dont les IDs sont fournis. */
+  @Post('bulk-delete')
+  async bulkRemove(@Body() body: { ids: string[] }) {
+    if (!Array.isArray(body?.ids) || body.ids.length === 0) {
+      throw new BadRequestException('ids manquants');
+    }
+    const res = await this.prisma.scraperSource.deleteMany({
+      where: { id: { in: body.ids } },
+    });
+    return { status: 'success', deleted: res.count };
+  }
+
+  /**
+   * Récupère un échantillon de l'URL et demande à Groq de déduire le pattern regex
+   * (2 groupes capturants : IP/host, port). Requiert groqApiKey configurée.
+   */
+  @Post('detect-pattern')
+  async detectPattern(@Body() body: { url: string }) {
+    if (!body?.url) throw new BadRequestException('url manquante');
+
+    const apiKey = await this.settings.get('groqApiKey');
+    if (!apiKey) return { status: 'error', message: 'Clé API Groq non configurée' };
+
+    // ── Fetch sample ──────────────────────────────────────────────────────────
+    let sample: string;
+    try {
+      const res = await request(body.url, {
+        headersTimeout: 15_000,
+        bodyTimeout: 15_000,
+        maxRedirections: 5,
+      });
+      const raw = await res.body.text();
+      sample = raw
+        .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+        .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/\s+/g, ' ')
+        .slice(0, 3_000);
+    } catch (e) {
+      return { status: 'error', message: `Impossible de récupérer l'URL : ${String((e as Error).message ?? e)}` };
+    }
+
+    // ── Groq ──────────────────────────────────────────────────────────────────
+    try {
+      const payload = {
+        model: 'llama-3.1-70b-versatile',
+        messages: [
+          {
+            role: 'system',
+            content:
+              'You are a regex expert. Return ONLY a single raw regex pattern with exactly 2 capture groups: group 1 for the IP address or hostname, group 2 for the port number. No explanation, no code block, no quotes — just the pattern itself.',
+          },
+          {
+            role: 'user',
+            content: `Detect the proxy pattern in this content. Possible formats: ip:port  |  ip:port:user:pass  |  user:pass@ip:port  |  host:port  |  protocol://user:pass@host:port\n\n${sample}`,
+          },
+        ],
+        temperature: 0,
+        max_tokens: 150,
+      };
+      const res = await request('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+        body: JSON.stringify(payload),
+        headersTimeout: 30_000,
+        bodyTimeout: 30_000,
+      });
+      if (res.statusCode >= 400) return { status: 'error', message: 'Erreur API Groq' };
+
+      const json = (await res.body.json()) as any;
+      const raw = (json?.choices?.[0]?.message?.content ?? '').trim();
+      const pattern = raw
+        .replace(/^```[\w]*\n?/, '').replace(/\n?```$/, '')
+        .replace(/^["'`]|["'`]$/g, '')
+        .trim();
+
+      try { new RegExp(pattern); } catch {
+        return { status: 'error', message: 'Pattern retourné invalide' };
+      }
+      return { status: 'success', pattern };
+    } catch (e) {
+      return { status: 'error', message: `Erreur Groq : ${String((e as Error).message ?? e)}` };
+    }
   }
 
   @Patch(':id')

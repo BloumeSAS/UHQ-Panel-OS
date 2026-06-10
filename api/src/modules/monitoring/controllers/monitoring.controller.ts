@@ -149,6 +149,7 @@ export class PanelMonitoringController {
         fail_count: p.failCount,
         latency: p.averageLatency,
         url: p.url,
+        pool: p.pool,
       })),
     };
   }
