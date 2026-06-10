@@ -337,12 +337,17 @@ export class ProxyServerService implements OnModuleDestroy {
         if (attempt === 0 && stickyProxyObj && stickyProxyObj.isWorking !== false) {
           proxiesToTry.push(stickyProxyObj);
         } else if (customUpstreams) {
-          // Liste privée : on tire NUM_RACERS upstreams au hasard.
-          proxiesToTry.push(...this.sampleUpstreams(customUpstreams, NUM_RACERS, []));
-          // Les proxies privés sont souvent résidentiels/rotatifs (établissement
-          // du tunnel lent, 2-10 s). On leur laisse la fenêtre complète `timeoutMs`
-          // plutôt que le race agressif (1,5 s) réservé au pool partagé — sinon le
-          // race coupe avant la fin du handshake (comportement aligné sur le fallback).
+          // Liste privée : on essaie les variantes DANS L'ORDRE (HTTP d'abord),
+          // de façon SÉQUENTIELLE (cf. trySequential plus bas) — pas en race
+          // concurrent. Raison : beaucoup de fournisseurs résidentiels limitent
+          // les connexions simultanées par compte ; ouvrir HTTP+SOCKS5+SOCKS4 en
+          // parallèle faisait rejeter la connexion HTTP légitime. curl n'ouvre
+          // qu'une seule connexion → on imite ce comportement.
+          proxiesToTry.push(...customUpstreams.slice(0, 12));
+          this.logger.log(
+            `[custom] attempt #${attempt} — ${proxiesToTry.length} variante(s) en séquentiel: ` +
+              proxiesToTry.map((p) => `${p.protocol}:${p.ip}:${p.port}`).join(', '),
+          );
         } else {
           const excluded: string[] = [];
           for (let i = 0; i < NUM_RACERS; i++) {
@@ -362,12 +367,17 @@ export class ProxyServerService implements OnModuleDestroy {
         }
         if (proxiesToTry.length === 0) continue;
 
-        // Fenêtre de race élargie pour les listes privées (résidentiel/rotatif lent).
-        // tryUpstream enchaîne tcpConnect (timeoutMs) PUIS handshake (timeoutMs) :
-        // on couvre les deux étapes (2×) pour ne pas couper avant la fin du tunnel,
-        // comme le fait le fallback (connexion directe sans race agressif).
-        const raceWindow = customUpstreams ? this.timeoutMs * 2 : this.racingTimeoutMs;
-        winner = await this.race(proxiesToTry, method, path, headers, raceWindow);
+        if (customUpstreams) {
+          // Listes privées : essais séquentiels (HTTP d'abord), 1 connexion à la
+          // fois — comme curl. Évite les limites de connexions concurrentes des
+          // fournisseurs résidentiels et l'auto-détection de protocole reste OK.
+          winner = await this.trySequential(proxiesToTry, method, path, headers);
+          this.logger.log(
+            `[custom] attempt #${attempt} result: ${winner ? `WON by ${winner.upstream.protocol}:${winner.upstream.ip}:${winner.upstream.port}` : 'no winner'} (timeoutMs=${this.timeoutMs})`,
+          );
+        } else {
+          winner = await this.race(proxiesToTry, method, path, headers, this.racingTimeoutMs);
+        }
         if (winner && sessionKey) {
           this.sessions.set(sessionKey, {
             proxyId: winner.upstream.id,
@@ -474,6 +484,28 @@ export class ProxyServerService implements OnModuleDestroy {
    * open, since the absolute-URL request is sent directly to the proxy
    * after the race resolves.
    */
+  /**
+   * Essaie les upstreams UN PAR UN (pas de concurrence) et renvoie le premier
+   * qui réussit son handshake. Utilisé pour les listes privées : imite un client
+   * unique (curl) et évite de déclencher les limites de connexions simultanées
+   * des fournisseurs résidentiels. L'ordre porte la priorité (HTTP en premier).
+   */
+  private async trySequential(
+    upstreams: UpstreamProxy[],
+    method: string,
+    path: string,
+    headers: string[],
+  ): Promise<{ upstream: UpstreamProxy; socket: Socket } | null> {
+    const target = method === 'CONNECT' ? path : this.extractHost(path, headers);
+    const isHttpMethod = method !== 'CONNECT';
+    for (const u of upstreams) {
+      const skipHandshake = isHttpMethod && (u.protocol ?? 'http').toLowerCase() === 'http';
+      const sock = await this.tryUpstream(u, target, skipHandshake);
+      if (sock) return { upstream: u, socket: sock };
+    }
+    return null;
+  }
+
   private async race(
     upstreams: UpstreamProxy[],
     method: string,
@@ -588,11 +620,21 @@ export class ProxyServerService implements OnModuleDestroy {
     targetHostPort: string,
     skipHandshake = false,
   ): Promise<Socket | null> {
+    const isCustom = upstream.id.startsWith('custom:');
     let socket: Socket | null = null;
     try {
+      if (isCustom) {
+        this.logger.log(
+          `[custom] try ${upstream.protocol}://${upstream.ip}:${upstream.port} ` +
+            `auth=${upstream.auth ? 'yes' : 'no'} skipHandshake=${skipHandshake} → ${targetHostPort}`,
+        );
+      }
       socket = await tcpConnect(upstream.ip, upstream.port, this.timeoutMs);
       if (!skipHandshake) {
         await performHandshake(socket, upstream, targetHostPort, this.timeoutMs);
+      }
+      if (isCustom) {
+        this.logger.log(`[custom] OK ${upstream.protocol}://${upstream.ip}:${upstream.port}`);
       }
       return socket;
     } catch (e) {
@@ -603,9 +645,16 @@ export class ProxyServerService implements OnModuleDestroy {
           /* */
         }
       }
+      // Échec d'un upstream privé : on logge la raison exacte (sinon silencieux,
+      // car on ne touche ni la DB ni les notifications pour les listes custom).
+      if (isCustom) {
+        this.logger.warn(
+          `[custom] FAIL ${upstream.protocol}://${upstream.ip}:${upstream.port}: ${String((e as Error)?.message ?? e)}`,
+        );
+      }
       // Les upstreams `fallback` et les listes privées (`custom:ip:port`) ne sont
       // pas des BackendProxy en base → ne jamais tenter d'update DB sur eux.
-      if (upstream.id !== 'fallback' && !upstream.id.startsWith('custom:')) {
+      if (upstream.id !== 'fallback' && !isCustom) {
         const msg = String((e as Error)?.message ?? e).toUpperCase();
         const permanent = msg.includes('CODE 400') || msg.includes('CODE 407');
         try {
@@ -708,25 +757,6 @@ export class ProxyServerService implements OnModuleDestroy {
     }
     this.customUpstreamCache.set(raw, list);
     return list;
-  }
-
-  /** Tire jusqu'à `count` upstreams au hasard dans une liste, hors `excludeIds`. */
-  private sampleUpstreams(
-    list: UpstreamProxy[],
-    count: number,
-    excludeIds: string[],
-  ): UpstreamProxy[] {
-    const pool = list.filter((p) => !excludeIds.includes(p.id));
-    if (pool.length <= count) return pool;
-    const out: UpstreamProxy[] = [];
-    const used = new Set<number>();
-    while (out.length < count && used.size < pool.length) {
-      const i = Math.floor(Math.random() * pool.length);
-      if (used.has(i)) continue;
-      used.add(i);
-      out.push(pool[i]);
-    }
-    return out;
   }
 
   private async getUpstreamProxy(
