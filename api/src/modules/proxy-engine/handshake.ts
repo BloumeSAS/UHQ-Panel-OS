@@ -217,7 +217,17 @@ export async function performHandshake(
         const b64 = Buffer.from(upstream.auth, 'utf8').toString('base64');
         authHeader = `Proxy-Authorization: Basic ${b64}\r\n`;
       }
-      const req = `CONNECT ${targetHostPort} HTTP/1.1\r\n${authHeader}\r\n`;
+      // Le header `Host` est requis par HTTP/1.1 : beaucoup de passerelles
+      // commerciales (ex. proxies résidentiels rotatifs) rejettent un CONNECT
+      // qui en est dépourvu. On ajoute aussi User-Agent + Proxy-Connection pour
+      // imiter un client standard (curl/navigateur) et maximiser la compat.
+      const req =
+        `CONNECT ${targetHostPort} HTTP/1.1\r\n` +
+        `Host: ${targetHostPort}\r\n` +
+        authHeader +
+        `User-Agent: uhq-proxy\r\n` +
+        `Proxy-Connection: Keep-Alive\r\n` +
+        `\r\n`;
       await writeAndDrain(socket, Buffer.from(req, 'utf8'));
 
       const resp = await readUntil(socket, Buffer.from('\r\n\r\n'), timeoutMs);
