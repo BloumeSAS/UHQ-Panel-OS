@@ -87,7 +87,7 @@ export class ScraperSourcesController {
     if (!body?.url) throw new BadRequestException('url manquante');
 
     // settings.get() est synchrone (cache in-memory)
-    const apiKey = this.settings.get('groqApiKey');
+    const apiKey = this.settings.get('groqApiKey').trim();
     if (!apiKey) return { status: 'error', message: 'Clé API Groq non configurée' };
 
     // ── Fetch sample ──────────────────────────────────────────────────────────
@@ -117,8 +117,8 @@ export class ScraperSourcesController {
     }
 
     // ── Groq ──────────────────────────────────────────────────────────────────
-    // Essaie llama-3.3-70b-versatile (actuel) puis llama-3.1-70b-versatile (fallback)
-    const MODELS = ['llama-3.3-70b-versatile', 'llama-3.1-70b-versatile'];
+    // Modèles Groq actifs en 2026 (du plus capable au plus rapide)
+    const MODELS = ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'gemma2-9b-it'];
     let lastError = '';
 
     for (const model of MODELS) {
