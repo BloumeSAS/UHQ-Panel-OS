@@ -86,7 +86,8 @@ export class ScraperSourcesController {
   async detectPattern(@Body() body: { url: string }) {
     if (!body?.url) throw new BadRequestException('url manquante');
 
-    const apiKey = await this.settings.get('groqApiKey');
+    // settings.get() est synchrone (cache in-memory)
+    const apiKey = this.settings.get('groqApiKey');
     if (!apiKey) return { status: 'error', message: 'Clé API Groq non configurée' };
 
     // ── Fetch sample ──────────────────────────────────────────────────────────
@@ -98,57 +99,79 @@ export class ScraperSourcesController {
         maxRedirections: 5,
       });
       const raw = await res.body.text();
-      sample = raw
-        .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-        .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-        .replace(/<[^>]+>/g, ' ')
-        .replace(/\s+/g, ' ')
-        .slice(0, 3_000);
+      // Garde le texte brut en priorité (listes plain-text), supprime le HTML si présent
+      const stripped = raw.includes('<html') || raw.includes('<body')
+        ? raw
+            .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+            .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+            .replace(/<[^>]+>/g, ' ')
+            .replace(/\s+/g, '\n')
+        : raw;
+      sample = stripped.slice(0, 3_000);
     } catch (e) {
       return { status: 'error', message: `Impossible de récupérer l'URL : ${String((e as Error).message ?? e)}` };
     }
 
-    // ── Groq ──────────────────────────────────────────────────────────────────
-    try {
-      const payload = {
-        model: 'llama-3.1-70b-versatile',
-        messages: [
-          {
-            role: 'system',
-            content:
-              'You are a regex expert. Return ONLY a single raw regex pattern with exactly 2 capture groups: group 1 for the IP address or hostname, group 2 for the port number. No explanation, no code block, no quotes — just the pattern itself.',
-          },
-          {
-            role: 'user',
-            content: `Detect the proxy pattern in this content. Possible formats: ip:port  |  ip:port:user:pass  |  user:pass@ip:port  |  host:port  |  protocol://user:pass@host:port\n\n${sample}`,
-          },
-        ],
-        temperature: 0,
-        max_tokens: 150,
-      };
-      const res = await request('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-        body: JSON.stringify(payload),
-        headersTimeout: 30_000,
-        bodyTimeout: 30_000,
-      });
-      if (res.statusCode >= 400) return { status: 'error', message: 'Erreur API Groq' };
-
-      const json = (await res.body.json()) as any;
-      const raw = (json?.choices?.[0]?.message?.content ?? '').trim();
-      const pattern = raw
-        .replace(/^```[\w]*\n?/, '').replace(/\n?```$/, '')
-        .replace(/^["'`]|["'`]$/g, '')
-        .trim();
-
-      try { new RegExp(pattern); } catch {
-        return { status: 'error', message: 'Pattern retourné invalide' };
-      }
-      return { status: 'success', pattern };
-    } catch (e) {
-      return { status: 'error', message: `Erreur Groq : ${String((e as Error).message ?? e)}` };
+    if (!sample.trim()) {
+      return { status: 'error', message: 'Contenu vide — impossible de détecter le pattern' };
     }
+
+    // ── Groq ──────────────────────────────────────────────────────────────────
+    // Essaie llama-3.3-70b-versatile (actuel) puis llama-3.1-70b-versatile (fallback)
+    const MODELS = ['llama-3.3-70b-versatile', 'llama-3.1-70b-versatile'];
+    let lastError = '';
+
+    for (const model of MODELS) {
+      try {
+        const payload = {
+          model,
+          messages: [
+            {
+              role: 'system',
+              content:
+                'You are a regex expert. Return ONLY a single raw regex pattern with exactly 2 capture groups: group 1 for the IP address or hostname, group 2 for the port number. No explanation, no code block, no quotes — just the regex pattern itself.',
+            },
+            {
+              role: 'user',
+              content: `Detect the proxy format in this content and return the regex.\nFormats: ip:port | ip:port:user:pass | user:pass@ip:port | protocol://user:pass@host:port\n\n${sample}`,
+            },
+          ],
+          temperature: 0,
+          max_tokens: 150,
+        };
+        const res = await request('https://api.groq.com/openai/v1/chat/completions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+          body: JSON.stringify(payload),
+          headersTimeout: 30_000,
+          bodyTimeout: 30_000,
+        });
+
+        if (res.statusCode >= 400) {
+          let detail = '';
+          try { detail = JSON.stringify((await res.body.json() as any)?.error ?? ''); } catch {}
+          lastError = `HTTP ${res.statusCode}${detail ? ` — ${detail.slice(0, 200)}` : ''}`;
+          continue; // essaie le prochain modèle
+        }
+
+        const json = (await res.body.json()) as any;
+        const raw = (json?.choices?.[0]?.message?.content ?? '').trim();
+        const pattern = raw
+          .replace(/^```[\w]*\n?/, '').replace(/\n?```$/, '')
+          .replace(/^["'`]|["'`]$/g, '')
+          .trim();
+
+        try { new RegExp(pattern); } catch {
+          lastError = `Pattern retourné invalide : ${pattern.slice(0, 100)}`;
+          continue;
+        }
+        return { status: 'success', pattern };
+      } catch (e) {
+        lastError = String((e as Error).message ?? e);
+      }
+    }
+
+    return { status: 'error', message: `Groq : ${lastError}` };
   }
 
   @Patch(':id')
