@@ -456,6 +456,13 @@ const fr: Language = {
     'scraper.patternPlaceholder': 'Regex optionnelle, ex: (ip):(port)',
     'scraper.editTitle': 'Modifier la source',
     'scraper.protocolAuto': 'Auto-détection',
+    'scraper.bulkCreate': 'Import en masse',
+    'scraper.bulkPlaceholder': 'https://exemple.com/proxies.txt\nhttps://autre-source.com/list\n...',
+    'scraper.bulkHint': 'Une URL par ligne. Le nom est déduit automatiquement depuis le domaine.',
+    'scraper.bulkAdding': 'Ajout en cours…',
+    'scraper.bulkDone': 'sources ajoutées avec succès',
+    'scraper.bulkErrors': 'erreur(s)',
+    'scraper.applyToAll': 'Appliquer à toutes',
 
     // Pool & Checker additions
     'pool.countryPlaceholder': 'FR, US...',

@@ -456,6 +456,13 @@ const en: Language = {
     'scraper.patternPlaceholder': 'Optional regex, e.g.: (ip):(port)',
     'scraper.editTitle': 'Edit source',
     'scraper.protocolAuto': 'Auto-detect',
+    'scraper.bulkCreate': 'Bulk import',
+    'scraper.bulkPlaceholder': 'https://example.com/proxies.txt\nhttps://other-source.com/list\n...',
+    'scraper.bulkHint': 'One URL per line. Name is auto-derived from the domain.',
+    'scraper.bulkAdding': 'Adding…',
+    'scraper.bulkDone': 'sources added successfully',
+    'scraper.bulkErrors': 'error(s)',
+    'scraper.applyToAll': 'Apply to all',
 
     // Pool & Checker additions
     'pool.countryPlaceholder': 'FR, US...',

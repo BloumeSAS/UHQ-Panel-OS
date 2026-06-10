@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2, FlaskConical, Play, Pencil } from 'lucide-react';
+import { Plus, Trash2, FlaskConical, Play, Pencil, Layers } from 'lucide-react';
 import { api, apiError } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import {
@@ -85,6 +85,7 @@ export default function Scraper() {
           <Button variant="outline" onClick={() => runNow()}>
             <Play className="h-4 w-4" /> {t('scraper.runNow')}
           </Button>
+          <BulkCreateDialog onCreated={invalidate} />
           <CreateDialog onCreated={invalidate} />
         </div>
       </div>
@@ -306,6 +307,171 @@ function CreateDialog({ onCreated }: { onCreated: () => void }) {
           </div>
           {error && <p className="text-sm text-destructive">{error}</p>}
           <DialogFooter><Button type="submit">{t('common.create')}</Button></DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function urlToName(raw: string): string {
+  try {
+    const url = new URL(raw.startsWith('http') ? raw : `https://${raw}`);
+    const host = url.hostname.replace(/^(www|api|raw|cdn|dl|mirror|proxy|list)\./i, '');
+    const parts = host.split('.');
+    const domain = parts.length >= 2 ? parts[parts.length - 2] : parts[0];
+    return domain.charAt(0).toUpperCase() + domain.slice(1);
+  } catch {
+    return raw.slice(0, 40);
+  }
+}
+
+function BulkCreateDialog({ onCreated }: { onCreated: () => void }) {
+  const t = useT();
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState('');
+  const [protocol, setProtocol] = useState('auto');
+  const [pool, setPool] = useState('');
+  const [pattern, setPattern] = useState('');
+  const [status, setStatus] = useState<{ done: number; total: number; errors: string[] } | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const { data: pools } = useQuery({
+    queryKey: ['proxy-pools'],
+    queryFn: async () => (await api.get('/proxy-pools')).data.data as { id: string; name: string }[],
+    enabled: open,
+  });
+
+  const urls = text.split('\n').map((l) => l.trim()).filter(Boolean);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!urls.length) return;
+    setBusy(true);
+    setStatus({ done: 0, total: urls.length, errors: [] });
+    const errors: string[] = [];
+    for (let i = 0; i < urls.length; i++) {
+      const url = urls[i];
+      try {
+        await api.post('/scraper-sources', {
+          name: urlToName(url),
+          url,
+          protocol,
+          pattern: pattern || undefined,
+          pool: pool || undefined,
+        });
+      } catch (err) {
+        errors.push(`${urlToName(url)}: ${apiError(err)}`);
+      }
+      setStatus({ done: i + 1, total: urls.length, errors: [...errors] });
+    }
+    setBusy(false);
+    onCreated();
+    if (!errors.length) {
+      setTimeout(() => { setOpen(false); setText(''); setStatus(null); }, 1200);
+    }
+  };
+
+  const handleOpenChange = (v: boolean) => {
+    if (!busy) { setOpen(v); if (!v) { setText(''); setStatus(null); } }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogTrigger asChild>
+        <Button variant="outline">
+          <Layers className="h-4 w-4" /> {t('scraper.bulkCreate')}
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-[520px]">
+        <DialogHeader>
+          <DialogTitle>{t('scraper.bulkCreate')}</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={submit} className="space-y-4 pt-1">
+          <div className="space-y-1.5">
+            <textarea
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              rows={8}
+              required
+              placeholder={t('scraper.bulkPlaceholder')}
+              className="w-full rounded-md border border-input bg-background/50 px-3 py-2 font-mono text-xs shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            />
+            <p className="text-xs text-muted-foreground">{t('scraper.bulkHint')}</p>
+            {urls.length > 0 && (
+              <p className="text-xs font-medium text-primary">{urls.length} URL{urls.length > 1 ? 's' : ''} détectée{urls.length > 1 ? 's' : ''}</p>
+            )}
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">{t('scraper.protocol')} — {t('scraper.applyToAll')}</Label>
+              <select
+                value={protocol}
+                onChange={(e) => setProtocol(e.target.value)}
+                className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+              >
+                <option value="auto">{t('scraper.protocolAuto')}</option>
+                <option value="http">http</option>
+                <option value="socks4">socks4</option>
+                <option value="socks5">socks5</option>
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">{t('pools.assign')} — {t('scraper.applyToAll')}</Label>
+              <select
+                value={pool}
+                onChange={(e) => setPool(e.target.value)}
+                className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+              >
+                <option value="">{t('pools.noPool')}</option>
+                {pools?.map((p) => <option key={p.id} value={p.name}>{p.name}</option>)}
+              </select>
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-xs font-semibold">{t('scraper.pattern')} — {t('scraper.applyToAll')}</Label>
+            <Input
+              value={pattern}
+              onChange={(e) => setPattern(e.target.value)}
+              placeholder={t('scraper.patternPlaceholder')}
+            />
+          </div>
+
+          {status && (
+            <div className="space-y-1.5">
+              <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
+                <div
+                  className="h-full bg-primary transition-all duration-200"
+                  style={{ width: `${(status.done / status.total) * 100}%` }}
+                />
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {busy ? t('scraper.bulkAdding') : ''} {status.done}/{status.total}
+                {!busy && status.errors.length === 0 && (
+                  <span className="ml-1 text-emerald-500 font-medium">— {status.total} {t('scraper.bulkDone')}</span>
+                )}
+                {!busy && status.errors.length > 0 && (
+                  <span className="ml-1 text-destructive font-medium">— {status.errors.length} {t('scraper.bulkErrors')}</span>
+                )}
+              </p>
+              {status.errors.length > 0 && (
+                <ul className="text-xs text-destructive space-y-0.5 max-h-24 overflow-y-auto">
+                  {status.errors.map((e, i) => <li key={i}>• {e}</li>)}
+                </ul>
+              )}
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => handleOpenChange(false)} disabled={busy}>
+              {t('common.cancel')}
+            </Button>
+            <Button type="submit" disabled={busy || urls.length === 0}>
+              <Plus className="h-4 w-4" />
+              {busy ? t('scraper.bulkAdding') : `${t('scraper.bulkCreate')} (${urls.length})`}
+            </Button>
+          </DialogFooter>
         </form>
       </DialogContent>
     </Dialog>
