@@ -130,6 +130,23 @@ export class SubUserController {
     return { status: 'success', data: formatSubUser(updated) };
   }
 
+  /**
+   * Point d'entrée public du proxy (host:port) configuré dans le panel.
+   * Utilisé par les addons (ex. Orders) pour livrer des identifiants
+   * `host:port:user:pass` complets après création d'un compte.
+   */
+  @Get('endpoint')
+  @Scopes('read:proxies')
+  proxyEndpoint() {
+    return {
+      status: 'success',
+      data: {
+        host: this.settings.get('publicProxyHost'),
+        port: this.settings.get('publicProxyPort'),
+      },
+    };
+  }
+
   @ApiQuery({ name: 'id', required: true, description: 'ID du sous-utilisateur proxy' })
   @Get('usage-stat/get')
   @Scopes('read:stats')
