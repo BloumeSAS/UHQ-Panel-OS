@@ -47,6 +47,7 @@ interface SubUser {
   bandwidth_limit: number | null;
   expires_at: string | null;
   tags: string | null;
+  pool: string | null;
 }
 
 function fmtGb(bytes: number) {
@@ -278,6 +279,11 @@ export default function SubUsers() {
                               #{tag.trim()}
                             </span>
                           ))}
+                        {u.pool && (
+                          <span className="bg-indigo-100 text-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-400 px-1.5 py-0.5 rounded font-mono flex items-center gap-0.5">
+                            ◆ {u.pool}
+                          </span>
+                        )}
                       </div>
                     </TD>
                     <TD className="font-mono text-xs">{u.username}</TD>
@@ -400,6 +406,7 @@ function CreateDialog({ onCreated }: { onCreated: () => void }) {
     bandwidth_limit: 0,
     expires_at: '',
     tags: '',
+    pool: '',
   });
   const [error, setError] = useState('');
   const set = (k: string, v: any) => setForm((f) => ({ ...f, [k]: v }));
@@ -422,6 +429,7 @@ function CreateDialog({ onCreated }: { onCreated: () => void }) {
         bandwidth_limit: form.bandwidth_limit ? Number(form.bandwidth_limit) : undefined,
         expires_at: form.expires_at || undefined,
         tags: form.tags || undefined,
+        pool: form.pool || undefined,
       });
       setOpen(false);
       setForm({
@@ -435,6 +443,7 @@ function CreateDialog({ onCreated }: { onCreated: () => void }) {
         bandwidth_limit: 0,
         expires_at: '',
         tags: '',
+        pool: '',
       });
       onCreated();
     } catch (err) {
@@ -478,6 +487,7 @@ function EditDialog({
     bandwidth_limit: subUser.bandwidth_limit || 0,
     expires_at: subUser.expires_at ? new Date(subUser.expires_at).toISOString().split('T')[0] : '',
     tags: subUser.tags || '',
+    pool: subUser.pool || '',
   });
   const [error, setError] = useState('');
   const set = (k: string, v: any) => setForm((f) => ({ ...f, [k]: v }));
@@ -500,6 +510,7 @@ function EditDialog({
         bandwidth_limit: form.bandwidth_limit ? Number(form.bandwidth_limit) : 0,
         expires_at: form.expires_at || null,
         tags: form.tags || null,
+        pool: form.pool || null,
       });
       onSaved();
     } catch (err) {
@@ -531,6 +542,10 @@ function SubUserForm({
   submitLabel: string;
 }) {
   const t = useT();
+  const { data: pools } = useQuery({
+    queryKey: ['proxy-pools'],
+    queryFn: async () => (await api.get('/proxy-pools')).data.data as { id: string; name: string }[],
+  });
   return (
     <form onSubmit={onSubmit} className="space-y-4">
       <div className="space-y-1.5">
@@ -595,6 +610,20 @@ function SubUserForm({
           placeholder={t('sub.tagsPlaceholder')}
         />
       </div>
+
+      {pools && pools.length > 0 && (
+        <div className="space-y-1.5">
+          <Label>{t('pools.assign')}</Label>
+          <select
+            value={form.pool}
+            onChange={(e) => set('pool', e.target.value)}
+            className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus:ring-1 focus:ring-ring"
+          >
+            <option value="">{t('pools.noPool')}</option>
+            {pools.map((p) => <option key={p.id} value={p.name}>{p.name}</option>)}
+          </select>
+        </div>
+      )}
 
       <div className="space-y-1.5">
         <Label>{t('sub.customProxies')}</Label>

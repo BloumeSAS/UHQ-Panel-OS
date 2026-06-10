@@ -27,6 +27,7 @@ import {
   KeyRound,
   ClipboardList,
   UserPlus,
+  Layers,
 } from 'lucide-react';
 import * as LucideIcons from 'lucide-react';
 import { useAuth } from '@/lib/auth';
@@ -120,6 +121,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
     { to: '/subusers', label: t('nav.subusers'), icon: Network },
     { to: '/users', label: t('nav.users'), icon: Users },
     { to: '/pool', label: t('nav.pool'), icon: Server },
+    { to: '/proxy-pools', label: t('nav.proxyPools'), icon: Layers },
     { to: '/scraper', label: t('nav.scraper'), icon: Radar },
     { to: '/checker', label: t('nav.checker'), icon: Activity },
     { to: '/logs', label: t('nav.logs'), icon: ScrollText },

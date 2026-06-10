@@ -34,6 +34,7 @@ interface Source {
   protocol: string;
   pattern: string | null;
   enabled: boolean;
+  pool: string | null;
 }
 
 export default function Scraper() {
@@ -100,6 +101,7 @@ export default function Scraper() {
                 <TH>{t('scraper.name')}</TH>
                 <TH>{t('scraper.url')}</TH>
                 <TH>{t('scraper.protocol')}</TH>
+                <TH>{t('pools.assign')}</TH>
                 <TH>{t('scraper.enabled')}</TH>
                 <TH className="text-right">{t('common.actions')}</TH>
               </TR>
@@ -110,6 +112,13 @@ export default function Scraper() {
                   <TD className="font-medium">{s.name}</TD>
                   <TD className="max-w-xs truncate font-mono text-xs">{s.url}</TD>
                   <TD><Badge variant="secondary">{s.protocol}</Badge></TD>
+                  <TD>
+                    {s.pool ? (
+                      <Badge variant="outline" className="text-[10px]">{s.pool}</Badge>
+                    ) : (
+                      <span className="text-xs text-muted-foreground/50">—</span>
+                    )}
+                  </TD>
                   <TD>
                     <Switch
                       checked={s.enabled}
@@ -130,7 +139,7 @@ export default function Scraper() {
                 </TR>
               ))}
                       {!data?.length && (
-                <TR><TD colSpan={5} className="py-8 text-center text-muted-foreground">{t('common.none')}</TD></TR>
+                <TR><TD colSpan={6} className="py-8 text-center text-muted-foreground">{t('common.none')}</TD></TR>
               )}
             </TBody>
           </Table>
@@ -145,10 +154,15 @@ export default function Scraper() {
 
 function EditDialog({ source, onClose, onSaved }: { source: Source; onClose: () => void; onSaved: () => void }) {
   const t = useT();
-  const [form, setForm] = useState({ name: source.name, url: source.url, protocol: source.protocol, pattern: source.pattern ?? '' });
+  const [form, setForm] = useState({ name: source.name, url: source.url, protocol: source.protocol, pattern: source.pattern ?? '', pool: source.pool ?? '' });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const set = (k: string, v: any) => setForm((f) => ({ ...f, [k]: v }));
+
+  const { data: pools } = useQuery({
+    queryKey: ['proxy-pools'],
+    queryFn: async () => (await api.get('/proxy-pools')).data.data as { id: string; name: string }[],
+  });
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -160,6 +174,7 @@ function EditDialog({ source, onClose, onSaved }: { source: Source; onClose: () 
         url: form.url,
         protocol: form.protocol,
         pattern: form.pattern || undefined,
+        pool: form.pool || null,
       });
       onSaved();
     } catch (err) {
@@ -197,6 +212,13 @@ function EditDialog({ source, onClose, onSaved }: { source: Source; onClose: () 
               <Input value={form.pattern} onChange={(e) => set('pattern', e.target.value)} placeholder={t('scraper.patternPlaceholder')} />
             </div>
           </div>
+          <div className="space-y-1.5">
+            <Label>{t('pools.assign')}</Label>
+            <select value={form.pool} onChange={(e) => set('pool', e.target.value)} className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm">
+              <option value="">{t('pools.noPool')}</option>
+              {pools?.map((p) => <option key={p.id} value={p.name}>{p.name}</option>)}
+            </select>
+          </div>
           {error && <p className="text-sm text-destructive">{error}</p>}
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>{t('common.cancel')}</Button>
@@ -211,9 +233,15 @@ function EditDialog({ source, onClose, onSaved }: { source: Source; onClose: () 
 function CreateDialog({ onCreated }: { onCreated: () => void }) {
   const t = useT();
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ name: '', url: '', protocol: 'http', pattern: '' });
+  const [form, setForm] = useState({ name: '', url: '', protocol: 'http', pattern: '', pool: '' });
   const [error, setError] = useState('');
   const set = (k: string, v: any) => setForm((f) => ({ ...f, [k]: v }));
+
+  const { data: pools } = useQuery({
+    queryKey: ['proxy-pools'],
+    queryFn: async () => (await api.get('/proxy-pools')).data.data as { id: string; name: string }[],
+    enabled: open,
+  });
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -224,9 +252,10 @@ function CreateDialog({ onCreated }: { onCreated: () => void }) {
         url: form.url,
         protocol: form.protocol,
         pattern: form.pattern || undefined,
+        pool: form.pool || undefined,
       });
       setOpen(false);
-      setForm({ name: '', url: '', protocol: 'http', pattern: '' });
+      setForm({ name: '', url: '', protocol: 'http', pattern: '', pool: '' });
       onCreated();
     } catch (err) {
       setError(apiError(err));
@@ -267,6 +296,13 @@ function CreateDialog({ onCreated }: { onCreated: () => void }) {
               <Label>{t('scraper.pattern')}</Label>
               <Input value={form.pattern} onChange={(e) => set('pattern', e.target.value)} placeholder={t('scraper.patternPlaceholder')} />
             </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label>{t('pools.assign')}</Label>
+            <select value={form.pool} onChange={(e) => set('pool', e.target.value)} className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm">
+              <option value="">{t('pools.noPool')}</option>
+              {pools?.map((p) => <option key={p.id} value={p.name}>{p.name}</option>)}
+            </select>
           </div>
           {error && <p className="text-sm text-destructive">{error}</p>}
           <DialogFooter><Button type="submit">{t('common.create')}</Button></DialogFooter>

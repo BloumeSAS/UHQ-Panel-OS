@@ -66,6 +66,7 @@ export class SubUserController {
           bandwidthLimit: dto.bandwidth_limit || null,
           expiresAt: dto.expires_at ? new Date(dto.expires_at) : null,
           tags: dto.tags || null,
+          pool: dto.pool || null,
         },
       });
       return { status: 'success', data: formatSubUser(user) };
@@ -92,6 +93,7 @@ export class SubUserController {
     if (dto.bandwidth_limit !== undefined) data.bandwidthLimit = dto.bandwidth_limit || null;
     if (dto.expires_at !== undefined) data.expiresAt = dto.expires_at ? new Date(dto.expires_at) : null;
     if (dto.tags !== undefined) data.tags = dto.tags || null;
+    if (dto.pool !== undefined) data.pool = dto.pool || null;
     try {
       const user = await this.prisma.userProxy.update({ where: { id: dto.id }, data });
       return { status: 'success', data: formatSubUser(user) };

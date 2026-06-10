@@ -45,14 +45,14 @@ export class ScraperService implements OnModuleInit {
     const providers: BaseProxyProvider[] = [];
     if (this.settings.get('groqApiKey')) providers.push(new GroqAIProvider());
 
-    let sources: { name: string; url: string; protocol: string; pattern: string | null }[] = [];
+    let sources: { name: string; url: string; protocol: string; pattern: string | null; pool: string | null }[] = [];
     try {
       sources = await this.prisma.scraperSource.findMany({ where: { enabled: true } });
     } catch (e) {
       this.logger.warn(`Impossible de charger les sources de scraping: ${e}`);
     }
     for (const s of sources) {
-      providers.push(new DynamicProvider(s.name, s.url, s.protocol, s.pattern));
+      providers.push(new DynamicProvider(s.name, s.url, s.protocol, s.pattern, s.pool));
     }
 
     const scraperProxy = this.settings.get('scraperProxy');
@@ -138,21 +138,23 @@ export class ScraperService implements OnModuleInit {
               p.provider || 'Scraper',
               true,
               0,
+              p.pool ?? null,
             );
-            const ph = Array.from({ length: 9 }, (_, k) => `$${base + k + 1}`);
+            const ph = Array.from({ length: 10 }, (_, k) => `$${base + k + 1}`);
             values.push(
-              `(${ph[0]}, ${ph[1]}, ${ph[2]}, ${ph[3]}, ${ph[4]}, ${ph[5]}, ${ph[6]}, ${ph[7]}, CURRENT_TIMESTAMP, ${ph[8]})`,
+              `(${ph[0]}, ${ph[1]}, ${ph[2]}, ${ph[3]}, ${ph[4]}, ${ph[5]}, ${ph[6]}, ${ph[7]}, CURRENT_TIMESTAMP, ${ph[8]}, ${ph[9]})`,
             );
           }
           const sql = `
-            INSERT INTO "BackendProxy" (id, url, protocol, ip, port, country, provider, "isWorking", "lastChecked", "failCount")
+            INSERT INTO "BackendProxy" (id, url, protocol, ip, port, country, provider, "isWorking", "lastChecked", "failCount", pool)
             VALUES ${values.join(', ')}
             ON CONFLICT (url) DO UPDATE SET
               "lastChecked" = "BackendProxy"."lastChecked",
               "isWorking"   = CASE WHEN "BackendProxy"."isBlacklisted" = TRUE THEN FALSE
                                    ${deadSkipClause}
                                    ELSE EXCLUDED."isWorking" END,
-              "country"     = COALESCE(NULLIF(EXCLUDED."country", 'Unknown'), "BackendProxy"."country")
+              "country"     = COALESCE(NULLIF(EXCLUDED."country", 'Unknown'), "BackendProxy"."country"),
+              pool          = EXCLUDED.pool
           `;
           await this.prisma.$executeRawUnsafe(sql, ...params);
         });

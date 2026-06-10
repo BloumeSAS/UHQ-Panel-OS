@@ -61,6 +61,11 @@ export class SubUserCreateDto {
   @IsOptional()
   @IsString()
   tags?: string;
+
+  @ApiPropertyOptional({ description: 'Pool de proxies à utiliser (null = pool global).' })
+  @IsOptional()
+  @IsString()
+  pool?: string;
 }
 
 export class SubUserUpdateDto {
@@ -122,6 +127,11 @@ export class SubUserUpdateDto {
   @IsOptional()
   @IsString()
   tags?: string;
+
+  @ApiPropertyOptional({ description: 'Pool de proxies à utiliser (null = pool global).' })
+  @IsOptional()
+  @IsString()
+  pool?: string;
 }
 
 /**

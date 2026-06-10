@@ -15,6 +15,7 @@ export interface UpstreamProxy {
   auth?: string | null;
   country?: string | null;
   isWorking?: boolean;
+  pool?: string | null;
 }
 
 export type DbProxy = DbBackendProxy;

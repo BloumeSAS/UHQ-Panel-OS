@@ -218,6 +218,7 @@ export class PanelMonitoringController {
             port: p.port,
             provider: 'Manual',
             isWorking: true,
+            pool: body.pool || null,
           };
         }),
       });

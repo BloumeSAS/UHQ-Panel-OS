@@ -239,4 +239,9 @@ export class ImportProxiesDto {
   @IsOptional()
   @IsString()
   protocol?: string;
+
+  @ApiPropertyOptional({ description: 'Nom du pool de proxies à assigner (null = pool global).' })
+  @IsOptional()
+  @IsString()
+  pool?: string;
 }

@@ -36,6 +36,8 @@ model UserProxy {
   bandwidthLimit     Int?
   // Account expiry date (null = never expires)
   expiresAt          DateTime?
+  // Pool de proxies utilisé par ce compte (null = pool partagé global)
+  pool               String?
 
   @@index([ownerId])
 }
@@ -171,6 +173,16 @@ model AppMeta {
   updatedAt      DateTime @default(now()) @updatedAt
 }
 
+// Pool de catégories de proxies (Datacenter, Mobile, Résidentiel…).
+// Le champ `pool` sur BackendProxy/UserProxy/ScraperSource stocke le name.
+model ProxyPool {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?
+  color       String?  @default("#6366f1")
+  createdAt   DateTime @default(now())
+}
+
 model BackendProxy {
   id             String        @id @default(uuid())
   url            String        @unique
@@ -188,7 +200,11 @@ model BackendProxy {
   failureCount   Int           @default(0)
   // Comma-separated tags (e.g. "residential,fr,mobile")
   tags           String?
+  // Pool de catégorie (null = pool par défaut, tous les utilisateurs y ont accès)
+  pool           String?
   targetBlocks   TargetBlock[]
+
+  @@index([pool])
 }
 
 model TargetBlock {
@@ -226,6 +242,8 @@ model ScraperSource {
   pattern   String?
   enabled   Boolean  @default(true)
   createdAt DateTime @default(now())
+  // Pool de destination pour les proxies scrapés (null = pool global)
+  pool      String?
 }
 
 // Addon externe : service tiers avec sa propre DB/front.

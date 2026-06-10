@@ -14,6 +14,7 @@ export class DynamicProvider extends BaseProxyProvider {
     private readonly url: string,
     private readonly protocol: string,
     private readonly pattern?: string | null,
+    private readonly pool?: string | null,
   ) {
     super(name);
   }
@@ -34,6 +35,7 @@ export class DynamicProvider extends BaseProxyProvider {
         country: null,
         provider: this.name,
         auth: p.auth,
+        pool: this.pool ?? null,
       }));
     }
 
@@ -57,7 +59,7 @@ export class DynamicProvider extends BaseProxyProvider {
       const key = `${ip}:${port}`;
       if (seen.has(key)) continue;
       seen.add(key);
-      out.push({ ip, port, protocol: effectiveProtocol, country: null, provider: this.name });
+      out.push({ ip, port, protocol: effectiveProtocol, country: null, provider: this.name, pool: this.pool ?? null });
     }
     return out;
   }

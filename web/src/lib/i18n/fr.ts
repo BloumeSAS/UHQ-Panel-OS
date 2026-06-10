@@ -582,6 +582,27 @@ const fr: Language = {
     'settings.invitations': 'Invitations par e-mail',
     'settings.invitationsEnabled': 'Activer les invitations',
     'settings.invitationsEnabledHint': 'Permet aux admins d\'envoyer des invitations par e-mail (SMTP requis).',
+
+    // ── Proxy Pools (catégories) ─────────────────────────────────────────
+    'nav.proxyPools': 'Catégories proxies',
+    'pools.title': 'Catégories de proxies',
+    'pools.subtitle': 'Organisez vos proxies en catégories (Datacenter, Mobile, Résidentiel…). Associez des sources scraper, des imports et des comptes proxy à une catégorie.',
+    'pools.create': 'Nouvelle catégorie',
+    'pools.name': 'Nom de la catégorie',
+    'pools.namePlaceholder': 'ex: Datacenter, Mobile, Résidentiel…',
+    'pools.description': 'Description',
+    'pools.descriptionPlaceholder': 'Description optionnelle',
+    'pools.color': 'Couleur',
+    'pools.none': 'Aucune catégorie configurée.',
+    'pools.noPool': 'Global (tous)',
+    'pools.assign': 'Catégorie',
+    'pools.selectPool': 'Choisir une catégorie',
+    'pools.created': 'Catégorie créée.',
+    'pools.updated': 'Catégorie mise à jour.',
+    'pools.deleted': 'Catégorie supprimée.',
+    'pools.confirmDelete': 'Supprimer cette catégorie ? Les proxies associés ne seront pas supprimés (leur catégorie deviendra null).',
+    'pools.editTitle': 'Modifier la catégorie',
+    'pool.filterByPool': 'Catégorie',
   },
 };
 

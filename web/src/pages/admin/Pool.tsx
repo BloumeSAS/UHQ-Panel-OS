@@ -52,6 +52,7 @@ interface Proxy {
   fail_count: number;
   latency: number | null;
   url?: string;
+  pool?: string | null;
 }
 
 type StatusFilter = 'all' | 'working' | 'dead' | 'permanent';
@@ -61,6 +62,7 @@ export default function Pool() {
   const qc = useQueryClient();
   const [country, setCountry] = useState('');
   const [protocol, setProtocol] = useState('');
+  const [poolFilter, setPoolFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [search, setSearch] = useState('');
   const [cleaning, setCleaning] = useState(false);
@@ -70,6 +72,10 @@ export default function Pool() {
   const { data: settings } = useQuery({
     queryKey: ['settings-dead'],
     queryFn: async () => (await api.get('/settings')).data.data as Record<string, any>,
+  });
+  const { data: pools } = useQuery({
+    queryKey: ['proxy-pools'],
+    queryFn: async () => (await api.get('/proxy-pools')).data.data as { id: string; name: string; color: string | null }[],
   });
   const maxRetries = parseInt(settings?.deadProxyMaxRetries ?? '3', 10) || 3;
   const skipDead = settings?.skipDeadProxies === true || settings?.skipDeadProxies === 'true';
@@ -196,6 +202,7 @@ export default function Pool() {
   const isPermanentDead = (p: Proxy) => !p.is_working && !p.is_blacklisted && p.fail_count >= maxRetries;
 
   const filteredData = data?.filter((p) => {
+    if (poolFilter && p.pool !== poolFilter) return false;
     const s = search.toLowerCase();
     const creds = getCredentials(p.url).toLowerCase();
     const textMatch =
@@ -378,6 +385,18 @@ export default function Pool() {
             <option value="dead">{t('pool.statusDead')}</option>
             {skipDead && <option value="permanent">{t('pool.statusPermanent')}</option>}
           </select>
+          {pools && pools.length > 0 && (
+            <select
+              value={poolFilter}
+              onChange={(e) => setPoolFilter(e.target.value)}
+              className="h-9 rounded-md border border-input bg-background px-3 text-sm focus:ring-1 focus:ring-ring"
+            >
+              <option value="">{t('pool.filterByPool')}: {t('pools.noPool')}</option>
+              {pools.map((p) => (
+                <option key={p.id} value={p.name}>{p.name}</option>
+              ))}
+            </select>
+          )}
         </div>
         <div className="text-xs text-muted-foreground font-mono">
           Affichage : {filteredData?.length ?? 0} / {data?.length ?? 0}
@@ -545,8 +564,15 @@ function ImportDialog({ onDone }: { onDone: () => void }) {
   const [open, setOpen] = useState(false);
   const [text, setText] = useState('');
   const [protocol, setProtocol] = useState('');
+  const [pool, setPool] = useState('');
   const [result, setResult] = useState('');
   const [busy, setBusy] = useState(false);
+
+  const { data: pools } = useQuery({
+    queryKey: ['proxy-pools'],
+    queryFn: async () => (await api.get('/proxy-pools')).data.data as { id: string; name: string; color: string | null }[],
+    enabled: open,
+  });
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -556,6 +582,7 @@ function ImportDialog({ onDone }: { onDone: () => void }) {
       const { data } = await api.post('/monitoring/proxies/import', {
         text,
         protocol: protocol || undefined,
+        pool: pool || undefined,
       });
       setResult(data.message);
       setText('');
@@ -606,6 +633,21 @@ function ImportDialog({ onDone }: { onDone: () => void }) {
               <option value="socks5">socks5</option>
             </select>
           </div>
+          {pools && pools.length > 0 && (
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">{t('pools.assign')}</Label>
+              <select
+                value={pool}
+                onChange={(e) => setPool(e.target.value)}
+                className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus:ring-1 focus:ring-ring"
+              >
+                <option value="">{t('pools.noPool')}</option>
+                {pools.map((p) => (
+                  <option key={p.id} value={p.name}>{p.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
           {result && (
             <div className={`p-2.5 rounded-md text-xs font-semibold ${result.toLowerCase().includes('erreur') ? 'bg-destructive/10 text-destructive' : 'bg-emerald-500/10 text-emerald-500'}`}>
               {result}

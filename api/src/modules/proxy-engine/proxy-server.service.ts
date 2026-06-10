@@ -351,7 +351,7 @@ export class ProxyServerService implements OnModuleDestroy {
         } else {
           const excluded: string[] = [];
           for (let i = 0; i < NUM_RACERS; i++) {
-            const p = await this.getUpstreamProxy(requestedCountry, excluded);
+            const p = await this.getUpstreamProxy(requestedCountry, excluded, user.pool ?? null);
             if (p) {
               proxiesToTry.push(p as UpstreamProxy);
               excluded.push(p.id);
@@ -762,9 +762,11 @@ export class ProxyServerService implements OnModuleDestroy {
   private async getUpstreamProxy(
     country: string | null,
     excludeIds: string[],
+    poolName?: string | null,
   ): Promise<UpstreamProxy | null> {
     if (this.proxyPoolCache.length > 0) {
       let pool = this.proxyPoolCache;
+      if (poolName) pool = pool.filter((p) => p.pool === poolName);
       if (country) {
         const countries = country.split(',').map((c) => c.trim().toUpperCase());
         pool = pool.filter((p) => p.country && countries.includes(p.country));

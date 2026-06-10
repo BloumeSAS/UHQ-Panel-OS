@@ -30,6 +30,7 @@ export function formatSubUser(u: any) {
     bandwidth_limit: u.bandwidthLimit ?? null,
     expires_at: u.expiresAt ?? null,
     tags: u.tags ?? null,
+    pool: u.pool ?? null,
     created_at: u.createdAt,
   };
 }

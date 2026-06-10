@@ -28,6 +28,11 @@ export class CreateScraperSourceDto {
   @IsOptional()
   @IsBoolean()
   enabled?: boolean;
+
+  @ApiPropertyOptional({ description: 'Pool de destination pour les proxies scrapés (null = pool global).' })
+  @IsOptional()
+  @IsString()
+  pool?: string;
 }
 
 export class UpdateScraperSourceDto {
@@ -39,4 +44,5 @@ export class UpdateScraperSourceDto {
   protocol?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() pattern?: string;
   @ApiPropertyOptional() @IsOptional() @IsBoolean() enabled?: boolean;
+  @ApiPropertyOptional() @IsOptional() @IsString() pool?: string;
 }

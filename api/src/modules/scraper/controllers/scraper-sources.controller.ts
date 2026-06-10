@@ -49,6 +49,7 @@ export class ScraperSourcesController {
         protocol: dto.protocol ?? 'http',
         pattern: dto.pattern || null,
         enabled: dto.enabled ?? true,
+        pool: dto.pool || null,
       },
     });
     return { status: 'success', data };
@@ -65,6 +66,7 @@ export class ScraperSourcesController {
           protocol: dto.protocol,
           pattern: dto.pattern === undefined ? undefined : dto.pattern || null,
           enabled: dto.enabled,
+          pool: dto.pool === undefined ? undefined : dto.pool || null,
         },
       });
       return { status: 'success', data };

@@ -5,6 +5,7 @@ export interface ProxyItem {
   country?: string | null;
   provider?: string | null;
   auth?: string | null;
+  pool?: string | null;
 }
 
 export function urlOf(p: ProxyItem): string {
