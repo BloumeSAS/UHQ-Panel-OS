@@ -1,4 +1,4 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional, OmitType } from '@nestjs/swagger';
 import { IsArray, IsBoolean, IsInt, IsOptional, IsString, Min } from 'class-validator';
 
 export class SubUserCreateDto {
@@ -123,6 +123,13 @@ export class SubUserUpdateDto {
   @IsString()
   tags?: string;
 }
+
+/**
+ * Variante panel : l'id du compte est passé dans l'URL (`PATCH :id`),
+ * donc absent du body. On omet le champ `id` requis de SubUserUpdateDto
+ * pour éviter l'erreur de validation « id doit être une chaîne ».
+ */
+export class PanelSubUserUpdateDto extends OmitType(SubUserUpdateDto, ['id'] as const) {}
 
 export class SubUserBlockDto {
   @ApiProperty({ example: 'subuser_id_here' })

@@ -19,7 +19,7 @@ import { PrismaService } from '../../../database/prisma.service';
 import { SettingsService } from '../../../config/settings.service';
 import { ProxyServerService } from '../../proxy-engine/proxy-server.service';
 import { buildStickyList, formatSubUser, randomString } from '../../../common/utils/proxy-format';
-import { SubUserCreateDto, SubUserUpdateDto } from '../../legacy-api/dto';
+import { SubUserCreateDto, PanelSubUserUpdateDto } from '../../legacy-api/dto';
 import { SetBlockedDto, BulkSubUsersDto } from '../../../common/dto/panel.dto';
 import { t } from '../../../common/utils/i18n';
 
@@ -107,7 +107,7 @@ export class PanelSubUserController {
 
   @ApiParam({ name: 'id', description: 'ID du sous-utilisateur proxy' })
   @Patch(':id')
-  async update(@Param('id') id: string, @Body() dto: SubUserUpdateDto) {
+  async update(@Param('id') id: string, @Body() dto: PanelSubUserUpdateDto) {
     const data: any = {};
     if (dto.label !== undefined) data.name = dto.label;
     if (dto.allowed_ips !== undefined) data.ipWhitelist = dto.allowed_ips;

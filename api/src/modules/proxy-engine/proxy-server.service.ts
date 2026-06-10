@@ -593,7 +593,9 @@ export class ProxyServerService implements OnModuleDestroy {
           /* */
         }
       }
-      if (upstream.id !== 'fallback') {
+      // Les upstreams `fallback` et les listes privées (`custom:ip:port`) ne sont
+      // pas des BackendProxy en base → ne jamais tenter d'update DB sur eux.
+      if (upstream.id !== 'fallback' && !upstream.id.startsWith('custom:')) {
         const msg = String((e as Error)?.message ?? e).toUpperCase();
         const permanent = msg.includes('CODE 400') || msg.includes('CODE 407');
         try {
