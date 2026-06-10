@@ -344,7 +344,7 @@ export class ProxyServerService implements OnModuleDestroy {
           // parallèle faisait rejeter la connexion HTTP légitime. curl n'ouvre
           // qu'une seule connexion → on imite ce comportement.
           proxiesToTry.push(...customUpstreams.slice(0, 12));
-          this.logger.log(
+          this.logger.debug(
             `[custom] attempt #${attempt} — ${proxiesToTry.length} variante(s) en séquentiel: ` +
               proxiesToTry.map((p) => `${p.protocol}:${p.ip}:${p.port}`).join(', '),
           );
@@ -372,7 +372,7 @@ export class ProxyServerService implements OnModuleDestroy {
           // fois — comme curl. Évite les limites de connexions concurrentes des
           // fournisseurs résidentiels et l'auto-détection de protocole reste OK.
           winner = await this.trySequential(proxiesToTry, method, path, headers);
-          this.logger.log(
+          this.logger.debug(
             `[custom] attempt #${attempt} result: ${winner ? `WON by ${winner.upstream.protocol}:${winner.upstream.ip}:${winner.upstream.port}` : 'no winner'} (timeoutMs=${this.timeoutMs})`,
           );
         } else {
@@ -624,7 +624,7 @@ export class ProxyServerService implements OnModuleDestroy {
     let socket: Socket | null = null;
     try {
       if (isCustom) {
-        this.logger.log(
+        this.logger.debug(
           `[custom] try ${upstream.protocol}://${upstream.ip}:${upstream.port} ` +
             `auth=${upstream.auth ? 'yes' : 'no'} skipHandshake=${skipHandshake} → ${targetHostPort}`,
         );
@@ -634,7 +634,7 @@ export class ProxyServerService implements OnModuleDestroy {
         await performHandshake(socket, upstream, targetHostPort, this.timeoutMs);
       }
       if (isCustom) {
-        this.logger.log(`[custom] OK ${upstream.protocol}://${upstream.ip}:${upstream.port}`);
+        this.logger.debug(`[custom] OK ${upstream.protocol}://${upstream.ip}:${upstream.port}`);
       }
       return socket;
     } catch (e) {
@@ -648,7 +648,7 @@ export class ProxyServerService implements OnModuleDestroy {
       // Échec d'un upstream privé : on logge la raison exacte (sinon silencieux,
       // car on ne touche ni la DB ni les notifications pour les listes custom).
       if (isCustom) {
-        this.logger.warn(
+        this.logger.debug(
           `[custom] FAIL ${upstream.protocol}://${upstream.ip}:${upstream.port}: ${String((e as Error)?.message ?? e)}`,
         );
       }
