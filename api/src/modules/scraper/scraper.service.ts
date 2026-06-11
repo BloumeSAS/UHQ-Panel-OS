@@ -49,7 +49,9 @@ export class ScraperService implements OnModuleInit {
 
   // -------------------- Scrape cycle --------------------
 
-  private readonly FAIL_THRESHOLD = 5;
+  // Nombre d'échecs consécutifs avant auto-désactivation.
+  // Valeur volontairement haute : l'adaptive scaling peut déclencher plusieurs cycles/minute.
+  private readonly FAIL_THRESHOLD = 10;
 
   async runOnce(): Promise<void> {
     if (this.running) {

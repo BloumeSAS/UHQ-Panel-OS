@@ -59,6 +59,16 @@ export class ScraperSourcesController {
     return { status: 'success', data };
   }
 
+  /** Réinitialise toutes les sources mortes (failCount > 0 ou désactivées). */
+  @Post('reset-all-failed')
+  async resetAllFailed() {
+    const res = await this.prisma.scraperSource.updateMany({
+      where: { OR: [{ failCount: { gt: 0 } }, { enabled: false }] },
+      data: { failCount: 0, lastError: null, enabled: true },
+    });
+    return { status: 'success', reset: res.count };
+  }
+
   /** Supprime TOUTES les sources de scraping. */
   @Delete()
   async removeAll() {

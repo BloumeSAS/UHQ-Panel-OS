@@ -104,6 +104,12 @@ export default function Scraper() {
     await api.post(`/scraper-sources/${id}/reset-fail`);
     invalidate();
   };
+  const deadCount = data?.filter((s) => s.failCount > 0 || !s.enabled).length ?? 0;
+  const resetAllFailed = async () => {
+    if (!window.confirm(t('scraper.resetAllConfirm'))) return;
+    await api.post('/scraper-sources/reset-all-failed');
+    invalidate();
+  };
 
   return (
     <div className="space-y-6">
@@ -116,6 +122,11 @@ export default function Scraper() {
           <Button variant="outline" onClick={() => runNow()}>
             <Play className="h-4 w-4" /> {t('scraper.runNow')}
           </Button>
+          {deadCount > 0 && (
+            <Button variant="outline" onClick={resetAllFailed}>
+              <RotateCcw className="h-4 w-4 text-amber-500" /> {t('scraper.resetAllFailed')} ({deadCount})
+            </Button>
+          )}
           {(data?.length ?? 0) > 0 && (
             <Button variant="outline" onClick={deleteAll}>
               <Trash2 className="h-4 w-4 text-destructive" /> {t('scraper.deleteAll')}

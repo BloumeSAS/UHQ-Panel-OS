@@ -20,31 +20,27 @@ export abstract class BaseProxyProvider {
 
   /** Helper: fetch a URL (optionally through `this.proxy`) and return text. */
   protected async fetchText(url: string, timeoutMs = 30_000): Promise<string> {
-    const dispatcher = this.proxy ? new ProxyAgent(this.proxy) : undefined;
-    const res = await request(url, {
-      method: 'GET',
-      dispatcher,
-      headersTimeout: timeoutMs,
-      bodyTimeout: timeoutMs,
-    });
-    if (res.statusCode >= 400) {
-      throw new Error(`${url} returned ${res.statusCode}`);
-    }
+    const dispatcher = this.buildDispatcher();
+    const res = await request(url, { method: 'GET', dispatcher, headersTimeout: timeoutMs, bodyTimeout: timeoutMs });
+    if (res.statusCode >= 400) throw new Error(`${url} returned ${res.statusCode}`);
     return await res.body.text();
   }
 
   protected async fetchJson<T = any>(url: string, timeoutMs = 30_000): Promise<T> {
-    const dispatcher = this.proxy ? new ProxyAgent(this.proxy) : undefined;
-    const res = await request(url, {
-      method: 'GET',
-      dispatcher,
-      headersTimeout: timeoutMs,
-      bodyTimeout: timeoutMs,
-    });
-    if (res.statusCode >= 400) {
-      throw new Error(`${url} returned ${res.statusCode}`);
-    }
+    const dispatcher = this.buildDispatcher();
+    const res = await request(url, { method: 'GET', dispatcher, headersTimeout: timeoutMs, bodyTimeout: timeoutMs });
+    if (res.statusCode >= 400) throw new Error(`${url} returned ${res.statusCode}`);
     return (await res.body.json()) as T;
+  }
+
+  private buildDispatcher(): ProxyAgent | undefined {
+    if (!this.proxy) return undefined;
+    try {
+      return new ProxyAgent(this.proxy);
+    } catch {
+      this.logger.warn(`scraperProxy invalide "${this.proxy}" — requête directe (vérifiez les paramètres)`);
+      return undefined;
+    }
   }
 
   /** Parse proxy lines in all standard formats. Skips malformed entries silently. */

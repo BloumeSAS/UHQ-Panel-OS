@@ -470,6 +470,8 @@ const fr: Language = {
     'scraper.detecting': 'Détection en cours…',
     'scraper.patternDetected': 'Pattern détecté !',
     'scraper.resetFail': 'Réinitialiser et réactiver',
+    'scraper.resetAllFailed': 'Réinitialiser les mortes',
+    'scraper.resetAllConfirm': 'Réinitialiser et réactiver toutes les sources en échec ?',
     'scraper.sourceDead': 'MORT',
     'scraper.sourceFailing': 'Échecs',
 
