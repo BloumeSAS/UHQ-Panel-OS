@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2, List, Copy, Check, Pencil, Tag, Calendar, Zap, CheckSquare, Square, RotateCcw } from 'lucide-react';
+import { Plus, Trash2, List, Copy, Check, Pencil, Tag, Calendar, Zap, CheckSquare, Square, RotateCcw, ChevronLeft, ChevronRight } from 'lucide-react';
 import { AddonPageBar } from '@/components/AddonPageBar';
 import { api, apiError } from '@/lib/api';
 import { useT } from '@/lib/i18n';
@@ -84,6 +84,9 @@ export default function SubUsers() {
   const [editing, setEditing] = useState<SubUser | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [page, setPage] = useState(0);
+  const PAGE_SIZE = 50;
+  useEffect(() => { setPage(0); }, [selectedTag]);
 
   const resetTraffic = useMutation({
     mutationFn: (id: string) => api.post(`/subusers/${id}/reset-traffic`),
@@ -139,6 +142,9 @@ export default function SubUsers() {
     const utags = (u.tags ?? '').split(',').map((t) => t.trim().toLowerCase());
     return utags.includes(selectedTag.trim().toLowerCase());
   });
+
+  const totalPages = Math.ceil((filteredData?.length ?? 0) / PAGE_SIZE);
+  const pagedData = filteredData?.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
   const toggleAll = () => {
     const ids = filteredData?.map((u) => u.id) ?? [];
@@ -236,7 +242,7 @@ export default function SubUsers() {
               </TR>
             </THead>
             <TBody>
-              {filteredData?.map((u) => {
+              {pagedData?.map((u) => {
                 const isExpired = u.expires_at && new Date(u.expires_at) < new Date();
                 return (
                   <TR key={u.id}>
@@ -355,6 +361,20 @@ export default function SubUsers() {
               )}
             </TBody>
           </Table>
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between border-t px-4 py-3">
+              <Button variant="outline" size="sm" disabled={page === 0} onClick={() => setPage((p) => p - 1)} className="h-8 gap-1">
+                <ChevronLeft className="h-3.5 w-3.5" /> Précédent
+              </Button>
+              <span className="text-xs text-muted-foreground">
+                Page <span className="font-semibold">{page + 1}</span> / {totalPages}
+                <span className="ml-2 text-muted-foreground/60">({filteredData?.length} comptes)</span>
+              </span>
+              <Button variant="outline" size="sm" disabled={page >= totalPages - 1} onClick={() => setPage((p) => p + 1)} className="h-8 gap-1">
+                Suivant <ChevronRight className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          )}
         </CardContent>
       </Card>
 

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2, Link2, Download, CheckSquare, Square, ShieldCheck, UserPlus, Clock, Pencil } from 'lucide-react';
+import { Plus, Trash2, Link2, Download, CheckSquare, Square, ShieldCheck, UserPlus, Clock, Pencil, ChevronLeft, ChevronRight } from 'lucide-react';
 import { AddonPageBar } from '@/components/AddonPageBar';
 import { api, apiError } from '@/lib/api';
 import { useT } from '@/lib/i18n';
@@ -61,6 +61,10 @@ export default function Users() {
   const [assignFor, setAssignFor] = useState<PanelUser | null>(null);
   const [editFor, setEditFor] = useState<PanelUser | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [page, setPage] = useState(0);
+  const PAGE_SIZE = 50;
+  const totalPages = Math.ceil((data?.length ?? 0) / PAGE_SIZE);
+  const pagedData = data?.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
   // Bulk operations
   const bulkMutation = useMutation({
@@ -163,7 +167,7 @@ export default function Users() {
               </TR>
             </THead>
             <TBody>
-              {data?.map((u) => (
+              {pagedData?.map((u) => (
                 <TR key={u.id} className={isExpired(u.expires_at) ? 'opacity-50' : ''}>
                   <TD>
                     <button onClick={() => toggleSelect(u.id)} className="flex items-center justify-center">
@@ -235,6 +239,20 @@ export default function Users() {
               )}
             </TBody>
           </Table>
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between border-t px-4 py-3">
+              <Button variant="outline" size="sm" disabled={page === 0} onClick={() => setPage((p) => p - 1)} className="h-8 gap-1">
+                <ChevronLeft className="h-3.5 w-3.5" /> Précédent
+              </Button>
+              <span className="text-xs text-muted-foreground">
+                Page <span className="font-semibold">{page + 1}</span> / {totalPages}
+                <span className="ml-2 text-muted-foreground/60">({data?.length} utilisateurs)</span>
+              </span>
+              <Button variant="outline" size="sm" disabled={page >= totalPages - 1} onClick={() => setPage((p) => p + 1)} className="h-8 gap-1">
+                Suivant <ChevronRight className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          )}
         </CardContent>
       </Card>
 

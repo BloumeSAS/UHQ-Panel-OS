@@ -4,9 +4,11 @@ import { parseProxyList } from '../../../common/utils/proxy-parse';
 
 /**
  * Provider générique piloté par la config (table `ScraperSource`).
- * Récupère une URL puis extrait les proxies via une regex à 2 groupes de
- * capture (ip, port). Sans regex fournie, une extraction `ip:port` par défaut
- * est appliquée. C'est la seule source de proxies hors IA (Groq).
+ *
+ * Chaîne de détection :
+ *  1. Regex personnalisée (pattern) → si 0 résultats, passe à 2
+ *  2. parseProxyList (formats texte standard) → si 0 résultats, passe à 3
+ *  3. Scan brut ip:port sur le texte brut (fonctionne sur HTML aussi)
  */
 export class DynamicProvider extends BaseProxyProvider {
   constructor(
@@ -23,14 +25,21 @@ export class DynamicProvider extends BaseProxyProvider {
     const text = await this.fetchText(this.url);
     const hasCustomPattern = !!this.pattern?.trim();
     const isAuto = this.protocol === 'auto';
+    const effectiveProto = isAuto ? 'http' : this.protocol;
 
-    if (!hasCustomPattern) {
-      const parsed = parseProxyList(text);
+    // ── Étape 1 : regex personnalisée ──────────────────────────────────────
+    if (hasCustomPattern) {
+      const items = this.applyRegex(text, effectiveProto);
+      if (items.length > 0) return items;
+      this.logger.debug(`Pattern regex → 0 résultats, auto-détection activée`);
+    }
+
+    // ── Étape 2 : parseProxyList (txt, ip:port, user:pass@host:port, etc.) ─
+    const parsed = parseProxyList(text);
+    if (parsed.length > 0) {
       return parsed.map((p) => ({
         ip: p.ip,
         port: p.port,
-        // Si 'auto' ou si le contenu indique explicitement le protocole, on le
-        // respecte. Sinon on applique le protocole configuré sur la source.
         protocol: isAuto || p.schemeGiven ? p.protocol : this.protocol,
         country: null,
         provider: this.name,
@@ -39,13 +48,14 @@ export class DynamicProvider extends BaseProxyProvider {
       }));
     }
 
-    // Regex personnalisée : les groupes 1/2 ne transportent pas le protocole,
-    // donc on utilise le protocole configuré (fallback http si 'auto').
-    const effectiveProtocol = isAuto ? 'http' : this.protocol;
-    const source = this.pattern!.trim();
+    // ── Étape 3 : scan brut ip:port (fonctionne sur HTML, JSON, etc.) ──────
+    return this.scanIpPort(text, effectiveProto);
+  }
+
+  private applyRegex(text: string, protocol: string): ProxyItem[] {
     let re: RegExp;
     try {
-      re = new RegExp(source, 'g');
+      re = new RegExp(this.pattern!.trim(), 'g');
     } catch (e) {
       this.logger.warn(`Regex invalide pour ${this.name}: ${e}`);
       return [];
@@ -59,8 +69,27 @@ export class DynamicProvider extends BaseProxyProvider {
       const key = `${ip}:${port}`;
       if (seen.has(key)) continue;
       seen.add(key);
-      out.push({ ip, port, protocol: effectiveProtocol, country: null, provider: this.name, pool: this.pool ?? null });
+      out.push({ ip, port, protocol, country: null, provider: this.name, pool: this.pool ?? null });
     }
+    return out;
+  }
+
+  private scanIpPort(text: string, protocol: string): ProxyItem[] {
+    const re = /\b(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}):(\d{2,5})\b/g;
+    const out: ProxyItem[] = [];
+    const seen = new Set<string>();
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(text)) !== null) {
+      const ip = m[1];
+      const port = parseInt(m[2], 10);
+      if (port < 1 || port > 65535) continue;
+      if (!ip.split('.').every((o) => { const n = parseInt(o, 10); return n >= 0 && n <= 255; })) continue;
+      const key = `${ip}:${port}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({ ip, port, protocol, country: null, provider: this.name, pool: this.pool ?? null });
+    }
+    if (out.length > 0) this.logger.debug(`Scan brut trouvé ${out.length} paires ip:port`);
     return out;
   }
 }
