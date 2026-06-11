@@ -41,25 +41,6 @@ export class ScraperService implements OnModuleInit {
    * + un DynamicProvider par source `ScraperSource` activée. Applique le proxy
    * de sortie configuré (fallback résidentiel).
    */
-  private async buildProviders(): Promise<BaseProxyProvider[]> {
-    const providers: BaseProxyProvider[] = [];
-    if (this.settings.get('groqApiKey')) providers.push(new GroqAIProvider());
-
-    let sources: { name: string; url: string; protocol: string; pattern: string | null; pool: string | null }[] = [];
-    try {
-      sources = await this.prisma.scraperSource.findMany({ where: { enabled: true } });
-    } catch (e) {
-      this.logger.warn(`Impossible de charger les sources de scraping: ${e}`);
-    }
-    for (const s of sources) {
-      providers.push(new DynamicProvider(s.name, s.url, s.protocol, s.pattern, s.pool));
-    }
-
-    const scraperProxy = this.settings.get('scraperProxy');
-    if (scraperProxy) for (const p of providers) p.proxy = scraperProxy;
-    return providers;
-  }
-
   onModuleInit(): void {
     // Fire & forget background loops — mirrors `asyncio.create_task(...)`
     setTimeout(() => this.startScrapeLoop(), 30_000);
@@ -67,6 +48,8 @@ export class ScraperService implements OnModuleInit {
   }
 
   // -------------------- Scrape cycle --------------------
+
+  private readonly FAIL_THRESHOLD = 5;
 
   async runOnce(): Promise<void> {
     if (this.running) {
@@ -76,36 +59,88 @@ export class ScraperService implements OnModuleInit {
     this.running = true;
     try {
       this.logger.log('Starting proxy scraping cycle...');
-      const providers = await this.buildProviders();
-      if (providers.length === 0) {
+
+      const groqKey = this.settings.get('groqApiKey');
+      const scraperProxy = this.settings.get('scraperProxy');
+
+      let sources: { id: string; name: string; url: string; protocol: string; pattern: string | null; pool: string | null; failCount: number }[] = [];
+      try {
+        sources = await this.prisma.scraperSource.findMany({ where: { enabled: true } });
+      } catch (e) {
+        this.logger.warn(`Impossible de charger les sources de scraping: ${e}`);
+      }
+
+      if (!groqKey && sources.length === 0) {
         this.logger.warn('Aucune source de scraping configurée (ajoutez-en dans le panel).');
         return;
       }
-      const results = await Promise.all(providers.map((p) => p.fetch().catch(() => [])));
+
+      const allProxies: ProxyItem[] = [];
+
+      // ── GroqAI provider ────────────────────────────────────────────────────
+      if (groqKey) {
+        const groq = new GroqAIProvider(groqKey);
+        if (scraperProxy) groq.proxy = scraperProxy;
+        try {
+          const items = await groq.fetch();
+          this.logger.log(`[GroqAI] → ${items.length} proxies`);
+          allProxies.push(...items);
+        } catch (e) {
+          this.logger.warn(`[GroqAI] ERREUR: ${e}`);
+        }
+      }
+
+      // ── Dynamic sources (parallel, per-source tracking) ───────────────────
+      await Promise.all(sources.map(async (s) => {
+        const provider = new DynamicProvider(s.name, s.url, s.protocol, s.pattern, s.pool);
+        if (scraperProxy) provider.proxy = scraperProxy;
+
+        let items: ProxyItem[] = [];
+        let fetchError: string | null = null;
+        try {
+          items = await provider.fetch();
+        } catch (e) {
+          fetchError = String((e as Error).message ?? e).slice(0, 500);
+        }
+
+        if (items.length > 0) {
+          this.logger.log(`[${s.name}] → ${items.length} proxies`);
+          allProxies.push(...items);
+          await this.prisma.scraperSource.update({
+            where: { id: s.id },
+            data: { failCount: 0, lastError: null, lastSuccess: new Date() },
+          }).catch(() => undefined);
+        } else {
+          const msg = fetchError ?? '0 proxies trouvés';
+          const newFail = (s.failCount ?? 0) + 1;
+          this.logger.warn(`[${s.name}] ÉCHEC: ${msg.slice(0, 120)} (${newFail}/${this.FAIL_THRESHOLD})`);
+          const updates: Record<string, unknown> = { failCount: newFail, lastError: msg };
+          if (newFail >= this.FAIL_THRESHOLD) {
+            updates.enabled = false;
+            this.logger.warn(`[${s.name}] Désactivée automatiquement (${this.FAIL_THRESHOLD} échecs consécutifs)`);
+          }
+          await this.prisma.scraperSource.update({ where: { id: s.id }, data: updates }).catch(() => undefined);
+        }
+      }));
+
+      // ── Dedup & upsert ─────────────────────────────────────────────────────
       const dedup = new Map<string, ProxyItem>();
       let torSkipped = 0;
-      for (const list of results) {
-        for (const p of list) {
-          if (this.torPorts.has(Number(p.port))) {
-            torSkipped++;
-            continue; // Tor SOCKS — random exit country, unusable for geo filtering
-          }
-          const url = urlOf(p);
-          if (!dedup.has(url)) dedup.set(url, p);
-        }
+      for (const p of allProxies) {
+        if (this.torPorts.has(Number(p.port))) { torSkipped++; continue; }
+        const url = urlOf(p);
+        if (!dedup.has(url)) dedup.set(url, p);
       }
       if (torSkipped > 0) this.logger.log(`Skipped ${torSkipped} Tor-port proxies`);
       const merged = [...dedup.values()];
       for (const p of merged) {
         if (p.country) p.country = CountryMapper.toCode(p.country);
       }
-      this.logger.log(`Collected ${merged.length} unique proxies`);
+      const dupes = allProxies.length - torSkipped - merged.length;
+      this.logger.log(`Collecté ${merged.length} proxies uniques${dupes > 0 ? ` (${dupes} doublons ignorés)` : ''}`);
 
       await this.bulkUpsert(merged);
-      // background geo resolution
-      this.backgroundGeo().catch((e) =>
-        this.logger.error(`Background geo failed: ${e}`),
-      );
+      this.backgroundGeo().catch((e) => this.logger.error(`Background geo failed: ${e}`));
     } finally {
       this.running = false;
     }

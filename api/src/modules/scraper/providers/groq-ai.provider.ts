@@ -15,8 +15,8 @@ import { BaseProxyProvider } from './base.provider';
 const PROXY_RE = /(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}):(\d{2,5})/g;
 
 export class GroqAIProvider extends BaseProxyProvider {
-  private readonly apiKey = process.env.GROQ_API_KEY ?? '';
-  private readonly model = 'llama-3.1-70b-versatile';
+  private readonly apiKey: string;
+  private readonly model = 'llama-3.3-70b-versatile';
   private readonly seeds = [
     'https://www.sslproxies.org/',
     'https://free-proxy-list.net/',
@@ -24,8 +24,9 @@ export class GroqAIProvider extends BaseProxyProvider {
     'https://www.us-proxy.org/',
   ];
 
-  constructor() {
+  constructor(apiKey: string) {
     super('GroqAI');
+    this.apiKey = apiKey.trim();
   }
 
   async fetch(): Promise<ProxyItem[]> {

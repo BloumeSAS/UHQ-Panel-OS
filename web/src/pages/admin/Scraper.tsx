@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2, FlaskConical, Play, Pencil, Layers, CheckSquare, Square, Wand2 } from 'lucide-react';
+import { Plus, Trash2, FlaskConical, Play, Pencil, Layers, CheckSquare, Square, Wand2, RotateCcw, AlertTriangle } from 'lucide-react';
 import { api, apiError } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import {
@@ -35,6 +35,9 @@ interface Source {
   pattern: string | null;
   enabled: boolean;
   pool: string | null;
+  failCount: number;
+  lastError: string | null;
+  lastSuccess: string | null;
 }
 
 export default function Scraper() {
@@ -97,6 +100,10 @@ export default function Scraper() {
     }
   };
   const runNow = () => api.post('/scraper-sources/run');
+  const resetFail = async (id: string) => {
+    await api.post(`/scraper-sources/${id}/reset-fail`);
+    invalidate();
+  };
 
   return (
     <div className="space-y-6">
@@ -160,7 +167,26 @@ export default function Scraper() {
                         : <Square className="h-4 w-4 text-muted-foreground" />}
                     </button>
                   </TD>
-                  <TD className="font-medium">{s.name}</TD>
+                  <TD>
+                    <div className="flex flex-col gap-0.5">
+                      <div className="flex items-center gap-1.5 font-medium">
+                        {s.name}
+                        {s.failCount > 0 && !s.enabled && (
+                          <Badge variant="destructive" className="text-[9px] px-1 py-0">{t('scraper.sourceDead')}</Badge>
+                        )}
+                        {s.failCount > 0 && s.enabled && (
+                          <span className="flex items-center gap-0.5 text-[10px] font-medium text-amber-500">
+                            <AlertTriangle className="h-3 w-3" />{s.failCount}/5
+                          </span>
+                        )}
+                      </div>
+                      {s.lastError && (
+                        <p className="max-w-[220px] truncate text-[11px] text-muted-foreground" title={s.lastError}>
+                          {s.lastError}
+                        </p>
+                      )}
+                    </div>
+                  </TD>
                   <TD className="max-w-xs truncate font-mono text-xs">{s.url}</TD>
                   <TD><Badge variant="secondary">{s.protocol}</Badge></TD>
                   <TD>
@@ -177,6 +203,11 @@ export default function Scraper() {
                     />
                   </TD>
                   <TD className="flex justify-end gap-1">
+                    {(s.failCount > 0 || !s.enabled) && (
+                      <Button variant="ghost" size="icon" onClick={() => resetFail(s.id)} title={t('scraper.resetFail')}>
+                        <RotateCcw className="h-4 w-4 text-amber-500" />
+                      </Button>
+                    )}
                     <Button variant="ghost" size="icon" onClick={() => test(s.id)} title={t('scraper.test')}>
                       <FlaskConical className="h-4 w-4" />
                     </Button>

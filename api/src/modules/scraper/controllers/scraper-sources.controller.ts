@@ -174,6 +174,20 @@ export class ScraperSourcesController {
     return { status: 'error', message: `Groq : ${lastError}` };
   }
 
+  /** Réinitialise le compteur d'échecs et réactive la source. */
+  @Post(':id/reset-fail')
+  async resetFail(@Param('id') id: string) {
+    try {
+      const data = await this.prisma.scraperSource.update({
+        where: { id },
+        data: { failCount: 0, lastError: null, enabled: true },
+      });
+      return { status: 'success', data };
+    } catch {
+      throw new NotFoundException(t('errors.sourceNotFound'));
+    }
+  }
+
   @Patch(':id')
   async update(@Param('id') id: string, @Body() dto: UpdateScraperSourceDto) {
     try {

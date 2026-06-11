@@ -243,7 +243,12 @@ model ScraperSource {
   enabled   Boolean  @default(true)
   createdAt DateTime @default(now())
   // Pool de destination pour les proxies scrapés (null = pool global)
-  pool      String?
+  pool        String?
+  // Suivi des échecs : incrémenté à chaque cycle sans proxies, remis à 0 au succès.
+  // Après 5 échecs consécutifs, la source est auto-désactivée (enabled = false).
+  failCount   Int       @default(0)
+  lastError   String?
+  lastSuccess DateTime?
 }
 
 // Addon externe : service tiers avec sa propre DB/front.

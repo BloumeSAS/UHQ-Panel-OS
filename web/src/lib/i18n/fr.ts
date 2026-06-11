@@ -469,6 +469,9 @@ const fr: Language = {
     'scraper.detectPattern': 'Détecter avec Groq',
     'scraper.detecting': 'Détection en cours…',
     'scraper.patternDetected': 'Pattern détecté !',
+    'scraper.resetFail': 'Réinitialiser et réactiver',
+    'scraper.sourceDead': 'MORT',
+    'scraper.sourceFailing': 'Échecs',
 
     // Pool & Checker additions
     'pool.countryPlaceholder': 'FR, US...',
