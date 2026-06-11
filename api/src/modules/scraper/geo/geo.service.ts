@@ -34,7 +34,10 @@ export class GeoResolver {
 
     this.logger.log(`Resolving ${toResolve.length} IPs (concurrency=${this.maxConcurrency})`);
     const proxy = this.settings.get('scraperProxy') || null;
-    const dispatcher = proxy ? new ProxyAgent(proxy) : undefined;
+    let dispatcher: ProxyAgent | undefined;
+    if (proxy) {
+      try { dispatcher = new ProxyAgent(proxy); } catch { /* URL invalide, requête directe */ }
+    }
 
     const batches: string[][] = [];
     for (let i = 0; i < toResolve.length; i += this.batchSize) {

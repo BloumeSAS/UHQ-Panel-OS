@@ -128,12 +128,17 @@ export class ScraperService implements OnModuleInit {
       // ── Dedup & upsert ─────────────────────────────────────────────────────
       const dedup = new Map<string, ProxyItem>();
       let torSkipped = 0;
+      let urlSkipped = 0;
       for (const p of allProxies) {
         if (this.torPorts.has(Number(p.port))) { torSkipped++; continue; }
         const url = urlOf(p);
+        // Protège l'index btree PostgreSQL (max ~2700 octets) contre les auth trop longs
+        if (url.length > 500) { urlSkipped++; continue; }
         if (!dedup.has(url)) dedup.set(url, p);
       }
       if (torSkipped > 0) this.logger.log(`Skipped ${torSkipped} Tor-port proxies`);
+      if (urlSkipped > 0) this.logger.warn(`Skipped ${urlSkipped} proxies with oversized URL (auth trop long — données corrompues ?)`);
+
       const merged = [...dedup.values()];
       for (const p of merged) {
         if (p.country) p.country = CountryMapper.toCode(p.country);
