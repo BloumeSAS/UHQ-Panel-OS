@@ -111,31 +111,44 @@ export class PanelMonitoringController {
     };
   }
 
-  /** Liste filtrable de proxies du pool (pays / protocole / état). */
+  /** Liste filtrable de proxies du pool (pays / protocole / état / pool / page). */
   @ApiQuery({ name: 'country', required: false, description: 'Code pays à 2 lettres (ex. FR)' })
-  @ApiQuery({ name: 'protocol', required: false, enum: ['http', 'socks4', 'socks5'], description: 'Protocole' })
-  @ApiQuery({ name: 'working', required: false, type: Boolean, description: 'Filtrer par état fonctionnel (true/false)' })
-  @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Nombre maximum de proxies à retourner' })
+  @ApiQuery({ name: 'protocol', required: false, enum: ['http', 'socks4', 'socks5'] })
+  @ApiQuery({ name: 'working', required: false, type: Boolean })
+  @ApiQuery({ name: 'pool', required: false, description: 'Nom de la pool (catégorie)' })
+  @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Proxies par page (défaut 100, max 1000)' })
+  @ApiQuery({ name: 'page', required: false, type: Number, description: 'Numéro de page 0-based' })
   @Get('proxies')
   async proxies(
     @Query('country') country?: string,
     @Query('protocol') protocol?: string,
     @Query('working') working?: string,
+    @Query('pool') pool?: string,
     @Query('limit') limit = '100',
+    @Query('page') page = '0',
   ) {
-    const lim = Math.max(1, Math.min(500, parseInt(limit, 10) || 100));
+    const lim = Math.max(1, Math.min(1000, parseInt(limit, 10) || 100));
+    const pg = Math.max(0, parseInt(page, 10) || 0);
     const where: any = {};
     if (country) where.country = country.toUpperCase();
     if (protocol) where.protocol = protocol.toLowerCase();
     if (working === 'true') where.isWorking = true;
     if (working === 'false') where.isWorking = false;
-    const proxies = await this.prisma.backendProxy.findMany({
-      where,
-      take: lim,
-      orderBy: { lastChecked: 'desc' },
-    });
+    if (pool) where.pool = pool;
+    const [total, proxies] = await Promise.all([
+      this.prisma.backendProxy.count({ where }),
+      this.prisma.backendProxy.findMany({
+        where,
+        take: lim,
+        skip: pg * lim,
+        orderBy: { lastChecked: 'desc' },
+      }),
+    ]);
     return {
       status: 'success',
+      total,
+      pages: Math.ceil(total / lim),
+      page: pg,
       count: proxies.length,
       data: proxies.map((p) => ({
         id: p.id,
@@ -286,18 +299,24 @@ export class PanelMonitoringController {
     return { status: 'success', deleted: res.count };
   }
 
-  /** Répartition des proxies working par pays. */
+  /** Répartition des proxies working par pays (codes ISO 2 lettres). Filtrable par pool. */
+  @ApiQuery({ name: 'pool', required: false, description: 'Filtrer par pool (catégorie)' })
   @Get('countries')
-  async countries() {
+  async countries(@Query('pool') pool?: string) {
+    const where: any = { isWorking: true };
+    if (pool) where.pool = pool;
     const proxies = await this.prisma.backendProxy.findMany({
-      where: { isWorking: true },
+      where,
       select: { country: true },
     });
     const count: Record<string, number> = {};
-    for (const p of proxies) if (p.country) count[p.country] = (count[p.country] ?? 0) + 1;
-    const sorted = Object.fromEntries(
-      Object.entries(count).sort(([, a], [, b]) => b - a),
-    );
+    for (const p of proxies) {
+      if (!p.country || p.country === 'Unknown') continue;
+      // Garder uniquement les codes ISO 2 lettres
+      const code = p.country.trim().toUpperCase();
+      if (code.length === 2) count[code] = (count[code] ?? 0) + 1;
+    }
+    const sorted = Object.fromEntries(Object.entries(count).sort(([, a], [, b]) => b - a));
     return { status: 'success', data: sorted };
   }
 

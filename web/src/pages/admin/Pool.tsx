@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Upload,
@@ -14,6 +14,8 @@ import {
   AlertTriangle,
   Ban,
   Download,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import { api, apiError } from '@/lib/api';
 import { useT } from '@/lib/i18n';
@@ -80,17 +82,34 @@ export default function Pool() {
   const maxRetries = parseInt(settings?.deadProxyMaxRetries ?? '3', 10) || 3;
   const skipDead = settings?.skipDeadProxies === true || settings?.skipDeadProxies === 'true';
 
-  const key = ['pool-proxies', country, protocol];
-  const { data, isFetching } = useQuery({
+  const PAGE_SIZE = 100;
+  const [page, setPage] = useState(0);
+
+  // Réinitialise la page quand un filtre change
+  useEffect(() => { setPage(0); }, [country, protocol, poolFilter, statusFilter]);
+
+  const workingParam =
+    statusFilter === 'working' ? 'true' :
+    statusFilter === 'dead' || statusFilter === 'permanent' ? 'false' : '';
+
+  const key = ['pool-proxies', country, protocol, poolFilter, workingParam, page];
+  const { data: proxyResponse, isFetching } = useQuery({
     queryKey: key,
     queryFn: async () => {
-      const params = new URLSearchParams({ limit: '500' });
+      const params = new URLSearchParams({ limit: String(PAGE_SIZE), page: String(page) });
       if (country) params.set('country', country);
       if (protocol) params.set('protocol', protocol);
-      return (await api.get(`/monitoring/proxies?${params}`)).data.data as Proxy[];
+      if (poolFilter) params.set('pool', poolFilter);
+      if (workingParam) params.set('working', workingParam);
+      const res = await api.get(`/monitoring/proxies?${params}`);
+      return res.data as { status: string; total: number; pages: number; page: number; count: number; data: Proxy[] };
     },
     refetchInterval: 30000,
   });
+
+  const data = proxyResponse?.data;
+  const totalCount = proxyResponse?.total ?? 0;
+  const totalPages = proxyResponse?.pages ?? 1;
 
   const { data: liveRaw, isFetching: isFetchingLive } = useQuery({
     queryKey: ['monitoring-live-pool'],
@@ -201,21 +220,20 @@ export default function Pool() {
 
   const isPermanentDead = (p: Proxy) => !p.is_working && !p.is_blacklisted && p.fail_count >= maxRetries;
 
+  // pool, working/dead et pool sont filtrés côté serveur.
+  // Ici : recherche texte + distinction permanent (sous-filtre client des résultats dead).
   const filteredData = data?.filter((p) => {
-    if (poolFilter && p.pool !== poolFilter) return false;
+    if (statusFilter === 'permanent' && !isPermanentDead(p)) return false;
+    if (!search) return true;
     const s = search.toLowerCase();
     const creds = getCredentials(p.url).toLowerCase();
-    const textMatch =
+    return (
       p.ip.toLowerCase().includes(s) ||
       p.port.toString().includes(s) ||
       (p.country || '').toLowerCase().includes(s) ||
       (p.provider || '').toLowerCase().includes(s) ||
-      creds.includes(s);
-    if (!textMatch) return false;
-    if (statusFilter === 'working') return p.is_working;
-    if (statusFilter === 'dead') return !p.is_working && !isPermanentDead(p);
-    if (statusFilter === 'permanent') return isPermanentDead(p);
-    return true;
+      creds.includes(s)
+    );
   });
 
   const totalPool = liveRaw?.pool?.total ?? 0;
@@ -226,7 +244,8 @@ export default function Pool() {
   const workingPercent = totalPool ? Math.round((workingPool / totalPool) * 100) : 0;
 
   const permanentDeadCount = data?.filter(isPermanentDead).length ?? 0;
-  const deadCount = data?.filter((p) => !p.is_working).length ?? 0;
+  // Compte global des morts depuis liveRaw (indépendant de la page courante)
+  const deadCount = Math.max(0, totalPool - workingPool);
 
   return (
     <div className="space-y-6">
@@ -385,21 +404,19 @@ export default function Pool() {
             <option value="dead">{t('pool.statusDead')}</option>
             {skipDead && <option value="permanent">{t('pool.statusPermanent')}</option>}
           </select>
-          {pools && pools.length > 0 && (
-            <select
-              value={poolFilter}
-              onChange={(e) => setPoolFilter(e.target.value)}
-              className="h-9 rounded-md border border-input bg-background px-3 text-sm focus:ring-1 focus:ring-ring"
-            >
-              <option value="">{t('pool.filterByPool')}: {t('pools.noPool')}</option>
-              {pools.map((p) => (
-                <option key={p.id} value={p.name}>{p.name}</option>
-              ))}
-            </select>
-          )}
+          <select
+            value={poolFilter}
+            onChange={(e) => setPoolFilter(e.target.value)}
+            className="h-9 rounded-md border border-input bg-background px-3 text-sm focus:ring-1 focus:ring-ring"
+          >
+            <option value="">{t('pools.noPool')} (global)</option>
+            {pools?.map((p) => (
+              <option key={p.id} value={p.name}>{p.name}</option>
+            ))}
+          </select>
         </div>
         <div className="text-xs text-muted-foreground font-mono">
-          Affichage : {filteredData?.length ?? 0} / {data?.length ?? 0}
+          {filteredData?.length ?? 0} affichés — {totalCount} total
         </div>
       </div>
 
@@ -553,6 +570,32 @@ export default function Pool() {
               </TBody>
             </Table>
           </div>
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between border-t px-4 py-3">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={page === 0 || isFetching}
+                onClick={() => setPage((p) => p - 1)}
+                className="h-8 gap-1"
+              >
+                <ChevronLeft className="h-3.5 w-3.5" /> Précédent
+              </Button>
+              <span className="text-xs text-muted-foreground">
+                Page <span className="font-semibold">{page + 1}</span> / {totalPages}
+                <span className="ml-2 text-muted-foreground/60">({totalCount} proxies)</span>
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={page >= totalPages - 1 || isFetching}
+                onClick={() => setPage((p) => p + 1)}
+                className="h-8 gap-1"
+              >
+                Suivant <ChevronRight className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>
