@@ -321,7 +321,12 @@ export class ProxyServerService implements OnModuleDestroy {
           stickyProxyObj = customUpstreams.find((p) => p.id === stickyProxyId) ?? null;
         } else {
           stickyProxyObj = (this.proxyMapCache.get(stickyProxyId) as UpstreamProxy) ?? null;
-          if (!stickyProxyObj && this.proxyMapCache.size === 0) {
+          // Le cache mémoire ne garde que le top 2000 (successCount desc) toutes
+          // pools confondues : un proxy d'une petite pool dédiée peut s'en faire
+          // évincer sans que le cache soit "vide" pour autant. Ne pas se fier à
+          // `proxyMapCache.size === 0` pour décider de retomber en base, sinon la
+          // session sticky perd silencieusement son proxy dès qu'il sort du top 2000.
+          if (!stickyProxyObj) {
             stickyProxyObj = this.mapDbProxy(
               await this.prisma.backendProxy
                 .findUnique({ where: { id: stickyProxyId } })
@@ -771,29 +776,27 @@ export class ProxyServerService implements OnModuleDestroy {
         const countries = country.split(',').map((c) => c.trim().toUpperCase());
         pool = pool.filter((p) => p.country && countries.includes(p.country));
       }
-      if (excludeIds.length > 0) {
-        pool = pool.filter((p) => !excludeIds.includes(p.id));
+      if (excludeIds.length > 0) pool = pool.filter((p) => !excludeIds.includes(p.id));
+      if (pool.length > 0) {
         const selection = pool.length > 100 ? pool.slice(0, 100) : pool;
-        if (selection.length === 0) return null;
         return selection[Math.floor(Math.random() * selection.length)];
       }
-      if (pool.length === 0) return null;
-      const selection = pool.length > 100 ? pool.slice(0, 100) : pool;
-      return selection[Math.floor(Math.random() * selection.length)];
+      // Rien dans le cache pour cette pool/pays : le cache ne garde que le top
+      // 2000 (successCount desc) TOUTES pools confondues, donc une petite pool
+      // dédiée (peu de trafic → successCount bas) peut s'y faire évincer par un
+      // pool partagé bien plus gros sans jamais être "vide" en base. On retombe
+      // sur une requête DB ciblée (indexée sur `pool`) plutôt que de déclarer
+      // forfait — sinon ces utilisateurs basculent en permanence sur le
+      // fallback résidentiel alors que leurs proxies sont fonctionnels.
     }
 
-    // Cache empty — DB fallback (rare, only at startup)
-    if (country) return null;
     const where: any = { isWorking: true };
+    if (poolName) where.pool = poolName;
     if (excludeIds.length > 0) where.id = { notIn: excludeIds };
     if (country) {
-      if ((country as string).includes(',')) {
-        where.country = {
-          in: (country as string).split(',').map((c) => c.trim().toUpperCase()),
-        };
-      } else {
-        where.country = (country as string).toUpperCase();
-      }
+      where.country = country.includes(',')
+        ? { in: country.split(',').map((c) => c.trim().toUpperCase()) }
+        : country.toUpperCase();
     }
     const proxies = await this.prisma.backendProxy.findMany({
       where,
