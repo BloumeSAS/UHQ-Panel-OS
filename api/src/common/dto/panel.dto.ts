@@ -213,6 +213,29 @@ export class WebhookTestDto {
   target!: string;
 }
 
+/** Settings secrets masqués (••••) en lecture — révélables via /settings/reveal après confirmation du mot de passe. */
+export const REVEALABLE_SECRETS = [
+  'scraperProxy',
+  'groqApiKey',
+  'smtpPass',
+  'captchaSecretKey',
+  'discordWebhookUrl',
+  'slackWebhookUrl',
+  'bloumechatWebhookUrl',
+  'backupS3SecretKey',
+] as const;
+
+export class RevealSettingDto {
+  @ApiProperty({ enum: REVEALABLE_SECRETS, example: 'scraperProxy' })
+  @IsIn(REVEALABLE_SECRETS)
+  key!: string;
+
+  @ApiProperty({ description: 'Mot de passe du compte panel courant (confirmation).' })
+  @IsString()
+  @MinLength(1)
+  password!: string;
+}
+
 export class SetBlockedDto {
   @ApiProperty()
   @IsBoolean()

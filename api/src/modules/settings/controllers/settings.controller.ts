@@ -1,10 +1,14 @@
-import { Body, Controller, Get, Post, Put, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Post, Put, UnauthorizedException, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import * as bcrypt from 'bcryptjs';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../../common/guards/roles.guard';
 import { Roles } from '../../../common/decorators/roles.decorator';
+import { CurrentUser } from '../../../common/decorators/current-user.decorator';
+import type { JwtUser } from '../../../common/guards/jwt-auth.guard';
 import { SettingsService } from '../../../config/settings.service';
-import { UpdateSettingsDto, SmtpTestDto, WebhookTestDto } from '../../../common/dto/panel.dto';
+import { PrismaService } from '../../../database/prisma.service';
+import { UpdateSettingsDto, SmtpTestDto, WebhookTestDto, RevealSettingDto, REVEALABLE_SECRETS } from '../../../common/dto/panel.dto';
 import { MailService } from '../../mail/mail.service';
 import { NotificationService } from '../../notifications/notification.service';
 import { t } from '../../../common/utils/i18n';
@@ -17,6 +21,7 @@ import { t } from '../../../common/utils/i18n';
 export class PanelSettingsController {
   constructor(
     private readonly settings: SettingsService,
+    private readonly prisma: PrismaService,
     private readonly mail: MailService,
     private readonly notifications: NotificationService,
   ) {}
@@ -43,7 +48,7 @@ export class PanelSettingsController {
     // L'URL de mise à jour ne peut pas être modifiée depuis le panel.
     delete (patch as any).updateCheckUrl;
     // Ne pas écraser un secret avec une valeur vide ou le masque.
-    for (const secret of ['scraperProxy', 'groqApiKey', 'smtpPass', 'captchaSecretKey', 'discordWebhookUrl', 'slackWebhookUrl', 'bloumechatWebhookUrl', 'backupS3SecretKey'] as const) {
+    for (const secret of REVEALABLE_SECRETS) {
       const val = patch[secret];
       if (val !== undefined && (val.trim() === '' || /^•+$/.test(val))) {
         delete patch[secret];
@@ -51,6 +56,21 @@ export class PanelSettingsController {
     }
     await this.settings.setMany(patch as any);
     return { status: 'success', data: this.settings.getAllMasked() };
+  }
+
+  /**
+   * Révèle la valeur en clair d'un secret masqué (proxy de secours, clé Groq,
+   * mot de passe SMTP…), après confirmation du mot de passe du compte panel
+   * courant. Les secrets ne sont JAMAIS renvoyés en clair par GET /settings —
+   * c'est la seule voie pour les consulter une fois saisis.
+   */
+  @Post('reveal')
+  async reveal(@CurrentUser() me: JwtUser, @Body() dto: RevealSettingDto) {
+    const user = await this.prisma.panelUser.findUnique({ where: { id: me.id } });
+    if (!user || !(await bcrypt.compare(dto.password, user.passwordHash))) {
+      throw new UnauthorizedException(t('errors.invalidPassword'));
+    }
+    return { status: 'success', value: this.settings.get(dto.key as any) };
   }
 
   /** Révèle la clé API courante (admin) — pour copie/usage. La génère si absente. */

@@ -312,11 +312,7 @@ export default function Settings() {
             <Separator label={t('settings.integrations')} />
 
             <F label={t('pool.fallbackProxy')} hint={t('pool.fallbackProxyHint')}>
-              <Input
-                value={form.scraperProxy ?? ''}
-                onChange={(e) => set('scraperProxy', e.target.value)}
-                placeholder="http://user:pass@ip:port  ou  socks5://ip:port"
-              />
+              <SecretField k="scraperProxy" form={form} set={set} placeholder="http://user:pass@ip:port  ou  socks5://ip:port" />
               <a href="https://uhq.monster" target="_blank" rel="noopener noreferrer" className="mt-1 inline-block text-xs text-primary hover:underline">
                 {t('pool.buyFallback')}
               </a>
@@ -324,7 +320,7 @@ export default function Settings() {
 
             <Grid>
               <F label={t('settings.groqApiKey')} hint={t('settings.groqApiKeyHint')}>
-                <Input value={form.groqApiKey ?? ''} onChange={(e) => set('groqApiKey', e.target.value)} placeholder="gsk_xxxxxxxxxxxxxxxxxxxx" />
+                <SecretField k="groqApiKey" form={form} set={set} placeholder="gsk_xxxxxxxxxxxxxxxxxxxx" />
               </F>
             </Grid>
           </>
@@ -345,7 +341,7 @@ export default function Settings() {
                 <Input value={form.smtpUser ?? ''} onChange={(e) => set('smtpUser', e.target.value)} placeholder="noreply@example.com" />
               </F>
               <F label={t('settings.smtpPass')} hint={t('settings.smtpPassHint')}>
-                <Input type="password" value={form.smtpPass ?? ''} onChange={(e) => set('smtpPass', e.target.value)} placeholder="••••••••••••" />
+                <SecretField k="smtpPass" form={form} set={set} placeholder="••••••••••••" />
               </F>
               <F label={t('settings.smtpFrom')} hint={t('settings.smtpFromHint')}>
                 <Input value={form.smtpFrom ?? ''} onChange={(e) => set('smtpFrom', e.target.value)} placeholder="UHQ Panel OS <noreply@example.com>" />
@@ -419,7 +415,7 @@ export default function Settings() {
                     <Input value={form.captchaSiteKey ?? ''} onChange={(e) => set('captchaSiteKey', e.target.value)} placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" />
                   </F>
                   <F label={t('settings.captchaSecretKey')} hint={t('settings.captchaSecretKeyHint')}>
-                    <Input type="password" value={form.captchaSecretKey ?? ''} onChange={(e) => set('captchaSecretKey', e.target.value)} placeholder="••••••••••••••••••••••••••" />
+                    <SecretField k="captchaSecretKey" form={form} set={set} placeholder="••••••••••••••••••••••••••" />
                   </F>
                   {form.captchaProvider === 'cap' && (
                     <F label={t('settings.captchaCapEndpoint')} hint={t('settings.captchaCapEndpointHint')} className="sm:col-span-2">
@@ -448,11 +444,7 @@ export default function Settings() {
             {(form.discordAlertsEnabled === true || form.discordAlertsEnabled === 'true') && (
               <>
                 <F label={t('settings.discordWebhook')} hint={t('settings.discordWebhookHint')}>
-                  <Input
-                    value={form.discordWebhookUrl ?? ''}
-                    onChange={(e) => set('discordWebhookUrl', e.target.value)}
-                    placeholder="https://discord.com/api/webhooks/..."
-                  />
+                  <SecretField k="discordWebhookUrl" form={form} set={set} placeholder="https://discord.com/api/webhooks/..." />
                 </F>
                 <WebhookTestButton target="discord" />
               </>
@@ -467,11 +459,7 @@ export default function Settings() {
             {(form.slackAlertsEnabled === true || form.slackAlertsEnabled === 'true') && (
               <>
                 <F label={t('settings.slackWebhook')} hint={t('settings.slackWebhookHint')}>
-                  <Input
-                    value={form.slackWebhookUrl ?? ''}
-                    onChange={(e) => set('slackWebhookUrl', e.target.value)}
-                    placeholder="https://hooks.slack.com/services/..."
-                  />
+                  <SecretField k="slackWebhookUrl" form={form} set={set} placeholder="https://hooks.slack.com/services/..." />
                 </F>
                 <WebhookTestButton target="slack" />
               </>
@@ -486,11 +474,7 @@ export default function Settings() {
             {(form.bloumechatAlertsEnabled === true || form.bloumechatAlertsEnabled === 'true') && (
               <>
                 <F label={t('settings.bloumechatWebhook')} hint={t('settings.bloumechatWebhookHint')}>
-                  <Input
-                    value={form.bloumechatWebhookUrl ?? ''}
-                    onChange={(e) => set('bloumechatWebhookUrl', e.target.value)}
-                    placeholder="https://bloumechat.com/api/v2/webhooks/.../..."
-                  />
+                  <SecretField k="bloumechatWebhookUrl" form={form} set={set} placeholder="https://bloumechat.com/api/v2/webhooks/.../..." />
                 </F>
                 <WebhookTestButton target="bloumechat" />
               </>
@@ -607,12 +591,7 @@ export default function Settings() {
                       />
                     </F>
                     <F label={t('settings.backupS3SecretKey')} hint={t('settings.backupS3SecretKeyHint')}>
-                      <Input
-                        type="password"
-                        value={form.backupS3SecretKey ?? ''}
-                        onChange={(e) => set('backupS3SecretKey', e.target.value)}
-                        placeholder="••••••••••••••••"
-                      />
+                      <SecretField k="backupS3SecretKey" form={form} set={set} placeholder="••••••••••••••••" />
                     </F>
                   </Grid>
                 </div>
@@ -835,6 +814,88 @@ function WebhookTestButton({ target }: { target: 'discord' | 'slack' | 'bloumech
         <Send className="h-3.5 w-3.5 mr-1.5" />{t('settings.testWebhook')}
       </Button>
       {msg && <p className="text-xs text-muted-foreground">{msg}</p>}
+    </div>
+  );
+}
+
+// ── Secret field (masqué, révélable par confirmation du mot de passe) ───────
+
+function SecretField({
+  k, form, set, placeholder,
+}: {
+  k: string; form: Record<string, any>; set: (k: string, v: any) => void; placeholder?: string;
+}) {
+  const t = useT();
+  const [revealed, setRevealed] = useState(false);
+  const [prompting, setPrompting] = useState(false);
+  const [pwd, setPwd] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+
+  const value = form[k] ?? '';
+  const isMasked = /^•+$/.test(value);
+
+  const toggle = () => {
+    if (revealed) { setRevealed(false); return; }
+    if (isMasked) { setErr(''); setPwd(''); setPrompting(true); return; }
+    setRevealed(true);
+  };
+
+  const confirmReveal = async () => {
+    if (!pwd || busy) return;
+    setBusy(true); setErr('');
+    try {
+      const { data } = await api.post('/settings/reveal', { key: k, password: pwd });
+      set(k, data.value ?? '');
+      setRevealed(true);
+      setPrompting(false);
+      setPwd('');
+    } catch (e) {
+      setErr(apiError(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div>
+      <div className="relative">
+        <Input
+          type={revealed ? 'text' : 'password'}
+          value={value}
+          onChange={(e) => { set(k, e.target.value); setRevealed(true); }}
+          placeholder={placeholder}
+          className="pr-9"
+        />
+        <button
+          type="button"
+          onClick={toggle}
+          tabIndex={-1}
+          className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+        >
+          {revealed ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+        </button>
+      </div>
+      {prompting && (
+        <div className="mt-2 flex flex-wrap items-center gap-2 rounded-md border bg-muted/20 p-2">
+          <Input
+            type="password"
+            autoFocus
+            value={pwd}
+            onChange={(e) => setPwd(e.target.value)}
+            placeholder={t('settings.confirmPasswordPlaceholder')}
+            className="h-8 max-w-[220px] text-xs"
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); confirmReveal(); } }}
+          />
+          <Button type="button" size="sm" disabled={busy || !pwd} onClick={confirmReveal}>
+            {t('common.confirm')}
+          </Button>
+          <Button type="button" size="sm" variant="outline" onClick={() => { setPrompting(false); setPwd(''); setErr(''); }}>
+            {t('common.cancel')}
+          </Button>
+          {err && <p className="w-full text-xs text-destructive">{err}</p>}
+        </div>
+      )}
     </div>
   );
 }

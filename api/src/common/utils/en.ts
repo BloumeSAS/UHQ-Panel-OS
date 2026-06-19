@@ -4,6 +4,7 @@ const en = {
     registrationDisabled: "Registrations are disabled",
     emailTaken: "Email already in use",
     invalidCredentials: "Invalid credentials",
+    invalidPassword: "Incorrect password",
     accountDisabled: "Account disabled",
     dbAlreadyConfigured: "Database already configured",
     invalidDbUrl: "Invalid PostgreSQL URL (expected: postgresql://user:pass@host:5432/db)",

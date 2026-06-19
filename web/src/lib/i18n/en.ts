@@ -303,6 +303,7 @@ const en: Language = {
     'common.hide': 'Hide',
     'common.show': 'Show',
     'common.regenerate': 'Regenerate',
+    'common.confirm': 'Confirm',
 
     'auth.emailPlaceholder': 'Enter your email address',
     'auth.passwordPlaceholder': 'Enter your password',
@@ -333,6 +334,7 @@ const en: Language = {
     'settings.apiKey': 'API Key',
     'settings.apiKeyDesc': 'Used for the legacy API /api/v1 via the X-API-Key header or as Basic auth password.',
     'settings.clickReveal': 'Click on "Show"',
+    'settings.confirmPasswordPlaceholder': 'Your password',
     'settings.confirmRegenerate': 'Regenerate the key? The old one will be invalidated.',
     'settings.exported': 'Settings exported.',
     'settings.imported': 'Settings imported successfully!',
