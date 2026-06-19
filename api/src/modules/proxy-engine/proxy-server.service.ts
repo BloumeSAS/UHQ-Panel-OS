@@ -4,7 +4,7 @@ import { URL } from 'url';
 import { PrismaService } from '../../database/prisma.service';
 import { TrafficService } from '../traffic/traffic.service';
 import { SettingsService } from '../../config/settings.service';
-import { parseProxyList } from '../../common/utils/proxy-parse';
+import { parseProxyList, buildProxyUrl } from '../../common/utils/proxy-parse';
 import { NotificationService } from '../notifications/notification.service';
 import {
   performHandshake,
@@ -815,8 +815,8 @@ export class ProxyServerService implements OnModuleDestroy {
 
   /** Build a synthetic UpstreamProxy from SCRAPER_PROXY env var. */
   private getFallbackUpstream(country: string | null): UpstreamProxy | null {
-    if (!this.fallbackProxyUrl) return null;
-    let urlStr = this.fallbackProxyUrl;
+    let urlStr = buildProxyUrl(this.fallbackProxyUrl);
+    if (!urlStr) return null;
     try {
       const u = new URL(urlStr);
       // Residential fallback: inject country in username -> "user__country__xx:pass@host"

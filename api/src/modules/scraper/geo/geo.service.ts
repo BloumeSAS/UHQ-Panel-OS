@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ProxyAgent, request } from 'undici';
 import { SettingsService } from '../../../config/settings.service';
+import { buildProxyUrl } from '../../../common/utils/proxy-parse';
 
 /**
  * Port of `app/utils/geo.py::GeoResolver`. Resolves IP → country code in
@@ -33,7 +34,7 @@ export class GeoResolver {
     if (toResolve.length === 0) return out;
 
     this.logger.log(`Resolving ${toResolve.length} IPs (concurrency=${this.maxConcurrency})`);
-    const proxy = this.settings.get('scraperProxy') || null;
+    const proxy = buildProxyUrl(this.settings.get('scraperProxy'));
     let dispatcher: ProxyAgent | undefined;
     if (proxy) {
       try { dispatcher = new ProxyAgent(proxy); } catch { /* URL invalide, requête directe */ }

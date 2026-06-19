@@ -23,6 +23,16 @@ function normProtocol(p: string): string {
   return 'http';
 }
 
+/** true si `s` ressemble à un `host:port` valide (port = entier 1-65535). */
+function looksLikeHostPort(s: string): boolean {
+  const i = s.lastIndexOf(':');
+  if (i <= 0) return false;
+  const portStr = s.slice(i + 1);
+  if (!/^\d+$/.test(portStr)) return false;
+  const port = Number(portStr);
+  return port >= 1 && port <= 65535;
+}
+
 export function parseProxyLine(raw: string): ParsedProxy | null {
   let line = raw.trim();
   if (!line || line.startsWith('#')) return null;
@@ -39,19 +49,53 @@ export function parseProxyLine(raw: string): ParsedProxy | null {
   let auth: string | null = null;
   const at = line.lastIndexOf('@');
   if (at !== -1) {
-    auth = line.slice(0, at);
-    line = line.slice(at + 1);
+    const before = line.slice(0, at);
+    const after = line.slice(at + 1);
+    // Certains fournisseurs (copier-coller malformé) donnent `host:port@user:pass`
+    // au lieu du standard `user:pass@host:port`. On ne le détecte que si c'est
+    // sans ambiguïté : la partie après `@` ne ressemble PAS à un host:port mais
+    // celle d'avant si — sinon on garde l'interprétation standard.
+    if (!looksLikeHostPort(after) && looksLikeHostPort(before)) {
+      auth = after;
+      line = before;
+    } else {
+      auth = before;
+      line = after;
+    }
   }
 
   const parts = line.split(':');
   if (parts.length < 2) return null;
   const ip = parts[0].trim();
-  const port = parseInt(parts[1], 10);
-  if (!ip || !Number.isFinite(port) || port < 1 || port > 65535) return null;
+  const portStr = parts[1];
+  if (!ip || !/^\d+$/.test(portStr)) return null;
+  const port = Number(portStr);
+  if (port < 1 || port > 65535) return null;
   // ip:port:user:pass
   if (!auth && parts.length >= 4) auth = `${parts[2]}:${parts[3]}`;
 
   return { protocol, ip, port, auth: auth || null, schemeGiven };
+}
+
+/**
+ * Construit une URL de proxy unique (`http://[user:pass@]host:port`) à partir
+ * de n'importe quel format toléré par `parseProxyLine` — y compris l'ordre
+ * inversé `host:port@user:pass`. Utilisé pour `scraperProxy` (résidentiel de
+ * secours) qui est consommé directement par `new URL()` / `new ProxyAgent()`.
+ * Retourne `null` si la valeur est vide ou inexploitable.
+ */
+export function buildProxyUrl(raw: string | null | undefined): string | null {
+  if (!raw || !raw.trim()) return null;
+  const p = parseProxyLine(raw);
+  if (!p) return null;
+  let authPart = '';
+  if (p.auth) {
+    const sep = p.auth.indexOf(':');
+    const user = sep === -1 ? p.auth : p.auth.slice(0, sep);
+    const pass = sep === -1 ? '' : p.auth.slice(sep + 1);
+    authPart = `${encodeURIComponent(user)}:${encodeURIComponent(pass)}@`;
+  }
+  return `${p.protocol}://${authPart}${p.ip}:${p.port}`;
 }
 
 /**

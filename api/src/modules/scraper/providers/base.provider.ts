@@ -1,7 +1,7 @@
 import { Logger } from '@nestjs/common';
 import { ProxyAgent, request } from 'undici';
 import { ProxyItem } from '../proxy-item';
-import { parseProxyLine } from '../../../common/utils/proxy-parse';
+import { parseProxyLine, buildProxyUrl } from '../../../common/utils/proxy-parse';
 
 /**
  * Equivalent of `app/scraper/providers/base.py::BaseProxyProvider`. Concrete
@@ -35,8 +35,13 @@ export abstract class BaseProxyProvider {
 
   private buildDispatcher(): ProxyAgent | undefined {
     if (!this.proxy) return undefined;
+    const url = buildProxyUrl(this.proxy);
+    if (!url) {
+      this.logger.warn(`scraperProxy invalide "${this.proxy}" — requête directe (vérifiez les paramètres)`);
+      return undefined;
+    }
     try {
-      return new ProxyAgent(this.proxy);
+      return new ProxyAgent(url);
     } catch {
       this.logger.warn(`scraperProxy invalide "${this.proxy}" — requête directe (vérifiez les paramètres)`);
       return undefined;
