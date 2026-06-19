@@ -1,12 +1,11 @@
-# Traductions de l'API (nestjs-i18n)
+# Traductions de l'API
 
-Messages d'erreur de l'API, gérés par [`nestjs-i18n`](https://nestjs-i18n.com).
-Langues fournies : **`fr`** (défaut) et **`en`**. ⭐ Contributions bienvenues.
-
-## Ajouter une langue
-1. Copiez le dossier `en/` en `<code>/` (ex. `es/`, `de/`).
-2. Traduisez les valeurs de `<code>/messages.json` (gardez les **clés** identiques).
-3. PR. Aucune autre modification nécessaire : `nestjs-i18n` charge tous les dossiers.
+> ⚠️ Ce dossier (`messages.json`) n'est **plus chargé par rien** : `nestjs-i18n` est une
+> dépendance du projet mais n'est jamais enregistré via `I18nModule` dans `app.module.ts`.
+> Les messages d'erreur réels viennent de `api/src/common/utils/{fr,en}.ts`, lus par le
+> helper `t()` / `tReq()` dans `api/src/common/utils/i18n.ts` (langue résolue via une
+> `AsyncLocalStorage` remplie par `I18nMiddleware`). Pour ajouter ou traduire une clé,
+> éditez `common/utils/{fr,en}.ts` — pas les fichiers de ce dossier.
 
 ## Sélection de la langue
 Côté requête : `?lang=en`, en-tête `x-lang: en`, ou `Accept-Language`. Le panel envoie
