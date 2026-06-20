@@ -351,6 +351,8 @@ const en: Language = {
     'settings.geoIntervalHint': 'Geo resolution interval of new IPs.',
     'settings.concurrency': 'Checker concurrency',
     'settings.concurrencyHint': 'Number of parallel workers for the health-check.',
+    'settings.scraperMinPoolSize': 'Minimum pool threshold',
+    'settings.scraperMinPoolSizeHint': 'If the working proxy count drops below this threshold, an early rescrape is triggered (every 60s) instead of waiting for the normal interval. Lower this if your deployment naturally has few proxies, otherwise the scraper runs continuously.',
     'settings.deadProxies': 'Dead proxies',
     'settings.skipDeadProxies': 'Skip dead proxies',
     'settings.skipDeadProxiesHint': 'If enabled, dead proxies are not re-checked or re-scraped.',

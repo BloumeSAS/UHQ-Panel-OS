@@ -238,14 +238,15 @@ export class ScraperService implements OnModuleInit {
     while (true) {
       try {
         await this.runOnce();
-        // Adaptive scaling: every minute, check if working pool < 5000 -> rescrape
+        // Adaptive scaling: every minute, check if working pool < seuil configuré -> rescrape
         let accumulated = 0;
         while (accumulated < this.scrapeIntervalSec) {
           await new Promise((r) => setTimeout(r, 60_000));
           accumulated += 60;
+          const minPoolSize = this.settings.getPositiveNumber('scraperMinPoolSize');
           const working = await this.prisma.backendProxy.count({ where: { isWorking: true } });
-          if (working < 5_000) {
-            this.logger.warn(`Adaptive scaling: pool=${working}<5000, triggering early rescrape`);
+          if (working < minPoolSize) {
+            this.logger.warn(`Adaptive scaling: pool=${working}<${minPoolSize}, triggering early rescrape`);
             await this.runOnce();
             accumulated = 0;
           }

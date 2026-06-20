@@ -23,6 +23,11 @@ export const SETTING_DEFS = {
   proxyTimeout: { def: '3', env: 'PROXY_TIMEOUT', secret: false },
   proxyRacingTimeout: { def: '1.5', env: 'PROXY_RACING_TIMEOUT', secret: false },
   scrapeInterval: { def: '3600', env: 'SCRAPE_INTERVAL', secret: false },
+  // Adaptive scaling : si le pool de proxies fonctionnels tombe sous ce seuil,
+  // un rescrape anticipé est déclenché (toutes les 60s) au lieu d'attendre
+  // `scrapeInterval`. Mettre une petite valeur si votre déploiement a
+  // naturellement peu de proxies, sinon ça boucle en permanence.
+  scraperMinPoolSize: { def: '5000', env: 'SCRAPER_MIN_POOL_SIZE', secret: false },
   proxyCheckInterval: { def: '900', env: 'PROXY_CHECK_INTERVAL', secret: false },
   geoResolveInterval: { def: '600', env: 'GEO_RESOLVE_INTERVAL', secret: false },
   checkerConcurrency: { def: '500', env: 'CHECKER_CONCURRENCY', secret: false },

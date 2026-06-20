@@ -351,6 +351,8 @@ const fr: Language = {
     'settings.geoIntervalHint': 'Intervalle de résolution géo des nouvelles IPs.',
     'settings.concurrency': 'Checker concurrency',
     'settings.concurrencyHint': 'Nombre de workers parallèles pour le health-check.',
+    'settings.scraperMinPoolSize': 'Seuil minimum du pool',
+    'settings.scraperMinPoolSizeHint': 'Si le nombre de proxies fonctionnels tombe sous ce seuil, un scrape anticipé est déclenché (toutes les 60s) au lieu d\'attendre l\'intervalle normal. Baissez cette valeur si votre déploiement a naturellement peu de proxies, sinon le scraper tourne en continu.',
     'settings.deadProxies': 'Proxies morts',
     'settings.skipDeadProxies': 'Ignorer les proxies morts',
     'settings.skipDeadProxiesHint': 'Si actif, les proxies morts ne sont pas re-vérifiés ni re-scrapés.',

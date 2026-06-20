@@ -100,6 +100,7 @@ export class UpdateSettingsDto {
   @ApiPropertyOptional() @IsOptional() @IsString() proxyTimeout?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() proxyRacingTimeout?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() scrapeInterval?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() scraperMinPoolSize?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() proxyCheckInterval?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() geoResolveInterval?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() checkerConcurrency?: string;

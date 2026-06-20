@@ -290,6 +290,9 @@ export default function Settings() {
               <F label={t('settings.concurrency')} hint={t('settings.concurrencyHint')}>
                 <Input value={form.checkerConcurrency ?? ''} onChange={(e) => set('checkerConcurrency', e.target.value)} placeholder="500" />
               </F>
+              <F label={t('settings.scraperMinPoolSize')} hint={t('settings.scraperMinPoolSizeHint')}>
+                <Input value={form.scraperMinPoolSize ?? ''} onChange={(e) => set('scraperMinPoolSize', e.target.value)} placeholder="5000" />
+              </F>
             </Grid>
 
             <Separator label={t('settings.deadProxies')} />
