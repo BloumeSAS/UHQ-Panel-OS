@@ -52,6 +52,11 @@ export class ScraperService implements OnModuleInit {
   // Nombre d'échecs consécutifs avant auto-désactivation.
   // Valeur volontairement haute : l'adaptive scaling peut déclencher plusieurs cycles/minute.
   private readonly FAIL_THRESHOLD = 10;
+  // Certaines listes publiques "gratuites" renvoient des volumes aberrants
+  // (vu : ~1 million d'entrées d'une seule source). Sans plafond, le dédoublonnage
+  // synchrone ci-dessous peut bloquer l'event loop pendant plusieurs minutes —
+  // y compris le serveur proxy live, qui tourne dans le même process Node.
+  private readonly MAX_ITEMS_PER_SOURCE = 50_000;
 
   async runOnce(): Promise<void> {
     if (this.running) {
@@ -106,6 +111,12 @@ export class ScraperService implements OnModuleInit {
         }
 
         if (items.length > 0) {
+          if (items.length > this.MAX_ITEMS_PER_SOURCE) {
+            this.logger.warn(
+              `[${s.name}] ${items.length} proxies → tronqué à ${this.MAX_ITEMS_PER_SOURCE} (source suspecte ? liste anormalement énorme)`,
+            );
+            items = items.slice(0, this.MAX_ITEMS_PER_SOURCE);
+          }
           this.logger.log(`[${s.name}] → ${items.length} proxies`);
           allProxies.push(...items);
           await this.prisma.scraperSource.update({
@@ -126,15 +137,22 @@ export class ScraperService implements OnModuleInit {
       }));
 
       // ── Dedup & upsert ─────────────────────────────────────────────────────
+      // Boucle volontairement non-bloquante : avec ~150 sources, un cumul de
+      // plusieurs millions d'items est possible même avec le plafond par source.
+      // On rend la main à l'event loop périodiquement pour ne jamais geler le
+      // process (et donc le serveur proxy live, qui tourne dans le même process).
       const dedup = new Map<string, ProxyItem>();
       let torSkipped = 0;
       let urlSkipped = 0;
-      for (const p of allProxies) {
+      const YIELD_EVERY = 50_000;
+      for (let i = 0; i < allProxies.length; i++) {
+        const p = allProxies[i];
         if (this.torPorts.has(Number(p.port))) { torSkipped++; continue; }
         const url = urlOf(p);
         // Protège l'index btree PostgreSQL (max ~2700 octets) contre les auth trop longs
         if (url.length > 500) { urlSkipped++; continue; }
         if (!dedup.has(url)) dedup.set(url, p);
+        if (i > 0 && i % YIELD_EVERY === 0) await new Promise((r) => setImmediate(r));
       }
       if (torSkipped > 0) this.logger.log(`Skipped ${torSkipped} Tor-port proxies`);
       if (urlSkipped > 0) this.logger.warn(`Skipped ${urlSkipped} proxies with oversized URL (auth trop long — données corrompues ?)`);
