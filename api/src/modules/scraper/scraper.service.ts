@@ -113,9 +113,10 @@ export class ScraperService implements OnModuleInit {
         if (items.length > 0) {
           if (items.length > this.MAX_ITEMS_PER_SOURCE) {
             this.logger.warn(
-              `[${s.name}] ${items.length} proxies → tronqué à ${this.MAX_ITEMS_PER_SOURCE} (source suspecte ? liste anormalement énorme)`,
+              `[${s.name}] ${items.length} proxies → échantillon aléatoire de ${this.MAX_ITEMS_PER_SOURCE} ` +
+                `(liste anormalement énorme — un échantillon différent sera pris à chaque cycle pour finir par tout couvrir)`,
             );
-            items = items.slice(0, this.MAX_ITEMS_PER_SOURCE);
+            items = sampleRandom(items, this.MAX_ITEMS_PER_SOURCE);
           }
           this.logger.log(`[${s.name}] → ${items.length} proxies`);
           allProxies.push(...items);
@@ -286,4 +287,21 @@ export class ScraperService implements OnModuleInit {
       await new Promise((r) => setTimeout(r, this.geoIntervalSec * 1000));
     }
   }
+}
+
+/**
+ * Échantillon aléatoire de `k` éléments sans remise (partial Fisher-Yates,
+ * O(k) swaps — pas besoin de mélanger tout le tableau pour n'en garder qu'une
+ * fraction). Mute `arr` en place. Un échantillon différent à chaque appel
+ * permet de finir par couvrir une liste source énorme sur plusieurs cycles,
+ * plutôt que de retomber sur le même préfixe à chaque fois.
+ */
+function sampleRandom<T>(arr: T[], k: number): T[] {
+  const n = arr.length;
+  const take = Math.min(k, n);
+  for (let i = 0; i < take; i++) {
+    const j = i + Math.floor(Math.random() * (n - i));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr.slice(0, take);
 }
