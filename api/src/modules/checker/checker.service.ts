@@ -29,7 +29,7 @@ export class CheckerService implements OnModuleInit {
     return this.settings.getNumber('checkerConcurrency');
   }
   private get intervalSec(): number {
-    return this.settings.getNumber('proxyCheckInterval');
+    return this.settings.getPositiveNumber('proxyCheckInterval');
   }
   private running = false;
   private totalCount = 0;

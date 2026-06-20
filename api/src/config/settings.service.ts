@@ -122,6 +122,17 @@ export class SettingsService implements OnModuleInit {
     return Number.isFinite(n) ? n : Number(SETTING_DEFS[key].def);
   }
 
+  /**
+   * Comme `getNumber`, mais retombe sur le défaut si la valeur n'est pas
+   * strictement positive. Indispensable pour les intervalles qui pilotent une
+   * boucle `setTimeout` : `0`/vide/négatif y produirait une pause nulle et
+   * donc une boucle quasi infinie au lieu de respecter l'intervalle configuré.
+   */
+  getPositiveNumber(key: SettingKey): number {
+    const n = this.getNumber(key);
+    return n > 0 ? n : Number(SETTING_DEFS[key].def);
+  }
+
   getBool(key: SettingKey): boolean {
     return this.get(key).toLowerCase() === 'true';
   }

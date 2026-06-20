@@ -20,10 +20,10 @@ export class ScraperService implements OnModuleInit {
   private readonly logger = new Logger(ScraperService.name);
   // Intervalles lus dynamiquement depuis la config DB (fallback env).
   private get scrapeIntervalSec(): number {
-    return this.settings.getNumber('scrapeInterval');
+    return this.settings.getPositiveNumber('scrapeInterval');
   }
   private get geoIntervalSec(): number {
-    return this.settings.getNumber('geoResolveInterval');
+    return this.settings.getPositiveNumber('geoResolveInterval');
   }
   private running = false;
   // Tor SOCKS ports — these "proxies" exit through a random Tor node, so their
