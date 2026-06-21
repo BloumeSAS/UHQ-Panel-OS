@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { Socket } from 'net';
 import { PrismaService } from '../../database/prisma.service';
 import { SettingsService } from '../../config/settings.service';
@@ -23,10 +23,15 @@ import { NotificationService } from '../notifications/notification.service';
 @Injectable()
 export class CheckerService implements OnModuleInit {
   private readonly logger = new Logger(CheckerService.name);
-  private readonly timeoutMs = 5_000;
-  // Concurrence et intervalle lus depuis la config DB (fallback env).
+  // Concurrence, timeout et intervalle lus depuis la config DB (fallback env).
   private get concurrency(): number {
     return this.settings.getNumber('checkerConcurrency');
+  }
+  // Trop bas, un proxy lent (résidentiel, longue distance) est compté KO à
+  // tort ; configurable car la valeur idéale dépend fortement du mix de
+  // sources scrapées (datacenter rapide vs résidentiel lent).
+  private get timeoutMs(): number {
+    return this.settings.getPositiveNumber('checkerTimeout') * 1000;
   }
   private get intervalSec(): number {
     return this.settings.getPositiveNumber('proxyCheckInterval');
@@ -136,25 +141,72 @@ export class CheckerService implements OnModuleInit {
   }
 
   /**
+   * On-demand single-proxy check (Pool UI "Tester" button). Runs the exact
+   * same retry + latency + country logic as the bulk cycle, but persists the
+   * result immediately instead of waiting for this proxy's turn in the next
+   * `proxyCheckInterval` sweep.
+   */
+  async checkOne(id: string): Promise<{ id: string; alive: boolean; latencyMs: number | null; country: string | null }> {
+    const row = await this.prisma.backendProxy.findUnique({ where: { id } });
+    if (!row) throw new NotFoundException('Proxy introuvable');
+    let auth: string | null = null;
+    try {
+      const u = new URL(row.url);
+      if (u.username) auth = `${decodeURIComponent(u.username)}:${decodeURIComponent(u.password)}`;
+    } catch {
+      /* */
+    }
+    const result = await this.checkSingle({ ...row, auth } as UpstreamProxy);
+
+    const data: Record<string, unknown> = {
+      isWorking: result.alive,
+      lastChecked: new Date(),
+      failCount: result.alive ? 0 : { increment: 1 },
+      successCount: result.alive ? { increment: 1 } : undefined,
+      failureCount: result.alive ? undefined : { increment: 1 },
+    };
+    if (result.alive && result.country) data.country = result.country;
+    if (result.latencyMs !== null) {
+      data.averageLatency =
+        row.averageLatency != null ? row.averageLatency * 0.7 + result.latencyMs * 0.3 : result.latencyMs;
+    }
+    for (const k of Object.keys(data)) if (data[k] === undefined) delete data[k];
+    await this.prisma.backendProxy.update({ where: { id }, data });
+
+    if (!result.alive) {
+      void this.notificationService.notifyProxyDead(row.url, 'Manual check failed');
+    }
+    return { id, alive: result.alive, latencyMs: result.latencyMs, country: result.alive ? result.country : null };
+  }
+
+  /**
    * Liveness check, then — only if alive — probe the real exit country so we
    * never pay the country round-trip on the (majority) dead proxies.
+   *
+   * A single failed attempt is retried once before declaring the proxy dead:
+   * a transient blip (dropped SYN, momentary overload) would otherwise sink
+   * a perfectly functional proxy for a full `proxyCheckInterval` cycle.
    */
-  private async checkSingle(proxy: UpstreamProxy): Promise<{ alive: boolean; country: string | null }> {
-    const alive = await this.connectCheck(proxy);
-    if (!alive) return { alive: false, country: null };
+  private async checkSingle(
+    proxy: UpstreamProxy,
+  ): Promise<{ alive: boolean; country: string | null; latencyMs: number | null }> {
+    let attempt = await this.connectCheck(proxy);
+    if (!attempt.alive) attempt = await this.connectCheck(proxy);
+    if (!attempt.alive) return { alive: false, country: null, latencyMs: null };
     const country = await this.probeExitCountry(proxy).catch(() => null);
-    return { alive: true, country };
+    return { alive: true, country, latencyMs: attempt.latencyMs };
   }
 
   /** HTTPS CONNECT to google.com:443 — proxy is "working" if the handshake passes. */
-  private async connectCheck(proxy: UpstreamProxy): Promise<boolean> {
+  private async connectCheck(proxy: UpstreamProxy): Promise<{ alive: boolean; latencyMs: number | null }> {
+    const startedAt = Date.now();
     let socket: Socket | null = null;
     try {
       socket = await tcpConnect(proxy.ip, proxy.port, this.timeoutMs);
       await performHandshake(socket, proxy, 'google.com:443', this.timeoutMs);
-      return true;
+      return { alive: true, latencyMs: Date.now() - startedAt };
     } catch {
-      return false;
+      return { alive: false, latencyMs: null };
     } finally {
       if (socket) {
         try {
@@ -286,8 +338,49 @@ export class CheckerService implements OnModuleInit {
           );
         }
       }
+      await this.updateCounters(batch);
     } catch (e) {
       this.logger.error(`Committer batch failed: ${e}`);
+    }
+  }
+
+  /**
+   * Bulk-write per-proxy `averageLatency`/`successCount`/`failureCount`.
+   * These columns are read by `ProxyServerService.getUpstreamProxy()`'s
+   * scoring and by the Pool UI's latency column, but nothing in the codebase
+   * ever wrote them — every proxy scored identically regardless of real
+   * performance. `updateMany` can't express a distinct value per row, so this
+   * uses a single `UPDATE ... FROM (VALUES ...)` per chunk instead of one
+   * round-trip per proxy.
+   */
+  private async updateCounters(batch: CheckResult[]): Promise<void> {
+    const CHUNK = 1000;
+    for (let i = 0; i < batch.length; i += CHUNK) {
+      const slice = batch.slice(i, i + CHUNK);
+      const values: string[] = [];
+      const params: unknown[] = [];
+      for (const r of slice) {
+        const base = params.length;
+        params.push(r.id, r.latencyMs, r.alive);
+        values.push(`($${base + 1}, $${base + 2}::float, $${base + 3}::boolean)`);
+      }
+      const sql = `
+        UPDATE "BackendProxy" AS b
+        SET "averageLatency" = CASE
+              WHEN v.latency_ms IS NOT NULL
+              THEN COALESCE(b."averageLatency" * 0.7 + v.latency_ms * 0.3, v.latency_ms)
+              ELSE b."averageLatency"
+            END,
+            "successCount" = b."successCount" + CASE WHEN v.alive THEN 1 ELSE 0 END,
+            "failureCount" = b."failureCount" + CASE WHEN v.alive THEN 0 ELSE 1 END
+        FROM (VALUES ${values.join(', ')}) AS v(id, latency_ms, alive)
+        WHERE b.id = v.id
+      `;
+      try {
+        await this.prisma.withRetry(() => this.prisma.$executeRawUnsafe(sql, ...params));
+      } catch (e) {
+        this.logger.error(`Counters update failed: ${e}`);
+      }
     }
   }
 
@@ -321,4 +414,5 @@ interface CheckResult {
   url: string;
   alive: boolean;
   country: string | null;
+  latencyMs: number | null;
 }

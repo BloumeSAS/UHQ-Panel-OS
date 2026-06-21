@@ -16,6 +16,7 @@ import {
   Download,
   ChevronLeft,
   ChevronRight,
+  Gauge,
 } from 'lucide-react';
 import { api, apiError } from '@/lib/api';
 import { useT } from '@/lib/i18n';
@@ -135,6 +136,23 @@ export default function Pool() {
   const blacklist = async (id: string, value: boolean) => {
     await api.patch(`/monitoring/proxies/${id}/blacklist`, { blacklisted: value });
     invalidate();
+  };
+
+  const [testingIds, setTestingIds] = useState<Set<string>>(new Set());
+  const testProxy = async (id: string) => {
+    setTestingIds((s) => new Set(s).add(id));
+    try {
+      await api.post(`/checker/proxies/${id}/check`);
+      invalidate();
+    } catch (err) {
+      alert(apiError(err));
+    } finally {
+      setTestingIds((s) => {
+        const next = new Set(s);
+        next.delete(id);
+        return next;
+      });
+    }
   };
 
   const [exporting, setExporting] = useState(false);
@@ -527,6 +545,16 @@ export default function Pool() {
                       </TD>
                       <TD className="text-right">
                         <div className="flex items-center justify-end gap-1">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => testProxy(p.id)}
+                            disabled={testingIds.has(p.id)}
+                            title={t('pool.testNow')}
+                            className="h-7 w-7 rounded-md hover:bg-blue-500/10 text-muted-foreground hover:text-blue-500 transition-colors disabled:opacity-50"
+                          >
+                            <Gauge className={`h-3.5 w-3.5 ${testingIds.has(p.id) ? 'animate-pulse' : ''}`} />
+                          </Button>
                           {!p.is_working && !p.is_blacklisted && (
                             <Button
                               variant="ghost"

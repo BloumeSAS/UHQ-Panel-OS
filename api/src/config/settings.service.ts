@@ -31,6 +31,9 @@ export const SETTING_DEFS = {
   proxyCheckInterval: { def: '900', env: 'PROXY_CHECK_INTERVAL', secret: false },
   geoResolveInterval: { def: '600', env: 'GEO_RESOLVE_INTERVAL', secret: false },
   checkerConcurrency: { def: '500', env: 'CHECKER_CONCURRENCY', secret: false },
+  // Délai max (s) accordé à un proxy pour le health-check (connect + handshake).
+  // Trop bas = faux négatifs sur les proxies lents (résidentiels, longue distance).
+  checkerTimeout: { def: '5', env: 'CHECKER_TIMEOUT', secret: false },
   skipDeadProxies: { def: 'true', env: undefined, secret: false },
   deadProxyMaxRetries: { def: '3', env: undefined, secret: false },
   scraperProxy: { def: '', env: 'SCRAPER_PROXY', secret: true },

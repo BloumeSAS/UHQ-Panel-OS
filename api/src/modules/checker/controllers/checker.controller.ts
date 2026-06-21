@@ -1,5 +1,5 @@
-import { Controller, Get, Post, UseGuards } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
+import { ApiBearerAuth, ApiParam, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../../common/guards/roles.guard';
 import { Roles } from '../../../common/decorators/roles.decorator';
@@ -53,5 +53,13 @@ export class CheckerController {
   async run() {
     this.checker.runOnce().catch(() => undefined);
     return { status: 'success', message: 'Cycle de vérification déclenché' };
+  }
+
+  /** Test immédiat d'un seul proxy (bouton "Tester" du Pool) — ne dépend pas du cycle périodique. */
+  @ApiParam({ name: 'id', description: 'ID du proxy dans le pool' })
+  @Post('proxies/:id/check')
+  async checkOne(@Param('id') id: string) {
+    const data = await this.checker.checkOne(id);
+    return { status: 'success', data };
   }
 }

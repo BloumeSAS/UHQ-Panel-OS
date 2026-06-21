@@ -104,6 +104,7 @@ export class UpdateSettingsDto {
   @ApiPropertyOptional() @IsOptional() @IsString() proxyCheckInterval?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() geoResolveInterval?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() checkerConcurrency?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() checkerTimeout?: string;
   @ApiPropertyOptional() @IsOptional() @IsBoolean() @Transform(({ value }) => value === undefined || value === null ? value : (value === 'true' || value === true)) skipDeadProxies?: boolean;
   @ApiPropertyOptional() @IsOptional() @IsString() deadProxyMaxRetries?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() scraperProxy?: string;
