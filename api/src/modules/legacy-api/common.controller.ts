@@ -89,6 +89,7 @@ export class CommonController {
         provider: p.provider,
         url: `${p.protocol}://${p.ip}:${p.port}`,
         sticky_sessions: usageMap[p.id] ?? 0,
+        latency_ms: p.averageLatency ? Math.round(p.averageLatency) : null,
       })),
     };
   }
@@ -137,5 +138,43 @@ export class CommonController {
       Object.entries(count).sort(([, a], [, b]) => b - a),
     );
     return { status: 'success', data: sorted };
+  }
+
+  /**
+   * Nombre de pays et d'IPs disponibles dans une catégorie (pool). Sans
+   * `pool`, porte sur l'ensemble du pool partagé (toutes catégories).
+   */
+  @ApiQuery({ name: 'pool', required: false, description: 'Nom de la catégorie/pool (vide = tout le pool)' })
+  @Get('category-stats')
+  @Scopes('read:pool')
+  async categoryStats(@Query('pool') pool?: string) {
+    const where: any = { isWorking: true };
+    if (pool) where.pool = pool;
+    const proxies = await this.prisma.backendProxy.findMany({
+      where,
+      select: { country: true, ip: true },
+    });
+    const byCountry: Record<string, number> = {};
+    const ips = new Set<string>();
+    for (const p of proxies) {
+      ips.add(p.ip);
+      if (p.country && p.country !== 'Unknown') {
+        const code = p.country.trim().toUpperCase();
+        byCountry[code] = (byCountry[code] ?? 0) + 1;
+      }
+    }
+    const sortedByCountry = Object.fromEntries(
+      Object.entries(byCountry).sort(([, a], [, b]) => b - a),
+    );
+    return {
+      status: 'success',
+      pool: pool || null,
+      data: {
+        countries_count: Object.keys(sortedByCountry).length,
+        ip_count: ips.size,
+        proxy_count: proxies.length,
+        by_country: sortedByCountry,
+      },
+    };
   }
 }
