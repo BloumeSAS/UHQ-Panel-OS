@@ -271,6 +271,8 @@ export default function Settings() {
                 <Input value={form.proxyRacingTimeout ?? ''} onChange={(e) => set('proxyRacingTimeout', e.target.value)} placeholder="1.5" />
               </F>
             </Grid>
+
+            <ProxyOverridesSummary />
           </>
         )}
 
@@ -727,6 +729,61 @@ function Separator({ label }: { label: string }) {
     <div className="flex items-center gap-3 pt-2">
       <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground whitespace-nowrap">{label}</span>
       <hr className="flex-1 border-border" />
+    </div>
+  );
+}
+
+/**
+ * Récapitulatif des pools/comptes ayant un port et/ou domaine dédié — pour
+ * que publicProxyHost/Port (valeurs par défaut) ne masquent pas l'existence
+ * de ces surcharges configurées ailleurs (Proxy Pools, Sous-utilisateurs).
+ */
+function ProxyOverridesSummary() {
+  const t = useT();
+  const { data: pools } = useQuery({
+    queryKey: ['proxy-pools'],
+    queryFn: async () => (await api.get('/proxy-pools')).data.data as { id: string; name: string; port: number | null; domain: string | null }[],
+  });
+  const { data: subUsers } = useQuery({
+    queryKey: ['subusers'],
+    queryFn: async () => (await api.get('/subusers')).data.data as { id: string; username: string; label: string; port: number | null; domain: string | null }[],
+  });
+
+  const poolOverrides = (pools ?? []).filter((p) => p.port != null || p.domain);
+  const userOverrides = (subUsers ?? []).filter((u) => u.port != null || u.domain);
+
+  if (!poolOverrides.length && !userOverrides.length) return null;
+
+  return (
+    <>
+      <Separator label={t('settings.proxyOverrides')} />
+      <p className="text-xs text-muted-foreground">{t('settings.proxyOverridesHint')}</p>
+      <div className="space-y-2">
+        {poolOverrides.map((p) => (
+          <OverrideRow key={`pool-${p.id}`} kind={t('pools.title')} label={p.name} domain={p.domain} port={p.port} />
+        ))}
+        {userOverrides.map((u) => (
+          <OverrideRow key={`sub-${u.id}`} kind={t('nav.subusers')} label={`${u.label} (${u.username})`} domain={u.domain} port={u.port} />
+        ))}
+      </div>
+    </>
+  );
+}
+
+function OverrideRow({
+  kind, label, domain, port,
+}: {
+  kind: string; label: string; domain: string | null; port: number | null;
+}) {
+  return (
+    <div className="flex items-center justify-between rounded-lg border bg-muted/20 px-4 py-2.5 gap-4">
+      <p className="min-w-0 truncate text-sm">
+        <span className="text-muted-foreground">{kind} · </span>
+        <span className="font-medium">{label}</span>
+      </p>
+      <p className="font-mono text-xs text-muted-foreground whitespace-nowrap">
+        {domain || '—'}{port ? `:${port}` : ''}
+      </p>
     </div>
   );
 }

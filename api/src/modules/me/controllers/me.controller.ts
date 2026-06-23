@@ -17,7 +17,7 @@ import { PrismaService } from '../../../database/prisma.service';
 import { SettingsService } from '../../../config/settings.service';
 import { ProxyServerService } from '../../proxy-engine/proxy-server.service';
 import { buildStickyList, formatSubUser } from '../../../common/utils/proxy-format';
-import { resolveConnectionEndpoint } from '../../../common/utils/connection-endpoint';
+import { buildPoolEndpointMap, resolveConnectionEndpoint, resolveHostPortSync } from '../../../common/utils/connection-endpoint';
 import { t } from '../../../common/utils/i18n';
 
 type Period = 'week' | 'month' | 'year' | 'all';
@@ -50,7 +50,20 @@ export class PanelMeController {
   @Get('proxies')
   async proxies(@CurrentUser() me: JwtUser) {
     const list = await this.prisma.userProxy.findMany({ where: { ownerId: me.id } });
-    return { status: 'success', data: list.map((u) => ({ ...formatSubUser(u), port: u.port ?? null, domain: u.domain ?? null })) };
+    const poolMap = await buildPoolEndpointMap(this.prisma, list.map((u) => u.pool));
+    return {
+      status: 'success',
+      data: list.map((u) => {
+        const { host, port } = resolveHostPortSync(this.settings, u, u.pool ? poolMap.get(u.pool) : null);
+        return {
+          ...formatSubUser(u),
+          port: u.port ?? null,
+          domain: u.domain ?? null,
+          effective_host: host,
+          effective_port: port,
+        };
+      }),
+    };
   }
 
   @ApiParam({ name: 'id', description: 'ID du sous-utilisateur proxy' })
@@ -108,6 +121,11 @@ export class PanelMeController {
       format: 'host:port:username:session:password',
       count: c,
       proxies: buildStickyList(proxy, host, port, c),
+      // Format rotatif (pas de session : chaque nouvelle connexion sur cette
+      // même ligne peut tomber sur un upstream différent) — pratique pour les
+      // clients qui ne gèrent pas le host:port:user:session:pass.
+      rotating_format: 'username:password@host:port',
+      rotating: `${proxy.username}:${proxy.password}@${host}:${port}`,
     };
   }
 
@@ -129,7 +147,17 @@ export class PanelMeController {
       data,
     });
     this.engine.invalidateUserCache(updated.username);
-    return { status: 'success', data: { ...formatSubUser(updated), port: updated.port ?? null, domain: updated.domain ?? null } };
+    const { host, port } = await resolveConnectionEndpoint(this.prisma, this.settings, updated);
+    return {
+      status: 'success',
+      data: {
+        ...formatSubUser(updated),
+        port: updated.port ?? null,
+        domain: updated.domain ?? null,
+        effective_host: host,
+        effective_port: port,
+      },
+    };
   }
 
   /** Charge un proxy en garantissant qu'il appartient à l'utilisateur courant. */

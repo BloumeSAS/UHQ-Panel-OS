@@ -36,6 +36,8 @@ interface MyProxy {
   allowed_ips: string | null;
   port: number | null;
   domain: string | null;
+  effective_host: string;
+  effective_port: string;
 }
 
 export default function MyProxies() {
@@ -90,6 +92,7 @@ export default function MyProxies() {
               <div className="space-y-2">
                 <Row label={t('sub.username')} value={p.username} copyable />
                 <Row label={t('sub.password')} value={p.password} copyable />
+                <Row label={t('me.connection')} value={`${p.effective_host}:${p.effective_port}`} copyable />
                 <Row label={t('sub.threads')} value={`${p.threads_limit}`} />
                 <Row label={t('sub.country')} value={p.country_filter || '—'} />
                 <Row label={t('sub.ipWhitelist')} value={p.allowed_ips || '—'} />

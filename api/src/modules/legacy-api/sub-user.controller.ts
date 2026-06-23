@@ -14,6 +14,7 @@ import { Scopes } from '../../common/decorators/scopes.decorator';
 import { PrismaService } from '../../database/prisma.service';
 import { ProxyServerService } from '../proxy-engine/proxy-server.service';
 import { buildStickyList, formatSubUser, randomString } from '../../common/utils/proxy-format';
+import { buildPoolEndpointMap, resolveConnectionEndpoint, resolveHostPortSync } from '../../common/utils/connection-endpoint';
 import { SettingsService } from '../../config/settings.service';
 import {
   AllowedIpsAddDto,
@@ -38,7 +39,14 @@ export class SubUserController {
   @Scopes('read:proxies')
   async list() {
     const users = await this.prisma.userProxy.findMany();
-    return { status: 'success', data: users.map(formatSubUser) };
+    const poolMap = await buildPoolEndpointMap(this.prisma, users.map((u) => u.pool));
+    return {
+      status: 'success',
+      data: users.map((u) => ({
+        ...formatSubUser(u),
+        ...resolveHostPortSync(this.settings, u, u.pool ? poolMap.get(u.pool) : null),
+      })),
+    };
   }
 
   @Post('create')
@@ -182,8 +190,7 @@ export class SubUserController {
     const c = Math.max(1, Math.min(1000, parseInt(count, 10) || 100));
     const user = await this.prisma.userProxy.findUnique({ where: { id } });
     if (!user) throw new HttpException('Sub-user not found', HttpStatus.NOT_FOUND);
-    const host = this.settings.get('publicProxyHost');
-    const port = this.settings.get('publicProxyPort');
+    const { host, port } = await resolveConnectionEndpoint(this.prisma, this.settings, user);
     const lines = buildStickyList(user, host, port, c);
     return {
       status: 'success',

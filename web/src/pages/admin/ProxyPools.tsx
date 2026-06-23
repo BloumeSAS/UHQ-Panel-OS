@@ -10,6 +10,7 @@ import {
   CardContent,
   Input,
   Label,
+  Switch,
   Table,
   TBody,
   TD,
@@ -34,6 +35,11 @@ interface ProxyPool {
   color: string | null;
   port: number | null;
   domain: string | null;
+  alwaysOnline: boolean;
+  fakeCountries: string | null;
+  fakeIpCountMin: number | null;
+  fakeIpCountMax: number | null;
+  fakeIpCount: number | null;
   createdAt: string;
 }
 
@@ -92,6 +98,15 @@ export default function ProxyPools() {
                         style={{ backgroundColor: pool.color ?? '#6366f1' }}
                       />
                       {pool.name}
+                      {pool.alwaysOnline && (
+                        <Badge
+                          variant="secondary"
+                          className="bg-emerald-100 text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-400 text-[10px]"
+                          title={pool.fakeIpCount ? `${pool.fakeCountries ?? ''} · ${pool.fakeIpCount.toLocaleString()} IP` : undefined}
+                        >
+                          {t('pools.alwaysOnline')}
+                        </Badge>
+                      )}
                     </div>
                   </TD>
                   <TD className="text-sm text-muted-foreground">{pool.description || '—'}</TD>
@@ -146,26 +161,42 @@ export default function ProxyPools() {
 
 // ── Create dialog ─────────────────────────────────────────────────────────────
 
+const EMPTY_POOL_FORM = {
+  name: '', description: '', color: '#6366f1', port: '', domain: '',
+  alwaysOnline: false,
+  fakeCountries: '',
+  fakeIpMode: 'fixed' as 'fixed' | 'random',
+  fakeIpFixed: '',
+  fakeIpMin: '',
+  fakeIpMax: '',
+};
+
 function CreateDialog({ onCreated }: { onCreated: () => void }) {
   const t = useT();
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ name: '', description: '', color: '#6366f1', port: '', domain: '' });
+  const [form, setForm] = useState(EMPTY_POOL_FORM);
   const [error, setError] = useState('');
-  const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
+  const set = (k: string, v: any) => setForm((f) => ({ ...f, [k]: v }));
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     try {
+      const fakeMin = form.fakeIpMode === 'fixed' ? form.fakeIpFixed : form.fakeIpMin;
+      const fakeMax = form.fakeIpMode === 'fixed' ? form.fakeIpFixed : form.fakeIpMax;
       await api.post('/proxy-pools', {
         name: form.name,
         description: form.description || undefined,
         color: form.color,
         port: form.port ? Number(form.port) : undefined,
         domain: form.domain || undefined,
+        alwaysOnline: form.alwaysOnline,
+        fakeCountries: form.fakeCountries || undefined,
+        fakeIpCountMin: fakeMin ? Number(fakeMin) : undefined,
+        fakeIpCountMax: fakeMax ? Number(fakeMax) : undefined,
       });
       setOpen(false);
-      setForm({ name: '', description: '', color: '#6366f1', port: '', domain: '' });
+      setForm(EMPTY_POOL_FORM);
       toast.success(t('pools.created'));
       onCreated();
     } catch (err) {
@@ -190,26 +221,39 @@ function CreateDialog({ onCreated }: { onCreated: () => void }) {
 
 function EditDialog({ pool, onClose, onSaved }: { pool: ProxyPool; onClose: () => void; onSaved: () => void }) {
   const t = useT();
+  const isRandom = pool.fakeIpCountMin != null && pool.fakeIpCountMax != null && pool.fakeIpCountMin !== pool.fakeIpCountMax;
   const [form, setForm] = useState({
     name: pool.name,
     description: pool.description ?? '',
     color: pool.color ?? '#6366f1',
     port: pool.port != null ? String(pool.port) : '',
     domain: pool.domain ?? '',
+    alwaysOnline: pool.alwaysOnline,
+    fakeCountries: pool.fakeCountries ?? '',
+    fakeIpMode: (isRandom ? 'random' : 'fixed') as 'fixed' | 'random',
+    fakeIpFixed: !isRandom && pool.fakeIpCountMin != null ? String(pool.fakeIpCountMin) : '',
+    fakeIpMin: pool.fakeIpCountMin != null ? String(pool.fakeIpCountMin) : '',
+    fakeIpMax: pool.fakeIpCountMax != null ? String(pool.fakeIpCountMax) : '',
   });
   const [error, setError] = useState('');
-  const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
+  const set = (k: string, v: any) => setForm((f) => ({ ...f, [k]: v }));
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     try {
+      const fakeMin = form.fakeIpMode === 'fixed' ? form.fakeIpFixed : form.fakeIpMin;
+      const fakeMax = form.fakeIpMode === 'fixed' ? form.fakeIpFixed : form.fakeIpMax;
       await api.patch(`/proxy-pools/${pool.id}`, {
         name: form.name,
         description: form.description || undefined,
         color: form.color,
         port: form.port ? Number(form.port) : null,
         domain: form.domain || null,
+        alwaysOnline: form.alwaysOnline,
+        fakeCountries: form.fakeCountries || null,
+        fakeIpCountMin: fakeMin ? Number(fakeMin) : null,
+        fakeIpCountMax: fakeMax ? Number(fakeMax) : null,
       });
       toast.success(t('pools.updated'));
       onSaved();
@@ -233,8 +277,12 @@ function EditDialog({ pool, onClose, onSaved }: { pool: ProxyPool; onClose: () =
 function PoolForm({
   form, set, error, onSubmit, submitLabel,
 }: {
-  form: { name: string; description: string; color: string; port: string; domain: string };
-  set: (k: string, v: string) => void;
+  form: {
+    name: string; description: string; color: string; port: string; domain: string;
+    alwaysOnline: boolean; fakeCountries: string; fakeIpMode: 'fixed' | 'random';
+    fakeIpFixed: string; fakeIpMin: string; fakeIpMax: string;
+  };
+  set: (k: string, v: any) => void;
   error: string;
   onSubmit: (e: React.FormEvent) => void;
   submitLabel: string;
@@ -300,6 +348,68 @@ function PoolForm({
         />
         <p className="text-xs text-muted-foreground">{t('pools.domainHint')}</p>
       </div>
+
+      <div className="flex items-center justify-between rounded-lg border bg-muted/20 px-4 py-3 gap-4">
+        <div className="min-w-0">
+          <p className="text-sm font-medium">{t('pools.alwaysOnline')}</p>
+          <p className="text-xs text-muted-foreground mt-0.5 leading-snug">{t('pools.alwaysOnlineHint')}</p>
+        </div>
+        <Switch checked={form.alwaysOnline} onCheckedChange={(v) => set('alwaysOnline', v)} />
+      </div>
+
+      {form.alwaysOnline && (
+        <>
+          <div className="space-y-1.5">
+            <Label>{t('pools.fakeCountries')}</Label>
+            <Input
+              value={form.fakeCountries}
+              onChange={(e) => set('fakeCountries', e.target.value)}
+              placeholder={t('pools.fakeCountriesPlaceholder')}
+            />
+            <p className="text-xs text-muted-foreground">{t('pools.fakeCountriesHint')}</p>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>{t('pools.fakeIpCount')}</Label>
+            <select
+              value={form.fakeIpMode}
+              onChange={(e) => set('fakeIpMode', e.target.value)}
+              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus:ring-1 focus:ring-ring"
+            >
+              <option value="fixed">{t('pools.fakeIpModeFixed')}</option>
+              <option value="random">{t('pools.fakeIpModeRandom')}</option>
+            </select>
+            {form.fakeIpMode === 'fixed' ? (
+              <Input
+                type="number"
+                min={0}
+                value={form.fakeIpFixed}
+                onChange={(e) => set('fakeIpFixed', e.target.value)}
+                placeholder="150000"
+              />
+            ) : (
+              <div className="grid grid-cols-2 gap-2">
+                <Input
+                  type="number"
+                  min={0}
+                  value={form.fakeIpMin}
+                  onChange={(e) => set('fakeIpMin', e.target.value)}
+                  placeholder="100000"
+                />
+                <Input
+                  type="number"
+                  min={0}
+                  value={form.fakeIpMax}
+                  onChange={(e) => set('fakeIpMax', e.target.value)}
+                  placeholder="300000"
+                />
+              </div>
+            )}
+            <p className="text-xs text-muted-foreground">{t('pools.fakeIpCountHint')}</p>
+          </div>
+        </>
+      )}
+
       {error && <p className="text-sm text-destructive">{error}</p>}
       <DialogFooter>
         <Button type="submit">{submitLabel}</Button>

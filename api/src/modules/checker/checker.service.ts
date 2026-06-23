@@ -61,15 +61,33 @@ export class CheckerService implements OnModuleInit {
     const startTime = Date.now();
     try {
       await this.prisma.ensureConnection();
+
+      // Pools "Toujours en ligne" : leurs proxies ne sont jamais testés (donc
+      // jamais marqués KO) — on les force d'abord à isWorking=true (rattrape
+      // tout état mort antérieur) puis on les exclut du cycle de vérification.
+      const alwaysOnlineNames = (
+        await this.prisma.proxyPool.findMany({ where: { alwaysOnline: true }, select: { name: true } })
+      ).map((p) => p.name);
+      if (alwaysOnlineNames.length > 0) {
+        await this.prisma.backendProxy.updateMany({
+          where: { pool: { in: alwaysOnlineNames }, isWorking: false },
+          data: { isWorking: true, failCount: 0 },
+        });
+      }
+
       const skipDead = this.settings.getBool('skipDeadProxies');
       const maxRetries = this.settings.getNumber('deadProxyMaxRetries');
+      const andConditions: any[] = [{ isBlacklisted: false }];
+      if (alwaysOnlineNames.length > 0) {
+        // `pool` est nullable : un simple `notIn` exclurait à tort les lignes
+        // sans pool (NULL NOT IN (...) = NULL côté SQL) — OR explicite requis.
+        andConditions.push({ OR: [{ pool: null }, { pool: { notIn: alwaysOnlineNames } }] });
+      }
+      if (skipDead) {
+        andConditions.push({ OR: [{ isWorking: true }, { failCount: { lt: maxRetries } }] });
+      }
       const rawCandidates = await this.prisma.backendProxy.findMany({
-        where: {
-          isBlacklisted: false,
-          ...(skipDead
-            ? { OR: [{ isWorking: true }, { failCount: { lt: maxRetries } }] }
-            : {}),
-        },
+        where: { AND: andConditions },
         orderBy: { lastChecked: 'asc' },
         take: 150_000,
       });
@@ -158,12 +176,21 @@ export class CheckerService implements OnModuleInit {
     }
     const result = await this.checkSingle({ ...row, auth } as UpstreamProxy);
 
+    // Pool "Toujours en ligne" : le test réel s'exécute (diagnostic visible
+    // par l'admin), mais le résultat persisté en DB ne marque jamais ce proxy
+    // KO — même comportement que le cycle automatique.
+    const poolRow = row.pool
+      ? await this.prisma.proxyPool.findUnique({ where: { name: row.pool }, select: { alwaysOnline: true } })
+      : null;
+    const alwaysOnline = poolRow?.alwaysOnline ?? false;
+    const effectiveAlive = alwaysOnline ? true : result.alive;
+
     const data: Record<string, unknown> = {
-      isWorking: result.alive,
+      isWorking: effectiveAlive,
       lastChecked: new Date(),
-      failCount: result.alive ? 0 : { increment: 1 },
-      successCount: result.alive ? { increment: 1 } : undefined,
-      failureCount: result.alive ? undefined : { increment: 1 },
+      failCount: effectiveAlive ? 0 : { increment: 1 },
+      successCount: effectiveAlive ? { increment: 1 } : undefined,
+      failureCount: effectiveAlive ? undefined : { increment: 1 },
     };
     if (result.alive && result.country) data.country = result.country;
     if (result.latencyMs !== null) {
@@ -173,10 +200,10 @@ export class CheckerService implements OnModuleInit {
     for (const k of Object.keys(data)) if (data[k] === undefined) delete data[k];
     await this.prisma.backendProxy.update({ where: { id }, data });
 
-    if (!result.alive) {
+    if (!effectiveAlive) {
       void this.notificationService.notifyProxyDead(row.url, 'Manual check failed');
     }
-    return { id, alive: result.alive, latencyMs: result.latencyMs, country: result.alive ? result.country : null };
+    return { id, alive: effectiveAlive, latencyMs: result.latencyMs, country: effectiveAlive ? result.country : null };
   }
 
   /**

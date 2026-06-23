@@ -83,6 +83,7 @@ export default function SubUsers() {
   });
 
   const [sticky, setSticky] = useState<string[] | null>(null);
+  const [rotating, setRotating] = useState<string | null>(null);
   const [editing, setEditing] = useState<SubUser | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -122,6 +123,7 @@ export default function SubUsers() {
   const showSticky = async (id: string) => {
     const { data } = await api.get(`/subusers/${id}/sticky-list?count=50`);
     setSticky(data.proxies);
+    setRotating(data.rotating);
   };
 
   const usedGb = (u: SubUser) => u.bytes_sent + u.bytes_received;
@@ -397,11 +399,31 @@ export default function SubUsers() {
       </Card>
 
       {/* Sticky list dialog */}
-      <Dialog open={!!sticky} onOpenChange={(o) => !o && setSticky(null)}>
+      <Dialog
+        open={!!sticky}
+        onOpenChange={(o) => {
+          if (!o) {
+            setSticky(null);
+            setRotating(null);
+          }
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{t('sub.stickyList')}</DialogTitle>
           </DialogHeader>
+          {rotating && (
+            <div className="space-y-1.5">
+              <Label>{t('sub.rotatingFormat')}</Label>
+              <div className="flex items-center gap-2">
+                <code className="flex-1 truncate rounded-md border bg-muted px-3 py-2 text-xs">{rotating}</code>
+                <Button variant="outline" size="icon" onClick={() => navigator.clipboard.writeText(rotating)} title={t('common.copy')}>
+                  <Copy className="h-4 w-4" />
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">{t('sub.rotatingFormatHint')}</p>
+            </div>
+          )}
           <div className="flex justify-end">
             <Button variant="outline" size="sm" onClick={() => navigator.clipboard.writeText((sticky ?? []).join('\n'))}>
               <Copy className="h-4 w-4" /> {t('common.copy')}

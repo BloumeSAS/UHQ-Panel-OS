@@ -13,6 +13,7 @@ import { Scopes } from '../../common/decorators/scopes.decorator';
 import { PrismaService } from '../../database/prisma.service';
 import { ProxyServerService } from '../proxy-engine/proxy-server.service';
 import { buildStickyList, formatSubUser } from '../../common/utils/proxy-format';
+import { buildPoolEndpointMap, resolveConnectionEndpoint, resolveHostPortSync } from '../../common/utils/connection-endpoint';
 import { SettingsService } from '../../config/settings.service';
 
 /**
@@ -73,7 +74,14 @@ export class MeApiController {
     const users = await this.prisma.userProxy.findMany({
       where: { ownerId: userId },
     });
-    return { status: 'success', data: users.map(formatSubUser) };
+    const poolMap = await buildPoolEndpointMap(this.prisma, users.map((u) => u.pool));
+    return {
+      status: 'success',
+      data: users.map((u) => ({
+        ...formatSubUser(u),
+        ...resolveHostPortSync(this.settings, u, u.pool ? poolMap.get(u.pool) : null),
+      })),
+    };
   }
 
   @ApiQuery({ name: 'id', required: true, description: 'ID du proxy' })
@@ -96,8 +104,7 @@ export class MeApiController {
     if (!user) {
       throw new HttpException('Proxy introuvable ou non autorisé', HttpStatus.NOT_FOUND);
     }
-    const host = this.settings.get('publicProxyHost');
-    const port = this.settings.get('publicProxyPort');
+    const { host, port } = await resolveConnectionEndpoint(this.prisma, this.settings, user);
     const lines = buildStickyList(user, host, port, c);
     return {
       status: 'success',

@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
+import { IsBoolean, IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
 
 export class CreatePoolDto {
   @ApiProperty({ example: 'Datacenter' })
@@ -30,6 +30,29 @@ export class CreatePoolDto {
   @IsString()
   @MaxLength(255)
   domain?: string;
+
+  @ApiPropertyOptional({ description: 'Les proxies de cette pool ne sont jamais marqués KO par le checker.' })
+  @IsOptional()
+  @IsBoolean()
+  alwaysOnline?: boolean;
+
+  @ApiPropertyOptional({ example: 'FR,DE,US,GB', description: 'Pays simulés (codes ISO 2 lettres, virgules) pour category-stats si alwaysOnline.' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  fakeCountries?: string;
+
+  @ApiPropertyOptional({ example: 100000, description: "Borne min du nombre d'IP simulé (= max pour une valeur fixe)." })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  fakeIpCountMin?: number;
+
+  @ApiPropertyOptional({ example: 300000, description: "Borne max du nombre d'IP simulé (= min pour une valeur fixe)." })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  fakeIpCountMax?: number;
 }
 
 export class UpdatePoolDto {
@@ -49,4 +72,27 @@ export class UpdatePoolDto {
   @IsString()
   @MaxLength(255)
   domain?: string | null;
+
+  @ApiPropertyOptional({ description: 'Les proxies de cette pool ne sont jamais marqués KO par le checker.' })
+  @IsOptional()
+  @IsBoolean()
+  alwaysOnline?: boolean;
+
+  @ApiPropertyOptional({ example: 'FR,DE,US,GB', description: 'Pays simulés (codes ISO 2 lettres, virgules) pour category-stats si alwaysOnline (null = retire).' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  fakeCountries?: string | null;
+
+  @ApiPropertyOptional({ example: 100000, description: "Borne min du nombre d'IP simulé (= max pour une valeur fixe)." })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  fakeIpCountMin?: number | null;
+
+  @ApiPropertyOptional({ example: 300000, description: "Borne max du nombre d'IP simulé (= min pour une valeur fixe)." })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  fakeIpCountMax?: number | null;
 }

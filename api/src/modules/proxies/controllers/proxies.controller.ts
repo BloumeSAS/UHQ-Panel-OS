@@ -23,7 +23,7 @@ import { PanelSubUserCreateDto, PanelSubUserUpdatePortDto } from '../dto';
 import { SetBlockedDto, BulkSubUsersDto } from '../../../common/dto/panel.dto';
 import { t } from '../../../common/utils/i18n';
 import { assertPortAvailable } from '../../../common/utils/port-validation';
-import { resolveConnectionEndpoint } from '../../../common/utils/connection-endpoint';
+import { buildPoolEndpointMap, resolveConnectionEndpoint, resolveHostPortSync } from '../../../common/utils/connection-endpoint';
 
 /**
  * Gestion des comptes proxy (UserProxy) côté panel admin, en JWT.
@@ -45,9 +45,20 @@ export class PanelSubUserController {
   async list() {
     const users = await this.prisma.userProxy.findMany({ orderBy: { createdAt: 'desc' } });
     const active = this.engine.getActiveThreads();
+    const poolMap = await buildPoolEndpointMap(this.prisma, users.map((u) => u.pool));
     return {
       status: 'success',
-      data: users.map((u) => ({ ...formatSubUser(u), port: u.port ?? null, domain: u.domain ?? null, active_threads: active.get(u.username) ?? 0 })),
+      data: users.map((u) => {
+        const { host, port } = resolveHostPortSync(this.settings, u, u.pool ? poolMap.get(u.pool) : null);
+        return {
+          ...formatSubUser(u),
+          port: u.port ?? null,
+          domain: u.domain ?? null,
+          effective_host: host,
+          effective_port: port,
+          active_threads: active.get(u.username) ?? 0,
+        };
+      }),
     };
   }
 
@@ -75,7 +86,17 @@ export class PanelSubUserController {
       },
     });
     if (dto.port != null) this.engine.invalidatePortCache();
-    return { status: 'success', data: { ...formatSubUser(user), port: user.port ?? null, domain: user.domain ?? null } };
+    const created = await resolveConnectionEndpoint(this.prisma, this.settings, user);
+    return {
+      status: 'success',
+      data: {
+        ...formatSubUser(user),
+        port: user.port ?? null,
+        domain: user.domain ?? null,
+        effective_host: created.host,
+        effective_port: created.port,
+      },
+    };
   }
 
   /**
@@ -138,7 +159,17 @@ export class PanelSubUserController {
       const user = await this.prisma.userProxy.update({ where: { id }, data });
       this.engine.invalidateUserCache(user.username);
       if (dto.port !== undefined) this.engine.invalidatePortCache();
-      return { status: 'success', data: { ...formatSubUser(user), port: user.port ?? null, domain: user.domain ?? null } };
+      const resolved = await resolveConnectionEndpoint(this.prisma, this.settings, user);
+      return {
+        status: 'success',
+        data: {
+          ...formatSubUser(user),
+          port: user.port ?? null,
+          domain: user.domain ?? null,
+          effective_host: resolved.host,
+          effective_port: resolved.port,
+        },
+      };
     } catch {
       throw new NotFoundException(t('errors.proxyNotFound'));
     }
@@ -204,6 +235,11 @@ export class PanelSubUserController {
       format: 'host:port:username:session:password',
       count: c,
       proxies: buildStickyList(user, host, port, c),
+      // Format rotatif (pas de session : chaque nouvelle connexion sur cette
+      // même ligne peut tomber sur un upstream différent) — pratique pour les
+      // clients qui ne gèrent pas le host:port:user:session:pass.
+      rotating_format: 'username:password@host:port',
+      rotating: `${user.username}:${user.password}@${host}:${port}`,
     };
   }
 }

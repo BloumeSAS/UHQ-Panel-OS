@@ -289,11 +289,16 @@ export class PanelMonitoringController {
     return { status: 'success' };
   }
 
-  /** Supprime des proxies en masse (ex. tous les HS). */
+  /**
+   * Supprime des proxies en masse (ex. tous les HS).
+   * Les KO définitifs (isBlacklisted=true) ne sont JAMAIS supprimés en masse,
+   * quel que soit le filtre `working` — seule la suppression individuelle
+   * (DELETE /proxies/:id) le permet, en connaissance de cause.
+   */
   @ApiQuery({ name: 'working', required: false, type: String, description: 'false pour supprimer uniquement les proxies HS' })
   @Delete('proxies')
   async deleteManyProxies(@Query('working') working?: string) {
-    const where: any = {};
+    const where: any = { isBlacklisted: false };
     if (working === 'false') where.isWorking = false;
     const res = await this.prisma.backendProxy.deleteMany({ where });
     return { status: 'success', deleted: res.count };
