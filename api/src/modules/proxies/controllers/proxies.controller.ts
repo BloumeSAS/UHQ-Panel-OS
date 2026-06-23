@@ -18,11 +18,12 @@ import { Roles } from '../../../common/decorators/roles.decorator';
 import { PrismaService } from '../../../database/prisma.service';
 import { SettingsService } from '../../../config/settings.service';
 import { ProxyServerService } from '../../proxy-engine/proxy-server.service';
-import { buildStickyList, formatSubUser, randomString } from '../../../common/utils/proxy-format';
+import { buildStickyList, formatSubUser, normalizeDomain, randomString } from '../../../common/utils/proxy-format';
 import { PanelSubUserCreateDto, PanelSubUserUpdatePortDto } from '../dto';
 import { SetBlockedDto, BulkSubUsersDto } from '../../../common/dto/panel.dto';
 import { t } from '../../../common/utils/i18n';
 import { assertPortAvailable } from '../../../common/utils/port-validation';
+import { resolveConnectionEndpoint } from '../../../common/utils/connection-endpoint';
 
 /**
  * Gestion des comptes proxy (UserProxy) côté panel admin, en JWT.
@@ -46,7 +47,7 @@ export class PanelSubUserController {
     const active = this.engine.getActiveThreads();
     return {
       status: 'success',
-      data: users.map((u) => ({ ...formatSubUser(u), port: u.port ?? null, active_threads: active.get(u.username) ?? 0 })),
+      data: users.map((u) => ({ ...formatSubUser(u), port: u.port ?? null, domain: u.domain ?? null, active_threads: active.get(u.username) ?? 0 })),
     };
   }
 
@@ -70,10 +71,11 @@ export class PanelSubUserController {
         tags: dto.tags || null,
         pool: dto.pool || null,
         port: dto.port ?? null,
+        domain: dto.domain ? normalizeDomain(dto.domain) || null : null,
       },
     });
     if (dto.port != null) this.engine.invalidatePortCache();
-    return { status: 'success', data: { ...formatSubUser(user), port: user.port ?? null } };
+    return { status: 'success', data: { ...formatSubUser(user), port: user.port ?? null, domain: user.domain ?? null } };
   }
 
   /**
@@ -131,11 +133,12 @@ export class PanelSubUserController {
     if (dto.tags !== undefined) data.tags = dto.tags || null;
     if (dto.pool !== undefined) data.pool = dto.pool || null;
     if (dto.port !== undefined) data.port = dto.port;
+    if (dto.domain !== undefined) data.domain = dto.domain ? normalizeDomain(dto.domain) || null : null;
     try {
       const user = await this.prisma.userProxy.update({ where: { id }, data });
       this.engine.invalidateUserCache(user.username);
       if (dto.port !== undefined) this.engine.invalidatePortCache();
-      return { status: 'success', data: { ...formatSubUser(user), port: user.port ?? null } };
+      return { status: 'success', data: { ...formatSubUser(user), port: user.port ?? null, domain: user.domain ?? null } };
     } catch {
       throw new NotFoundException(t('errors.proxyNotFound'));
     }
@@ -150,7 +153,7 @@ export class PanelSubUserController {
         data: { isBlocked: !!body.is_blocked },
       });
       this.engine.invalidateUserCache(user.username);
-      return { status: 'success', data: { ...formatSubUser(user), port: user.port ?? null } };
+      return { status: 'success', data: { ...formatSubUser(user), port: user.port ?? null, domain: user.domain ?? null } };
     } catch {
       throw new NotFoundException(t('errors.proxyNotFound'));
     }
@@ -166,7 +169,7 @@ export class PanelSubUserController {
         data: { totalBytesSent: 0n, totalBytesReceived: 0n, usedGb: 0 },
       });
       this.engine.invalidateUserCache(user.username);
-      return { status: 'success', data: { ...formatSubUser(user), port: user.port ?? null } };
+      return { status: 'success', data: { ...formatSubUser(user), port: user.port ?? null, domain: user.domain ?? null } };
     } catch {
       throw new NotFoundException(t('errors.proxyNotFound'));
     }
@@ -195,11 +198,12 @@ export class PanelSubUserController {
     const user = await this.prisma.userProxy.findUnique({ where: { id } });
     if (!user) throw new NotFoundException(t('errors.proxyNotFound'));
     const c = Math.max(1, Math.min(1000, parseInt(count, 10) || 100));
+    const { host, port } = await resolveConnectionEndpoint(this.prisma, this.settings, user);
     return {
       status: 'success',
       format: 'host:port:username:session:password',
       count: c,
-      proxies: buildStickyList(user, this.settings.get('publicProxyHost'), this.settings.get('publicProxyPort'), c),
+      proxies: buildStickyList(user, host, port, c),
     };
   }
 }

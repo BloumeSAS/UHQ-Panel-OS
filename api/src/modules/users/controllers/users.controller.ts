@@ -158,7 +158,7 @@ export class PanelUserController {
   @Get(':id/proxies')
   async proxies(@Param('id') id: string) {
     const proxies = await this.prisma.userProxy.findMany({ where: { ownerId: id } });
-    return { status: 'success', data: proxies.map((u) => ({ ...formatSubUser(u), port: u.port ?? null })) };
+    return { status: 'success', data: proxies.map((u) => ({ ...formatSubUser(u), port: u.port ?? null, domain: u.domain ?? null })) };
   }
 
   @ApiParam({ name: 'id', description: 'ID de l\'utilisateur panel' })

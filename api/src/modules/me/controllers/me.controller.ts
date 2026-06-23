@@ -17,6 +17,7 @@ import { PrismaService } from '../../../database/prisma.service';
 import { SettingsService } from '../../../config/settings.service';
 import { ProxyServerService } from '../../proxy-engine/proxy-server.service';
 import { buildStickyList, formatSubUser } from '../../../common/utils/proxy-format';
+import { resolveConnectionEndpoint } from '../../../common/utils/connection-endpoint';
 import { t } from '../../../common/utils/i18n';
 
 type Period = 'week' | 'month' | 'year' | 'all';
@@ -49,7 +50,7 @@ export class PanelMeController {
   @Get('proxies')
   async proxies(@CurrentUser() me: JwtUser) {
     const list = await this.prisma.userProxy.findMany({ where: { ownerId: me.id } });
-    return { status: 'success', data: list.map((u) => ({ ...formatSubUser(u), port: u.port ?? null })) };
+    return { status: 'success', data: list.map((u) => ({ ...formatSubUser(u), port: u.port ?? null, domain: u.domain ?? null })) };
   }
 
   @ApiParam({ name: 'id', description: 'ID du sous-utilisateur proxy' })
@@ -101,8 +102,7 @@ export class PanelMeController {
   ) {
     const proxy = await this.ownedProxy(me, id);
     const c = Math.max(1, Math.min(1000, parseInt(count, 10) || 100));
-    const host = this.settings.get('publicProxyHost');
-    const port = this.settings.get('publicProxyPort');
+    const { host, port } = await resolveConnectionEndpoint(this.prisma, this.settings, proxy);
     return {
       status: 'success',
       format: 'host:port:username:session:password',
@@ -129,7 +129,7 @@ export class PanelMeController {
       data,
     });
     this.engine.invalidateUserCache(updated.username);
-    return { status: 'success', data: { ...formatSubUser(updated), port: updated.port ?? null } };
+    return { status: 'success', data: { ...formatSubUser(updated), port: updated.port ?? null, domain: updated.domain ?? null } };
   }
 
   /** Charge un proxy en garantissant qu'il appartient à l'utilisateur courant. */

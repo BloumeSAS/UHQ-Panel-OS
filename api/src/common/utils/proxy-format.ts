@@ -35,6 +35,19 @@ export function formatSubUser(u: any) {
   };
 }
 
+/**
+ * Normalise un domaine saisi en panel : tolère un collage de type
+ * `http://example.com:9114/` et n'en garde que le hostname brut
+ * (`example.com`), cohérent avec le format déjà utilisé par `publicProxyHost`.
+ */
+export function normalizeDomain(raw: string): string {
+  return raw
+    .trim()
+    .replace(/^[a-z][a-z0-9+.-]*:\/\//i, '')
+    .replace(/\/.*$/, '')
+    .replace(/:\d+$/, '');
+}
+
 /** Génère `count` lignes sticky `host:port:user:session:pass`. */
 export function buildStickyList(
   user: { username: string; password: string },

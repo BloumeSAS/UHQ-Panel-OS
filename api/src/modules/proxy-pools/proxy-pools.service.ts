@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { ProxyServerService } from '../proxy-engine/proxy-server.service';
 import { assertPortAvailable } from '../../common/utils/port-validation';
+import { normalizeDomain } from '../../common/utils/proxy-format';
 import { CreatePoolDto, UpdatePoolDto } from './dto';
 
 @Injectable()
@@ -23,6 +24,7 @@ export class ProxyPoolsService {
         description: dto.description?.trim() || null,
         color: dto.color || '#6366f1',
         port: dto.port ?? null,
+        domain: dto.domain ? normalizeDomain(dto.domain) || null : null,
       },
     });
     if (dto.port != null) this.engine.invalidatePortCache();
@@ -39,6 +41,7 @@ export class ProxyPoolsService {
           ...(dto.description !== undefined && { description: dto.description.trim() || null }),
           ...(dto.color !== undefined && { color: dto.color }),
           ...(dto.port !== undefined && { port: dto.port }),
+          ...(dto.domain !== undefined && { domain: dto.domain ? normalizeDomain(dto.domain) || null : null }),
         },
       });
       if (dto.port !== undefined) this.engine.invalidatePortCache();

@@ -35,6 +35,7 @@ interface MyProxy {
   bytes_received: number;
   allowed_ips: string | null;
   port: number | null;
+  domain: string | null;
 }
 
 export default function MyProxies() {
@@ -92,6 +93,7 @@ export default function MyProxies() {
                 <Row label={t('sub.threads')} value={`${p.threads_limit}`} />
                 <Row label={t('sub.country')} value={p.country_filter || '—'} />
                 <Row label={t('sub.ipWhitelist')} value={p.allowed_ips || '—'} />
+                {p.domain && <Row label={t('me.dedicatedDomain')} value={p.domain} copyable />}
                 {p.port && <Row label={t('me.dedicatedPort')} value={String(p.port)} copyable />}
                 <Row label={t('me.usage')} value={formatBytes(p.bytes_sent + p.bytes_received)} />
               </div>

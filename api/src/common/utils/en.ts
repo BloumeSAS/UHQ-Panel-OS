@@ -14,7 +14,7 @@ const en = {
     proxyNotAssigned: "This proxy is not assigned to you",
     portReserved: "This port is reserved for the default proxy port",
     portTaken: "This port is already used by another pool or proxy account",
-    portOutOfRange: "The port must be within the published range (default 9000-9100)",
+    portOutOfRange: "The port must be within the published range (default 9000-9999)",
     sourceNotFound: "Source not found",
     tokenMissing: "Missing token",
     tokenInvalid: "Invalid or expired token",

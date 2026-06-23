@@ -10,13 +10,13 @@ export function defaultProxyPort(): number {
 /**
  * Plage de ports dédiés acceptée — doit correspondre à ce qui est PUBLIÉ dans
  * docker-compose.yml (`ports:` + `PROXY_PORT_RANGE`), sinon le port choisi
- * serait injoignable depuis l'extérieur. Défaut 9000-9100 si non défini.
+ * serait injoignable depuis l'extérieur. Défaut 9000-9999 si non défini.
  */
 export function allowedPortRange(): { min: number; max: number } {
   const raw = process.env.PROXY_PORT_RANGE;
   const m = raw?.match(/^\s*(\d+)\s*-\s*(\d+)\s*$/);
   if (m) return { min: Number(m[1]), max: Number(m[2]) };
-  return { min: 9000, max: 9100 };
+  return { min: 9000, max: 9999 };
 }
 
 /**

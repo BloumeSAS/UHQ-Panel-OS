@@ -14,7 +14,7 @@ const fr = {
     proxyNotAssigned: "Ce proxy ne vous est pas assigné",
     portReserved: "Ce port est réservé au port proxy par défaut",
     portTaken: "Ce port est déjà utilisé par une autre pool ou un autre compte proxy",
-    portOutOfRange: "Le port doit être compris dans la plage publiée (par défaut 9000-9100)",
+    portOutOfRange: "Le port doit être compris dans la plage publiée (par défaut 9000-9999)",
     sourceNotFound: "Source introuvable",
     tokenMissing: "Token manquant",
     tokenInvalid: "Token invalide ou expiré",

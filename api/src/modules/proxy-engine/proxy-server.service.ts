@@ -69,7 +69,7 @@ export class ProxyServerService implements OnModuleDestroy {
   private readonly portPoolMap = new Map<number, string>();
   /** port → username : ce port est exclusif à CE compte (407 pour tout autre). */
   private readonly portUserMap = new Map<number, string>();
-  /** Plage publiée par Docker (PROXY_PORT_RANGE="min-max", défaut 9000-9100) — avertissement non-bloquant ici (le blocage dur est fait à l'écriture, cf. `assertPortAvailable`). */
+  /** Plage publiée par Docker (PROXY_PORT_RANGE="min-max", défaut 9000-9999) — avertissement non-bloquant ici (le blocage dur est fait à l'écriture, cf. `assertPortAvailable`). */
   private readonly portRange = allowedPortRange();
   /** Active threads per username — atomic-ish under JS single-thread model */
   private readonly activeThreads = new Map<string, number>();

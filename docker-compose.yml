@@ -11,7 +11,7 @@
 # Mot de passe → défini pendant le wizard de setup
 #
 # Ports dédiés (pools / comptes proxy) — voir Settings → Pools / Sous-users :
-#   La plage 9000-9100 est pré-publiée une fois ci-dessous. Assigner un port
+#   La plage 9000-9999 est pré-publiée une fois ci-dessous. Assigner un port
 #   dans cette plage depuis le panel prend effet sans redéploiement. Pour
 #   utiliser un port HORS de cette plage, élargissez-la ici (et dans
 #   PROXY_PORT_RANGE) puis redéployez.
@@ -43,13 +43,13 @@ services:
         condition: service_healthy
     ports:
       # Port 990 : proxy TCP — bindé sur l'hôte (accessible depuis l'extérieur).
-      # Plage 9000-9100 : pré-publiée pour les ports dédiés (pool/compte proxy)
+      # Plage 9000-9999 : pré-publiée pour les ports dédiés (pool/compte proxy)
       # assignables depuis le panel — cf. PROXY_PORT_RANGE plus bas.
       # Port 8000 : PAS de mapping hôte — Traefik (Coolify) y accède via
       # le réseau Docker interne. En local sans Traefik : décommentez :
       # - "8000:8000/tcp"
       - "990:990/tcp"
-      - "9000-9100:9000-9100/tcp"
+      - "9000-9999:9000-9999/tcp"
     expose:
       - "8000"
     labels:
@@ -67,7 +67,7 @@ services:
       # Plage de ports publiée ci-dessus (host:container) — informatif seulement,
       # sert à avertir dans les logs si un port assigné depuis le panel tombe
       # hors de cette plage (donc injoignable depuis l'extérieur tel quel).
-      PROXY_PORT_RANGE: "9000-9100"
+      PROXY_PORT_RANGE: "9000-9999"
     volumes:
       - appdata:/app/data
     healthcheck:

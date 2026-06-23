@@ -42,6 +42,10 @@ model UserProxy {
   // global 990). Sur ce port, seules les identifiants de ce compte sont
   // acceptés (voie exclusive) — comportement sinon identique au port global.
   port               Int?     @unique
+  // Domaine affiché dans les listes/connexions de CE compte (null = utilise
+  // celui de sa pool, sinon `publicProxyHost`). Purement informatif (DNS) —
+  // ne change rien au bind réseau du moteur.
+  domain             String?
 
   @@index([ownerId])
 }
@@ -189,6 +193,10 @@ model ProxyPool {
   // filtre `pool` du compte). Sur ce port, toute connexion authentifiée utilise
   // CETTE pool, même si le compte a son propre `pool` par défaut.
   port        Int?     @unique
+  // Domaine affiché dans les listes/connexions des comptes de cette pool sans
+  // domaine propre (null = utilise `publicProxyHost`, Settings > Proxy public).
+  // Purement informatif (DNS) — ne change rien au bind réseau du moteur.
+  domain      String?
 }
 
 model BackendProxy {

@@ -49,6 +49,7 @@ interface SubUser {
   tags: string | null;
   pool: string | null;
   port: number | null;
+  domain: string | null;
 }
 
 function fmtGb(bytes: number) {
@@ -299,6 +300,14 @@ export default function SubUsers() {
                             :{u.port}
                           </span>
                         )}
+                        {u.domain && (
+                          <span
+                            className="bg-cyan-100 text-cyan-700 dark:bg-cyan-950/30 dark:text-cyan-400 px-1.5 py-0.5 rounded font-mono flex items-center gap-0.5"
+                            title={t('sub.domain')}
+                          >
+                            {u.domain}
+                          </span>
+                        )}
                       </div>
                     </TD>
                     <TD className="font-mono text-xs">{u.username}</TD>
@@ -437,6 +446,7 @@ function CreateDialog({ onCreated }: { onCreated: () => void }) {
     tags: '',
     pool: '',
     port: '',
+    domain: '',
   });
   const [error, setError] = useState('');
   const set = (k: string, v: any) => setForm((f) => ({ ...f, [k]: v }));
@@ -461,6 +471,7 @@ function CreateDialog({ onCreated }: { onCreated: () => void }) {
         tags: form.tags || undefined,
         pool: form.pool || undefined,
         port: form.port ? Number(form.port) : undefined,
+        domain: form.domain || undefined,
       });
       setOpen(false);
       setForm({
@@ -476,6 +487,7 @@ function CreateDialog({ onCreated }: { onCreated: () => void }) {
         tags: '',
         pool: '',
         port: '',
+        domain: '',
       });
       onCreated();
     } catch (err) {
@@ -521,6 +533,7 @@ function EditDialog({
     tags: subUser.tags || '',
     pool: subUser.pool || '',
     port: subUser.port != null ? String(subUser.port) : '',
+    domain: subUser.domain || '',
   });
   const [error, setError] = useState('');
   const set = (k: string, v: any) => setForm((f) => ({ ...f, [k]: v }));
@@ -545,6 +558,7 @@ function EditDialog({
         tags: form.tags || null,
         pool: form.pool || null,
         port: form.port ? Number(form.port) : null,
+        domain: form.domain || null,
       });
       onSaved();
     } catch (err) {
@@ -662,12 +676,22 @@ function SubUserForm({
         <Input
           type="number"
           min={9000}
-          max={9100}
+          max={9999}
           value={form.port}
           onChange={(e) => set('port', e.target.value)}
           placeholder={t('sub.portPlaceholder')}
         />
         <p className="text-xs text-muted-foreground">{t('sub.portHint')}</p>
+      </div>
+
+      <div className="space-y-1.5">
+        <Label>{t('sub.domain')}</Label>
+        <Input
+          value={form.domain}
+          onChange={(e) => set('domain', e.target.value)}
+          placeholder={t('sub.domainPlaceholder')}
+        />
+        <p className="text-xs text-muted-foreground">{t('sub.domainHint')}</p>
       </div>
 
       <div className="space-y-1.5">
