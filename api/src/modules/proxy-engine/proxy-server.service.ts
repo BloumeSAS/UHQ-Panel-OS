@@ -5,6 +5,7 @@ import { PrismaService } from '../../database/prisma.service';
 import { TrafficService } from '../traffic/traffic.service';
 import { SettingsService } from '../../config/settings.service';
 import { parseProxyList, buildProxyUrl } from '../../common/utils/proxy-parse';
+import { allowedPortRange } from '../../common/utils/port-validation';
 import { NotificationService } from '../notifications/notification.service';
 import {
   performHandshake,
@@ -61,7 +62,15 @@ export class ProxyServerService implements OnModuleDestroy {
   }
 
   // State / caches -------------------------------------------------------
-  private server: NetServer | null = null;
+  /** Un net.Server par port d'écoute actif (port par défaut + ports dédiés pool/user). */
+  private readonly servers = new Map<number, NetServer>();
+  private syncing = false;
+  /** port → nom de pool : ce port force CETTE pool, prioritaire sur `user.pool`. */
+  private readonly portPoolMap = new Map<number, string>();
+  /** port → username : ce port est exclusif à CE compte (407 pour tout autre). */
+  private readonly portUserMap = new Map<number, string>();
+  /** Plage publiée par Docker (PROXY_PORT_RANGE="min-max", défaut 9000-9100) — avertissement non-bloquant ici (le blocage dur est fait à l'écriture, cf. `assertPortAvailable`). */
+  private readonly portRange = allowedPortRange();
   /** Active threads per username — atomic-ish under JS single-thread model */
   private readonly activeThreads = new Map<string, number>();
   /** Sticky sessions: key = "user:sessionId" */
@@ -90,7 +99,7 @@ export class ProxyServerService implements OnModuleDestroy {
    */
   async start(): Promise<void> {
     await this.prewarmCaches();
-    await this.bind();
+    await this.syncListeners();
     this.startBackgroundTasks();
   }
 
@@ -114,15 +123,77 @@ export class ProxyServerService implements OnModuleDestroy {
     }
   }
 
-  private bind(): Promise<void> {
+  /**
+   * Recalcule les ports désirés (port par défaut + ports dédiés pool/user en
+   * DB), ouvre les listeners manquants et ferme proprement (sans tuer les
+   * connexions en cours, même comportement que `onModuleDestroy`) ceux qui ne
+   * sont plus désirés. Appelé au boot, juste après chaque écriture pool/user
+   * affectant `port` (via `invalidatePortCache`), et en filet de sécurité
+   * toutes les 30s (cf. `startBackgroundTasks`).
+   */
+  async syncListeners(): Promise<void> {
+    if (this.syncing) return;
+    this.syncing = true;
+    try {
+      const [pools, users] = await Promise.all([
+        this.prisma.proxyPool.findMany({ where: { port: { not: null } } }),
+        this.prisma.userProxy.findMany({ where: { port: { not: null } } }),
+      ]);
+      this.portPoolMap.clear();
+      for (const p of pools) if (p.port) this.portPoolMap.set(p.port, p.name);
+      this.portUserMap.clear();
+      for (const u of users) if (u.port) this.portUserMap.set(u.port, u.username);
+
+      const desired = new Set<number>([
+        this.port,
+        ...this.portPoolMap.keys(),
+        ...this.portUserMap.keys(),
+      ]);
+
+      for (const port of desired) {
+        if (this.servers.has(port)) continue;
+        if (port !== this.port && (port < this.portRange.min || port > this.portRange.max)) {
+          this.logger.warn(
+            `Port ${port} hors de PROXY_PORT_RANGE (${this.portRange.min}-${this.portRange.max}) — ` +
+              `ne sera pas joignable depuis l'extérieur sans le republier dans docker-compose.yml.`,
+          );
+        }
+        try {
+          await this.listenOn(port);
+        } catch (e) {
+          this.logger.error(`Échec de bind sur le port ${port}: ${e}`);
+        }
+      }
+
+      for (const [port, server] of this.servers) {
+        if (desired.has(port)) continue;
+        server.close();
+        this.servers.delete(port);
+        this.logger.log(`Listener fermé sur le port ${port} (plus assigné à une pool/un compte).`);
+      }
+    } finally {
+      this.syncing = false;
+    }
+  }
+
+  /** Déclenchement immédiat depuis les services panel après écriture pool/user. */
+  public invalidatePortCache(): void {
+    void this.syncListeners();
+  }
+
+  private listenOn(port: number): Promise<void> {
     return new Promise((resolve, reject) => {
-      this.server = createServer({ allowHalfOpen: false });
+      const server = createServer({ allowHalfOpen: false });
       // High backlog mirrors backlog=2048 from the Python `start_server` call.
-      this.server.maxConnections = 1_000_000;
-      this.server.on('connection', (s) => this.handleClient(s));
-      this.server.once('error', reject);
-      this.server.listen({ host: this.host, port: this.port, backlog: 2048 }, () => {
-        this.logger.log(`Proxy Server listening on ${this.host}:${this.port}`);
+      server.maxConnections = 1_000_000;
+      server.on('connection', (s) => this.handleClient(s, port));
+      server.once('error', (e) => {
+        this.logger.error(`Listener error on port ${port}: ${e}`);
+        reject(e);
+      });
+      server.listen({ host: this.host, port, backlog: 2048 }, () => {
+        this.logger.log(`Proxy Server listening on ${this.host}:${port}`);
+        this.servers.set(port, server);
         resolve();
       });
     });
@@ -165,6 +236,13 @@ export class ProxyServerService implements OnModuleDestroy {
       } catch (e) {
         this.logger.error(`Failed to refresh proxy pool cache: ${e}`);
       }
+      // Filet de sécurité : capte les ports assignés/retirés en DB sans passer
+      // par invalidatePortCache (écriture directe, autre instance, etc.)
+      try {
+        await this.syncListeners();
+      } catch (e) {
+        this.logger.error(`Failed to sync port listeners: ${e}`);
+      }
     }, 30_000);
 
     // _background_user_refresher — full user list every 60s
@@ -184,10 +262,10 @@ export class ProxyServerService implements OnModuleDestroy {
   }
 
   async onModuleDestroy(): Promise<void> {
-    if (this.server) {
-      await new Promise<void>((r) => this.server!.close(() => r()));
-      this.server = null;
-    }
+    await Promise.all(
+      Array.from(this.servers.values()).map((s) => new Promise<void>((r) => s.close(() => r()))),
+    );
+    this.servers.clear();
   }
 
   // ===== Inspection helpers (used by /api/v1/common) ===================
@@ -211,7 +289,7 @@ export class ProxyServerService implements OnModuleDestroy {
 
   // ===== Per-connection main loop =====================================
 
-  private async handleClient(client: Socket): Promise<void> {
+  private async handleClient(client: Socket, boundPort: number): Promise<void> {
     client.setNoDelay(true);
     let user: any | null = null;
     // Username under which we actually incremented activeThreads. Stays null
@@ -279,6 +357,17 @@ export class ProxyServerService implements OnModuleDestroy {
         }
       }
 
+      // --- Port dédié exclusif : si CE port est réservé à un AUTRE compte, rejeter ---
+      const dedicatedOwner = this.portUserMap.get(boundPort);
+      if (dedicatedOwner && dedicatedOwner !== username) {
+        this.logger.warn(`Port ${boundPort} is dedicated to another account, rejecting ${username}`);
+        client.write(
+          'HTTP/1.1 407 Proxy Authentication Required\r\nProxy-Authenticate: Basic realm="Proxy"\r\n\r\n',
+        );
+        client.end();
+        return;
+      }
+
       const userTtlSec = user.stickySessionTtl ?? 1800;
       const sessionKey = sessionId ? `${username}:${sessionId}` : null;
 
@@ -306,6 +395,9 @@ export class ProxyServerService implements OnModuleDestroy {
       threadKey = username; // counted — finally must release exactly this slot
 
       if (!requestedCountry) requestedCountry = user.countryFilter ?? null;
+
+      // Port dédié à une pool : prioritaire sur le pool par défaut du compte.
+      const effectivePool = this.portPoolMap.get(boundPort) ?? user.pool ?? null;
 
       // Liste privée d'upstreams du sous-utilisateur (si renseignée), sinon pool partagé.
       const customRaw =
@@ -356,7 +448,7 @@ export class ProxyServerService implements OnModuleDestroy {
         } else {
           const excluded: string[] = [];
           for (let i = 0; i < NUM_RACERS; i++) {
-            const p = await this.getUpstreamProxy(requestedCountry, excluded, user.pool ?? null);
+            const p = await this.getUpstreamProxy(requestedCountry, excluded, effectivePool);
             if (p) {
               proxiesToTry.push(p as UpstreamProxy);
               excluded.push(p.id);

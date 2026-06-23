@@ -19,9 +19,10 @@ import { PrismaService } from '../../../database/prisma.service';
 import { SettingsService } from '../../../config/settings.service';
 import { ProxyServerService } from '../../proxy-engine/proxy-server.service';
 import { buildStickyList, formatSubUser, randomString } from '../../../common/utils/proxy-format';
-import { SubUserCreateDto, PanelSubUserUpdateDto } from '../../legacy-api/dto';
+import { PanelSubUserCreateDto, PanelSubUserUpdatePortDto } from '../dto';
 import { SetBlockedDto, BulkSubUsersDto } from '../../../common/dto/panel.dto';
 import { t } from '../../../common/utils/i18n';
+import { assertPortAvailable } from '../../../common/utils/port-validation';
 
 /**
  * Gestion des comptes proxy (UserProxy) côté panel admin, en JWT.
@@ -45,12 +46,13 @@ export class PanelSubUserController {
     const active = this.engine.getActiveThreads();
     return {
       status: 'success',
-      data: users.map((u) => ({ ...formatSubUser(u), active_threads: active.get(u.username) ?? 0 })),
+      data: users.map((u) => ({ ...formatSubUser(u), port: u.port ?? null, active_threads: active.get(u.username) ?? 0 })),
     };
   }
 
   @Post()
-  async create(@Body() dto: SubUserCreateDto) {
+  async create(@Body() dto: PanelSubUserCreateDto) {
+    if (dto.port != null) await assertPortAvailable(this.prisma, dto.port);
     const user = await this.prisma.userProxy.create({
       data: {
         username: dto.username || `u_${randomString(8)}`,
@@ -67,9 +69,11 @@ export class PanelSubUserController {
         expiresAt: dto.expires_at ? new Date(dto.expires_at) : null,
         tags: dto.tags || null,
         pool: dto.pool || null,
+        port: dto.port ?? null,
       },
     });
-    return { status: 'success', data: formatSubUser(user) };
+    if (dto.port != null) this.engine.invalidatePortCache();
+    return { status: 'success', data: { ...formatSubUser(user), port: user.port ?? null } };
   }
 
   /**
@@ -108,7 +112,8 @@ export class PanelSubUserController {
 
   @ApiParam({ name: 'id', description: 'ID du sous-utilisateur proxy' })
   @Patch(':id')
-  async update(@Param('id') id: string, @Body() dto: PanelSubUserUpdateDto) {
+  async update(@Param('id') id: string, @Body() dto: PanelSubUserUpdatePortDto) {
+    if (dto.port != null) await assertPortAvailable(this.prisma, dto.port, { table: 'user', id });
     const data: any = {};
     if (dto.label !== undefined) data.name = dto.label;
     if (dto.allowed_ips !== undefined) data.ipWhitelist = dto.allowed_ips;
@@ -125,10 +130,12 @@ export class PanelSubUserController {
     if (dto.expires_at !== undefined) data.expiresAt = dto.expires_at ? new Date(dto.expires_at) : null;
     if (dto.tags !== undefined) data.tags = dto.tags || null;
     if (dto.pool !== undefined) data.pool = dto.pool || null;
+    if (dto.port !== undefined) data.port = dto.port;
     try {
       const user = await this.prisma.userProxy.update({ where: { id }, data });
       this.engine.invalidateUserCache(user.username);
-      return { status: 'success', data: formatSubUser(user) };
+      if (dto.port !== undefined) this.engine.invalidatePortCache();
+      return { status: 'success', data: { ...formatSubUser(user), port: user.port ?? null } };
     } catch {
       throw new NotFoundException(t('errors.proxyNotFound'));
     }
@@ -143,7 +150,7 @@ export class PanelSubUserController {
         data: { isBlocked: !!body.is_blocked },
       });
       this.engine.invalidateUserCache(user.username);
-      return { status: 'success', data: formatSubUser(user) };
+      return { status: 'success', data: { ...formatSubUser(user), port: user.port ?? null } };
     } catch {
       throw new NotFoundException(t('errors.proxyNotFound'));
     }
@@ -159,7 +166,7 @@ export class PanelSubUserController {
         data: { totalBytesSent: 0n, totalBytesReceived: 0n, usedGb: 0 },
       });
       this.engine.invalidateUserCache(user.username);
-      return { status: 'success', data: formatSubUser(user) };
+      return { status: 'success', data: { ...formatSubUser(user), port: user.port ?? null } };
     } catch {
       throw new NotFoundException(t('errors.proxyNotFound'));
     }
@@ -173,6 +180,7 @@ export class PanelSubUserController {
       if (!user) throw new NotFoundException(t('errors.proxyNotFound'));
       await this.prisma.userProxy.delete({ where: { id } });
       this.engine.invalidateUserCache(user.username);
+      if (user.port != null) this.engine.invalidatePortCache();
       return { status: 'success' };
     } catch (e) {
       if (e instanceof NotFoundException) throw e;

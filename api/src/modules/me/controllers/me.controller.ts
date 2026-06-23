@@ -49,7 +49,7 @@ export class PanelMeController {
   @Get('proxies')
   async proxies(@CurrentUser() me: JwtUser) {
     const list = await this.prisma.userProxy.findMany({ where: { ownerId: me.id } });
-    return { status: 'success', data: list.map(formatSubUser) };
+    return { status: 'success', data: list.map((u) => ({ ...formatSubUser(u), port: u.port ?? null })) };
   }
 
   @ApiParam({ name: 'id', description: 'ID du sous-utilisateur proxy' })
@@ -129,7 +129,7 @@ export class PanelMeController {
       data,
     });
     this.engine.invalidateUserCache(updated.username);
-    return { status: 'success', data: formatSubUser(updated) };
+    return { status: 'success', data: { ...formatSubUser(updated), port: updated.port ?? null } };
   }
 
   /** Charge un proxy en garantissant qu'il appartient à l'utilisateur courant. */

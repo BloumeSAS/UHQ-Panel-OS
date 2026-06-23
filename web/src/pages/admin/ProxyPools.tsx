@@ -32,6 +32,7 @@ interface ProxyPool {
   name: string;
   description: string | null;
   color: string | null;
+  port: number | null;
   createdAt: string;
 }
 
@@ -75,6 +76,7 @@ export default function ProxyPools() {
                 <TH>{t('pools.name')}</TH>
                 <TH>{t('pools.description')}</TH>
                 <TH>{t('pools.color')}</TH>
+                <TH>{t('pools.port')}</TH>
                 <TH className="text-right">{t('common.actions')}</TH>
               </TR>
             </THead>
@@ -100,6 +102,7 @@ export default function ProxyPools() {
                       {pool.color ?? '#6366f1'}
                     </Badge>
                   </TD>
+                  <TD className="font-mono text-sm text-muted-foreground">{pool.port ?? '—'}</TD>
                   <TD className="flex justify-end gap-1">
                     <Button variant="ghost" size="icon" onClick={() => setEditing(pool)}>
                       <Pencil className="h-4 w-4" />
@@ -116,7 +119,7 @@ export default function ProxyPools() {
               ))}
               {!data?.length && (
                 <TR>
-                  <TD colSpan={4} className="py-12 text-center text-muted-foreground">
+                  <TD colSpan={5} className="py-12 text-center text-muted-foreground">
                     <Layers className="mx-auto mb-3 h-8 w-8 opacity-20" />
                     {t('pools.none')}
                   </TD>
@@ -143,7 +146,7 @@ export default function ProxyPools() {
 function CreateDialog({ onCreated }: { onCreated: () => void }) {
   const t = useT();
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ name: '', description: '', color: '#6366f1' });
+  const [form, setForm] = useState({ name: '', description: '', color: '#6366f1', port: '' });
   const [error, setError] = useState('');
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -155,9 +158,10 @@ function CreateDialog({ onCreated }: { onCreated: () => void }) {
         name: form.name,
         description: form.description || undefined,
         color: form.color,
+        port: form.port ? Number(form.port) : undefined,
       });
       setOpen(false);
-      setForm({ name: '', description: '', color: '#6366f1' });
+      setForm({ name: '', description: '', color: '#6366f1', port: '' });
       toast.success(t('pools.created'));
       onCreated();
     } catch (err) {
@@ -182,7 +186,12 @@ function CreateDialog({ onCreated }: { onCreated: () => void }) {
 
 function EditDialog({ pool, onClose, onSaved }: { pool: ProxyPool; onClose: () => void; onSaved: () => void }) {
   const t = useT();
-  const [form, setForm] = useState({ name: pool.name, description: pool.description ?? '', color: pool.color ?? '#6366f1' });
+  const [form, setForm] = useState({
+    name: pool.name,
+    description: pool.description ?? '',
+    color: pool.color ?? '#6366f1',
+    port: pool.port != null ? String(pool.port) : '',
+  });
   const [error, setError] = useState('');
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -194,6 +203,7 @@ function EditDialog({ pool, onClose, onSaved }: { pool: ProxyPool; onClose: () =
         name: form.name,
         description: form.description || undefined,
         color: form.color,
+        port: form.port ? Number(form.port) : null,
       });
       toast.success(t('pools.updated'));
       onSaved();
@@ -217,7 +227,7 @@ function EditDialog({ pool, onClose, onSaved }: { pool: ProxyPool; onClose: () =
 function PoolForm({
   form, set, error, onSubmit, submitLabel,
 }: {
-  form: { name: string; description: string; color: string };
+  form: { name: string; description: string; color: string; port: string };
   set: (k: string, v: string) => void;
   error: string;
   onSubmit: (e: React.FormEvent) => void;
@@ -262,6 +272,18 @@ function PoolForm({
             className="h-7 w-16 cursor-pointer rounded border border-input bg-transparent p-0.5"
           />
         </div>
+      </div>
+      <div className="space-y-1.5">
+        <Label>{t('pools.port')}</Label>
+        <Input
+          type="number"
+          min={9000}
+          max={9100}
+          value={form.port}
+          onChange={(e) => set('port', e.target.value)}
+          placeholder={t('pools.portPlaceholder')}
+        />
+        <p className="text-xs text-muted-foreground">{t('pools.portHint')}</p>
       </div>
       {error && <p className="text-sm text-destructive">{error}</p>}
       <DialogFooter>

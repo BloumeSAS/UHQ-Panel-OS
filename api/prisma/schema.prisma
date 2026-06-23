@@ -38,6 +38,10 @@ model UserProxy {
   expiresAt          DateTime?
   // Pool de proxies utilisé par ce compte (null = pool partagé global)
   pool               String?
+  // Port TCP dédié à CE compte (null = pas de port dédié, partage le port
+  // global 990). Sur ce port, seules les identifiants de ce compte sont
+  // acceptés (voie exclusive) — comportement sinon identique au port global.
+  port               Int?     @unique
 
   @@index([ownerId])
 }
@@ -181,6 +185,10 @@ model ProxyPool {
   description String?
   color       String?  @default("#6366f1")
   createdAt   DateTime @default(now())
+  // Port TCP dédié (null = pas de port dédié, accessible via le port partagé +
+  // filtre `pool` du compte). Sur ce port, toute connexion authentifiée utilise
+  // CETTE pool, même si le compte a son propre `pool` par défaut.
+  port        Int?     @unique
 }
 
 model BackendProxy {

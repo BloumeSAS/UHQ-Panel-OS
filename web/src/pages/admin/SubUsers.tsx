@@ -48,6 +48,7 @@ interface SubUser {
   expires_at: string | null;
   tags: string | null;
   pool: string | null;
+  port: number | null;
 }
 
 function fmtGb(bytes: number) {
@@ -290,6 +291,14 @@ export default function SubUsers() {
                             ◆ {u.pool}
                           </span>
                         )}
+                        {u.port && (
+                          <span
+                            className="bg-teal-100 text-teal-700 dark:bg-teal-950/30 dark:text-teal-400 px-1.5 py-0.5 rounded font-mono flex items-center gap-0.5"
+                            title={t('sub.port')}
+                          >
+                            :{u.port}
+                          </span>
+                        )}
                       </div>
                     </TD>
                     <TD className="font-mono text-xs">{u.username}</TD>
@@ -427,6 +436,7 @@ function CreateDialog({ onCreated }: { onCreated: () => void }) {
     expires_at: '',
     tags: '',
     pool: '',
+    port: '',
   });
   const [error, setError] = useState('');
   const set = (k: string, v: any) => setForm((f) => ({ ...f, [k]: v }));
@@ -450,6 +460,7 @@ function CreateDialog({ onCreated }: { onCreated: () => void }) {
         expires_at: form.expires_at || undefined,
         tags: form.tags || undefined,
         pool: form.pool || undefined,
+        port: form.port ? Number(form.port) : undefined,
       });
       setOpen(false);
       setForm({
@@ -464,6 +475,7 @@ function CreateDialog({ onCreated }: { onCreated: () => void }) {
         expires_at: '',
         tags: '',
         pool: '',
+        port: '',
       });
       onCreated();
     } catch (err) {
@@ -508,6 +520,7 @@ function EditDialog({
     expires_at: subUser.expires_at ? new Date(subUser.expires_at).toISOString().split('T')[0] : '',
     tags: subUser.tags || '',
     pool: subUser.pool || '',
+    port: subUser.port != null ? String(subUser.port) : '',
   });
   const [error, setError] = useState('');
   const set = (k: string, v: any) => setForm((f) => ({ ...f, [k]: v }));
@@ -531,6 +544,7 @@ function EditDialog({
         expires_at: form.expires_at || null,
         tags: form.tags || null,
         pool: form.pool || null,
+        port: form.port ? Number(form.port) : null,
       });
       onSaved();
     } catch (err) {
@@ -641,6 +655,19 @@ function SubUserForm({
           <option value="">{t('pools.noPool')}</option>
           {pools?.map((p) => <option key={p.id} value={p.name}>{p.name}</option>)}
         </select>
+      </div>
+
+      <div className="space-y-1.5">
+        <Label>{t('sub.port')}</Label>
+        <Input
+          type="number"
+          min={9000}
+          max={9100}
+          value={form.port}
+          onChange={(e) => set('port', e.target.value)}
+          placeholder={t('sub.portPlaceholder')}
+        />
+        <p className="text-xs text-muted-foreground">{t('sub.portHint')}</p>
       </div>
 
       <div className="space-y-1.5">
