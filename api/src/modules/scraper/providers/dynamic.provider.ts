@@ -1,6 +1,6 @@
 import { BaseProxyProvider } from './base.provider';
 import { ProxyItem } from '../proxy-item';
-import { parseProxyList } from '../../../common/utils/proxy-parse';
+import { isValidIPv4, parseProxyList } from '../../../common/utils/proxy-parse';
 
 /**
  * Provider générique piloté par la config (table `ScraperSource`).
@@ -35,7 +35,12 @@ export class DynamicProvider extends BaseProxyProvider {
     }
 
     // ── Étape 2 : parseProxyList (txt, ip:port, user:pass@host:port, etc.) ─
-    const parsed = parseProxyList(text);
+    // Filtre IPv4 strict ici (scope scraper uniquement) : `parseProxyLine`
+    // reste volontairement tolérant aux hostnames pour scraperProxy/
+    // customProxies, mais une liste SCRAPÉE n'est jamais censée contenir des
+    // hostnames — un texte bruité (ex. export Tor) peut sinon produire des
+    // "ip:port" qui ne sont en réalité que du texte:nombre coïncidant.
+    const parsed = parseProxyList(text).filter((p) => isValidIPv4(p.ip));
     if (parsed.length > 0) {
       return parsed.map((p) => ({
         ip: p.ip,
@@ -65,7 +70,10 @@ export class DynamicProvider extends BaseProxyProvider {
     for (const m of text.matchAll(re)) {
       const ip = m[1];
       const port = parseInt(m[2], 10);
-      if (!ip || !port || port < 1 || port > 65535) continue;
+      // Une regex personnalisée à 2 groupes peut matcher n'importe quoi (ex.
+      // un export Tor "ExitAddress <ip> <date>" : `m[1]` capte l'IP mais
+      // `m[2]` un fragment d'heure) — on exige une IPv4 valide pour `m[1]`.
+      if (!ip || !isValidIPv4(ip) || !port || port < 1 || port > 65535) continue;
       const key = `${ip}:${port}`;
       if (seen.has(key)) continue;
       seen.add(key);
@@ -83,7 +91,7 @@ export class DynamicProvider extends BaseProxyProvider {
       const ip = m[1];
       const port = parseInt(m[2], 10);
       if (port < 1 || port > 65535) continue;
-      if (!ip.split('.').every((o) => { const n = parseInt(o, 10); return n >= 0 && n <= 255; })) continue;
+      if (!isValidIPv4(ip)) continue;
       const key = `${ip}:${port}`;
       if (seen.has(key)) continue;
       seen.add(key);

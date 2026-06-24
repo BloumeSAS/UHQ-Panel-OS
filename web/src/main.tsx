@@ -5,7 +5,7 @@ import { I18nProvider } from '@/lib/i18n';
 import { ThemeProvider } from '@/lib/theme';
 import { AuthProvider } from '@/lib/auth';
 import { SiteProvider } from '@/lib/site';
-import { ToastContainer } from '@/components/ToastContainer';
+import { Toaster } from '@/components/Toaster';
 import App from './App';
 import './index.css';
 
@@ -21,7 +21,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
           <SiteProvider>
             <AuthProvider>
               <App />
-              <ToastContainer />
+              <Toaster />
             </AuthProvider>
           </SiteProvider>
         </ThemeProvider>

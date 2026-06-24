@@ -40,7 +40,12 @@ export class PanelMonitoringController {
     return { status: 'success', data };
   }
 
-  /** Snapshot temps réel : threads/sessions, état du pool, conso du jour. */
+  /**
+   * Snapshot temps réel : threads/sessions, état du pool, conso du jour.
+   * Agrégé côté DB (`aggregate`/`groupBy`) plutôt que de charger toutes les
+   * lignes `ProxyUsage` du jour en mémoire — appelé fréquemment (dashboard),
+   * c'était la requête la plus coûteuse de ce contrôleur sur un pool actif.
+   */
   @Get('live')
   async live() {
     const threads = Array.from(this.engine.getActiveThreads().values()).reduce(
@@ -48,27 +53,27 @@ export class PanelMonitoringController {
       0,
     );
     const sessions = this.engine.getSessions().size;
-    const total = await this.prisma.backendProxy.count();
-    const working = await this.prisma.backendProxy.count({
-      where: { isWorking: true, isBlacklisted: false },
-    });
-    const banned = await this.prisma.backendProxy.count({ where: { isBlacklisted: true } });
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const records = await this.prisma.proxyUsage.findMany({ where: { date: { gte: today } } });
-    const agg: Record<string, number> = {};
-    let totalGb = 0;
-    let totalReqs = 0;
-    for (const r of records) {
-      agg[r.hostname] = (agg[r.hostname] ?? 0) + r.requests;
-      totalGb += (r.bytesSent + r.bytesReceived) / 1024 ** 3;
-      totalReqs += r.requests;
-    }
-    const top = Object.entries(agg)
-      .sort(([, a], [, b]) => b - a)
-      .slice(0, 10)
-      .map(([hostname, requests]) => ({ hostname, requests }));
+    const [total, working, banned, totals, topGroups] = await Promise.all([
+      this.prisma.backendProxy.count(),
+      this.prisma.backendProxy.count({ where: { isWorking: true, isBlacklisted: false } }),
+      this.prisma.backendProxy.count({ where: { isBlacklisted: true } }),
+      this.prisma.proxyUsage.aggregate({
+        where: { date: { gte: today } },
+        _sum: { bytesSent: true, bytesReceived: true, requests: true },
+      }),
+      this.prisma.proxyUsage.groupBy({
+        by: ['hostname'],
+        where: { date: { gte: today } },
+        _sum: { requests: true },
+        orderBy: { _sum: { requests: 'desc' } },
+        take: 10,
+      }),
+    ]);
+    const totalGb = ((totals._sum.bytesSent ?? 0) + (totals._sum.bytesReceived ?? 0)) / 1024 ** 3;
+    const top = topGroups.map((g) => ({ hostname: g.hostname, requests: g._sum.requests ?? 0 }));
 
     return {
       status: 'success',
@@ -79,32 +84,31 @@ export class PanelMonitoringController {
       },
       today_summary: {
         total_gb: Math.round(totalGb * 10000) / 10000,
-        total_requests: totalReqs,
+        total_requests: totals._sum.requests ?? 0,
         top_domains: top,
       },
     };
   }
 
-  /** Répartition du pool par provider / protocole. */
+  /** Répartition du pool par provider / protocole — agrégé côté DB (`groupBy`). */
   @Get('pool')
   async pool() {
-    const all = await this.prisma.backendProxy.findMany({
-      select: { provider: true, protocol: true, isWorking: true },
-    });
+    const [total, working, byProviderRaw, byProtocolRaw] = await Promise.all([
+      this.prisma.backendProxy.count(),
+      this.prisma.backendProxy.count({ where: { isWorking: true } }),
+      this.prisma.backendProxy.groupBy({ by: ['provider'], _count: { _all: true } }),
+      this.prisma.backendProxy.groupBy({ by: ['protocol'], _count: { _all: true } }),
+    ]);
     const byProvider: Record<string, number> = {};
+    for (const g of byProviderRaw) byProvider[g.provider || 'Unknown'] = (byProvider[g.provider || 'Unknown'] ?? 0) + g._count._all;
     const byProtocol: Record<string, number> = {};
-    let working = 0;
-    for (const p of all) {
-      byProvider[p.provider || 'Unknown'] = (byProvider[p.provider || 'Unknown'] ?? 0) + 1;
-      byProtocol[p.protocol] = (byProtocol[p.protocol] ?? 0) + 1;
-      if (p.isWorking) working++;
-    }
+    for (const g of byProtocolRaw) byProtocol[g.protocol] = (byProtocol[g.protocol] ?? 0) + g._count._all;
     return {
       status: 'success',
       data: {
-        total_proxies: all.length,
+        total_proxies: total,
         working_proxies: working,
-        dead_proxies: all.length - working,
+        dead_proxies: total - working,
         by_provider: byProvider,
         by_protocol: byProtocol,
       },
@@ -304,22 +308,26 @@ export class PanelMonitoringController {
     return { status: 'success', deleted: res.count };
   }
 
-  /** Répartition des proxies working par pays (codes ISO 2 lettres). Filtrable par pool. */
+  /**
+   * Répartition des proxies working par pays (codes ISO 2 lettres). Filtrable
+   * par pool. Agrégé côté DB (`groupBy`) plutôt que de charger tout le pool.
+   */
   @ApiQuery({ name: 'pool', required: false, description: 'Filtrer par pool (catégorie)' })
   @Get('countries')
   async countries(@Query('pool') pool?: string) {
     const where: any = { isWorking: true };
     if (pool) where.pool = pool;
-    const proxies = await this.prisma.backendProxy.findMany({
+    const groups = await this.prisma.backendProxy.groupBy({
+      by: ['country'],
       where,
-      select: { country: true },
+      _count: { _all: true },
     });
     const count: Record<string, number> = {};
-    for (const p of proxies) {
-      if (!p.country || p.country === 'Unknown') continue;
+    for (const g of groups) {
+      if (!g.country || g.country === 'Unknown') continue;
       // Garder uniquement les codes ISO 2 lettres
-      const code = p.country.trim().toUpperCase();
-      if (code.length === 2) count[code] = (count[code] ?? 0) + 1;
+      const code = g.country.trim().toUpperCase();
+      if (code.length === 2) count[code] = (count[code] ?? 0) + g._count._all;
     }
     const sorted = Object.fromEntries(Object.entries(count).sort(([, a], [, b]) => b - a));
     return { status: 'success', data: sorted };
@@ -333,35 +341,50 @@ export class PanelMonitoringController {
   @Get('reports')
   async reports(@Query('period') period = 'week') {
     const since = this.periodStart(period);
+    const dateFilter = since ? { date: { gte: since } } : undefined;
 
-    // ── Trafic global ───────────────────────────────────────────────────────
-    const usageRows = await this.prisma.proxyUsage.findMany({
-      where: since ? { date: { gte: since } } : undefined,
-    });
-    let totalGb = 0;
-    let totalRequests = 0;
-    const domainMap: Record<string, number> = {};
+    // ── Trafic global + top domaines + par compte — agrégés côté DB ─────────
+    // (`groupBy`/`aggregate` au lieu de charger toutes les lignes ProxyUsage
+    // de la période en mémoire pour les sommer en JS). Seul le graphique
+    // quotidien a encore besoin des lignes brutes (bucketing par jour, pas de
+    // truncation de date dans `groupBy` Prisma) — champs réduits au minimum.
+    const [totals, domainGroups, userGroups, dailyRows] = await Promise.all([
+      this.prisma.proxyUsage.aggregate({
+        where: dateFilter,
+        _sum: { bytesSent: true, bytesReceived: true, requests: true },
+      }),
+      this.prisma.proxyUsage.groupBy({
+        by: ['hostname'],
+        where: dateFilter,
+        _sum: { requests: true },
+        orderBy: { _sum: { requests: 'desc' } },
+        take: 20,
+      }),
+      this.prisma.proxyUsage.groupBy({
+        by: ['userProxyId'],
+        where: dateFilter,
+        _sum: { bytesSent: true, bytesReceived: true, requests: true },
+      }),
+      this.prisma.proxyUsage.findMany({
+        where: dateFilter,
+        select: { date: true, bytesSent: true, bytesReceived: true, requests: true },
+      }),
+    ]);
+    const totalGb = ((totals._sum.bytesSent ?? 0) + (totals._sum.bytesReceived ?? 0)) / 1024 ** 3;
+    const totalRequests = totals._sum.requests ?? 0;
+    const topDomains = domainGroups.map((g) => ({ hostname: g.hostname, requests: g._sum.requests ?? 0 }));
     const userTrafficMap: Record<string, { sent: number; received: number; requests: number }> = {};
-    for (const r of usageRows) {
-      const gb = (r.bytesSent + r.bytesReceived) / 1024 ** 3;
-      totalGb += gb;
-      totalRequests += r.requests;
-      domainMap[r.hostname] = (domainMap[r.hostname] ?? 0) + r.requests;
-      if (!userTrafficMap[r.userProxyId]) {
-        userTrafficMap[r.userProxyId] = { sent: 0, received: 0, requests: 0 };
-      }
-      userTrafficMap[r.userProxyId].sent += r.bytesSent;
-      userTrafficMap[r.userProxyId].received += r.bytesReceived;
-      userTrafficMap[r.userProxyId].requests += r.requests;
+    for (const g of userGroups) {
+      userTrafficMap[g.userProxyId] = {
+        sent: g._sum.bytesSent ?? 0,
+        received: g._sum.bytesReceived ?? 0,
+        requests: g._sum.requests ?? 0,
+      };
     }
-    const topDomains = Object.entries(domainMap)
-      .sort(([, a], [, b]) => b - a)
-      .slice(0, 20)
-      .map(([hostname, requests]) => ({ hostname, requests }));
 
     // ── Trafic par jour (graphique) ─────────────────────────────────────────
     const dailyMap: Record<string, { gb: number; requests: number }> = {};
-    for (const r of usageRows) {
+    for (const r of dailyRows) {
       const day = r.date.toISOString().slice(0, 10);
       if (!dailyMap[day]) dailyMap[day] = { gb: 0, requests: 0 };
       dailyMap[day].gb += (r.bytesSent + r.bytesReceived) / 1024 ** 3;
@@ -385,30 +408,33 @@ export class PanelMonitoringController {
       is_blocked: u.isBlocked,
     })).sort((a, b) => b.used_gb - a.used_gb);
 
-    // ── Stats pool de proxies ───────────────────────────────────────────────
-    const [totalPool, workingPool, bannedPool] = await Promise.all([
+    // ── Stats pool de proxies — agrégées côté DB (`groupBy`) ────────────────
+    const [totalPool, workingPool, bannedPool, topProxies, byProviderRaw] = await Promise.all([
       this.prisma.backendProxy.count(),
       this.prisma.backendProxy.count({ where: { isWorking: true, isBlacklisted: false } }),
       this.prisma.backendProxy.count({ where: { isBlacklisted: true } }),
+      this.prisma.backendProxy.findMany({
+        orderBy: { successCount: 'desc' },
+        take: 20,
+        select: { ip: true, port: true, protocol: true, country: true, provider: true, successCount: true, failureCount: true, averageLatency: true, isWorking: true },
+      }),
+      this.prisma.backendProxy.groupBy({ by: ['provider'], _count: { _all: true } }),
     ]);
-
-    // Top proxies par succès
-    const topProxies = await this.prisma.backendProxy.findMany({
-      orderBy: { successCount: 'desc' },
-      take: 20,
-      select: { ip: true, port: true, protocol: true, country: true, provider: true, successCount: true, failureCount: true, averageLatency: true, isWorking: true },
-    });
-
-    // Répartition par provider (pool)
-    const allPool = await this.prisma.backendProxy.findMany({
-      select: { provider: true, protocol: true, isWorking: true },
-    });
     const byProvider: Record<string, { total: number; working: number }> = {};
-    for (const p of allPool) {
-      const k = p.provider || 'Unknown';
-      if (!byProvider[k]) byProvider[k] = { total: 0, working: 0 };
-      byProvider[k].total++;
-      if (p.isWorking) byProvider[k].working++;
+    for (const g of byProviderRaw) {
+      const k = g.provider || 'Unknown';
+      byProvider[k] = { total: g._count._all, working: 0 };
+    }
+    // `working` par provider nécessite un 2nd groupBy filtré (Prisma ne permet
+    // pas un _count conditionnel dans le même groupBy).
+    const workingByProviderRaw = await this.prisma.backendProxy.groupBy({
+      by: ['provider'],
+      where: { isWorking: true },
+      _count: { _all: true },
+    });
+    for (const g of workingByProviderRaw) {
+      const k = g.provider || 'Unknown';
+      if (byProvider[k]) byProvider[k].working = g._count._all;
     }
 
     // ── Stats utilisateurs panel ────────────────────────────────────────────

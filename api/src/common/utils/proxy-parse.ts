@@ -23,6 +23,29 @@ function normProtocol(p: string): string {
   return 'http';
 }
 
+/** true si `s` est une IPv4 valide (4 octets 0-255, séparés par des points). */
+export function isValidIPv4(s: string): boolean {
+  const parts = s.trim().split('.');
+  if (parts.length !== 4) return false;
+  return parts.every((o) => /^\d{1,3}$/.test(o) && Number(o) <= 255);
+}
+
+/**
+ * Cherche un couple `ip:port` valide et NON AMBIGU (collés par `:`) dans une
+ * chaîne potentiellement polluée — ex. un export Tor mal scrapé
+ * (`ExitAddress 1.2.3.4 2026-06-23 12:06:35`, qui n'a aucun port réel).
+ * Ne renvoie quelque chose que si ip et port sont directement adjacents :
+ * jamais une IP + un nombre proche par coïncidence (date, heure...).
+ */
+export function extractCleanIpPort(raw: string): { ip: string; port: number } | null {
+  const re = /(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}):(\d{1,5})/g;
+  for (const m of raw.matchAll(re)) {
+    const port = Number(m[2]);
+    if (isValidIPv4(m[1]) && port >= 1 && port <= 65535) return { ip: m[1], port };
+  }
+  return null;
+}
+
 /** true si `s` ressemble à un `host:port` valide (port = entier 1-65535). */
 function looksLikeHostPort(s: string): boolean {
   const i = s.lastIndexOf(':');

@@ -357,58 +357,54 @@ function PoolForm({
         <Switch checked={form.alwaysOnline} onCheckedChange={(v) => set('alwaysOnline', v)} />
       </div>
 
-      {form.alwaysOnline && (
-        <>
-          <div className="space-y-1.5">
-            <Label>{t('pools.fakeCountries')}</Label>
-            <Input
-              value={form.fakeCountries}
-              onChange={(e) => set('fakeCountries', e.target.value)}
-              placeholder={t('pools.fakeCountriesPlaceholder')}
-            />
-            <p className="text-xs text-muted-foreground">{t('pools.fakeCountriesHint')}</p>
-          </div>
+      <div className="space-y-1.5">
+        <Label>{t('pools.fakeCountries')}</Label>
+        <Input
+          value={form.fakeCountries}
+          onChange={(e) => set('fakeCountries', e.target.value)}
+          placeholder={t('pools.fakeCountriesPlaceholder')}
+        />
+        <p className="text-xs text-muted-foreground">{t('pools.fakeCountriesHint')}</p>
+      </div>
 
-          <div className="space-y-1.5">
-            <Label>{t('pools.fakeIpCount')}</Label>
-            <select
-              value={form.fakeIpMode}
-              onChange={(e) => set('fakeIpMode', e.target.value)}
-              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus:ring-1 focus:ring-ring"
-            >
-              <option value="fixed">{t('pools.fakeIpModeFixed')}</option>
-              <option value="random">{t('pools.fakeIpModeRandom')}</option>
-            </select>
-            {form.fakeIpMode === 'fixed' ? (
-              <Input
-                type="number"
-                min={0}
-                value={form.fakeIpFixed}
-                onChange={(e) => set('fakeIpFixed', e.target.value)}
-                placeholder="150000"
-              />
-            ) : (
-              <div className="grid grid-cols-2 gap-2">
-                <Input
-                  type="number"
-                  min={0}
-                  value={form.fakeIpMin}
-                  onChange={(e) => set('fakeIpMin', e.target.value)}
-                  placeholder="100000"
-                />
-                <Input
-                  type="number"
-                  min={0}
-                  value={form.fakeIpMax}
-                  onChange={(e) => set('fakeIpMax', e.target.value)}
-                  placeholder="300000"
-                />
-              </div>
-            )}
-            <p className="text-xs text-muted-foreground">{t('pools.fakeIpCountHint')}</p>
+      <div className="space-y-1.5">
+        <Label>{t('pools.fakeIpCount')}</Label>
+        <select
+          value={form.fakeIpMode}
+          onChange={(e) => set('fakeIpMode', e.target.value)}
+          className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus:ring-1 focus:ring-ring"
+        >
+          <option value="fixed">{t('pools.fakeIpModeFixed')}</option>
+          <option value="random">{t('pools.fakeIpModeRandom')}</option>
+        </select>
+        {form.fakeIpMode === 'fixed' ? (
+          <Input
+            type="number"
+            min={0}
+            value={form.fakeIpFixed}
+            onChange={(e) => set('fakeIpFixed', e.target.value)}
+            placeholder="150000"
+          />
+        ) : (
+          <div className="grid grid-cols-2 gap-2">
+            <Input
+              type="number"
+              min={0}
+              value={form.fakeIpMin}
+              onChange={(e) => set('fakeIpMin', e.target.value)}
+              placeholder="100000"
+            />
+            <Input
+              type="number"
+              min={0}
+              value={form.fakeIpMax}
+              onChange={(e) => set('fakeIpMax', e.target.value)}
+              placeholder="300000"
+            />
           </div>
-        </>
-      )}
+        )}
+        <p className="text-xs text-muted-foreground">{t('pools.fakeIpCountHint')}</p>
+      </div>
 
       {error && <p className="text-sm text-destructive">{error}</p>}
       <DialogFooter>

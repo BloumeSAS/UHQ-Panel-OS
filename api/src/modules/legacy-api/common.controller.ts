@@ -144,16 +144,20 @@ export class CommonController {
    * Nombre de pays et d'IPs disponibles dans une catégorie (pool). Sans
    * `pool`, porte sur l'ensemble du pool partagé (toutes catégories).
    */
+  /**
+   * Nombre de pays et d'IPs disponibles dans une catégorie (pool). Sans
+   * `pool`, porte sur l'ensemble du pool partagé (toutes catégories).
+   *
+   * Une pool peut déclarer des pays/IP "en plus" simulés (`fakeCountries`/
+   * `fakeIpCount`), INDÉPENDAMMENT de `alwaysOnline` — ils s'AJOUTENT aux
+   * vraies stats (jamais un remplacement) : une pool avec 0 vrai proxy
+   * affiche donc uniquement les chiffres simulés, une pool avec du vrai
+   * stock affiche du réel + simulé combiné.
+   */
   @ApiQuery({ name: 'pool', required: false, description: 'Nom de la catégorie/pool (vide = tout le pool)' })
   @Get('category-stats')
   @Scopes('read:pool')
   async categoryStats(@Query('pool') pool?: string) {
-    if (pool) {
-      const poolRow = await this.prisma.proxyPool.findUnique({ where: { name: pool } });
-      if (poolRow?.alwaysOnline && poolRow.fakeCountries && poolRow.fakeIpCount) {
-        return this.fakeCategoryStats(pool, poolRow.fakeCountries, poolRow.fakeIpCount);
-      }
-    }
     const where: any = { isWorking: true };
     if (pool) where.pool = pool;
     const proxies = await this.prisma.backendProxy.findMany({
@@ -169,6 +173,20 @@ export class CommonController {
         byCountry[code] = (byCountry[code] ?? 0) + 1;
       }
     }
+    let ipCount = ips.size;
+    let proxyCount = proxies.length;
+
+    if (pool) {
+      const poolRow = await this.prisma.proxyPool.findUnique({ where: { name: pool } });
+      if (poolRow?.fakeCountries && poolRow.fakeIpCount) {
+        const countries = poolRow.fakeCountries.split(',').map((c) => c.trim().toUpperCase()).filter(Boolean);
+        const fakeByCountry = distributeFakeCount(poolRow.fakeIpCount, countries, pool);
+        for (const [code, n] of Object.entries(fakeByCountry)) byCountry[code] = (byCountry[code] ?? 0) + n;
+        ipCount += poolRow.fakeIpCount;
+        proxyCount += poolRow.fakeIpCount;
+      }
+    }
+
     const sortedByCountry = Object.fromEntries(
       Object.entries(byCountry).sort(([, a], [, b]) => b - a),
     );
@@ -177,33 +195,9 @@ export class CommonController {
       pool: pool || null,
       data: {
         countries_count: Object.keys(sortedByCountry).length,
-        ip_count: ips.size,
-        proxy_count: proxies.length,
+        ip_count: ipCount,
+        proxy_count: proxyCount,
         by_country: sortedByCountry,
-      },
-    };
-  }
-
-  /**
-   * Stats simulées pour une pool "Toujours en ligne" (cf. ProxyPool.alwaysOnline) :
-   * répartit `fakeIpCount` sur les pays déclarés (`fakeCountries`) de façon
-   * déterministe (même pool+pays ⇒ même répartition à chaque appel, pas de
-   * tirage aléatoire par requête) mais visuellement non-uniforme.
-   */
-  private fakeCategoryStats(pool: string, fakeCountries: string, fakeIpCount: number) {
-    const countries = fakeCountries
-      .split(',')
-      .map((c) => c.trim().toUpperCase())
-      .filter(Boolean);
-    const byCountry = distributeFakeCount(fakeIpCount, countries, pool);
-    return {
-      status: 'success',
-      pool,
-      data: {
-        countries_count: countries.length,
-        ip_count: fakeIpCount,
-        proxy_count: fakeIpCount,
-        by_country: byCountry,
       },
     };
   }

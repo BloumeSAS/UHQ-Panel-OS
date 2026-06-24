@@ -76,13 +76,20 @@ export class PanelMeController {
   ) {
     const proxy = await this.ownedProxy(me, id);
     const start = periodStart(period);
-    const records = await this.prisma.proxyUsage.findMany({
-      where: { userProxyId: proxy.id, date: { gte: start } },
-      orderBy: { date: 'desc' },
-    });
-    const sent = records.reduce((a, r) => a + r.bytesSent, 0);
-    const received = records.reduce((a, r) => a + r.bytesReceived, 0);
-    const requests = records.reduce((a, r) => a + r.requests, 0);
+    const where = { userProxyId: proxy.id, date: { gte: start } };
+    // Sommes côté DB (`aggregate`) + seules les 100 lignes affichées sont
+    // chargées — avant, TOUTES les lignes de la période étaient chargées en
+    // mémoire juste pour être sommées en JS puis tronquées à 100 pour l'UI.
+    const [totals, recent] = await Promise.all([
+      this.prisma.proxyUsage.aggregate({
+        where,
+        _sum: { bytesSent: true, bytesReceived: true, requests: true },
+      }),
+      this.prisma.proxyUsage.findMany({ where, orderBy: { date: 'desc' }, take: 100 }),
+    ]);
+    const sent = totals._sum.bytesSent ?? 0;
+    const received = totals._sum.bytesReceived ?? 0;
+    const requests = totals._sum.requests ?? 0;
     const active = this.engine.getActiveThreads().get(proxy.username) ?? 0;
     return {
       status: 'success',
@@ -95,7 +102,7 @@ export class PanelMeController {
         active_threads: active,
         threads_limit: proxy.threadsLimit,
       },
-      usage: records.slice(0, 100).map((r) => ({
+      usage: recent.map((r) => ({
         hostname: r.hostname,
         bytesSent: r.bytesSent,
         bytesReceived: r.bytesReceived,

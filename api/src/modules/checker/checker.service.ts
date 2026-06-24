@@ -5,6 +5,7 @@ import { SettingsService } from '../../config/settings.service';
 import { performHandshake, tcpConnect } from '../proxy-engine/handshake';
 import { UpstreamProxy } from '../proxy-engine/types';
 import { NotificationService } from '../notifications/notification.service';
+import { extractCleanIpPort, isValidIPv4 } from '../../common/utils/proxy-parse';
 
 /**
  * Port of `app/proxy_engine/checker.py::ProxyChecker`. Pulls a large slice of
@@ -91,7 +92,51 @@ export class CheckerService implements OnModuleInit {
         orderBy: { lastChecked: 'asc' },
         take: 150_000,
       });
-      const candidates = rawCandidates.map((p: any) => {
+
+      // Hygiène : une ligne scrapée malformée (ex. export Tor "ExitAddress
+      // <ip> <date>" sans port réel) peut avoir glissé en base avant le
+      // filtre côté scraper. On valide `ip` ici aussi : récupérable (un
+      // couple ip:port collé trouvé ailleurs dans la ligne) → corrigé en
+      // base ; sinon → supprimé directement, JAMAIS testé ni notifié KO —
+      // ce n'était jamais un vrai proxy.
+      const validCandidates: typeof rawCandidates = [];
+      const garbageIds: string[] = [];
+      const toFix: Array<{ id: string; ip: string; port: number; url: string }> = [];
+      for (const p of rawCandidates) {
+        if (isValidIPv4(p.ip)) {
+          validCandidates.push(p);
+          continue;
+        }
+        const fixed = extractCleanIpPort(`${p.ip} ${p.url}`);
+        if (fixed) {
+          p.ip = fixed.ip;
+          p.port = fixed.port;
+          validCandidates.push(p);
+          toFix.push({ id: p.id, ip: fixed.ip, port: fixed.port, url: `${p.protocol}://${fixed.ip}:${fixed.port}` });
+        } else {
+          garbageIds.push(p.id);
+        }
+      }
+      // Lots distincts (delete vs update) — batché plutôt que fire-and-forget
+      // par ligne, pour ne pas saturer le pool de connexions pendant le cycle.
+      if (garbageIds.length > 0) {
+        await this.prisma.backendProxy
+          .deleteMany({ where: { id: { in: garbageIds } } })
+          .then((r) => this.logger.warn(`${r.count} entrée(s) invalide(s) supprimée(s) (ip non reconnaissable, ex. export Tor).`))
+          .catch((e) => this.logger.error(`Nettoyage entrées invalides échoué: ${e}`));
+      }
+      if (toFix.length > 0) {
+        await Promise.all(
+          toFix.map((f) =>
+            this.prisma.backendProxy
+              .update({ where: { id: f.id }, data: { ip: f.ip, port: f.port, url: f.url } })
+              .catch(() => this.prisma.backendProxy.delete({ where: { id: f.id } }).catch(() => undefined)),
+          ),
+        );
+        this.logger.warn(`${toFix.length} entrée(s) corrigée(s) (ip:port récupéré dans une ligne polluée).`);
+      }
+
+      const candidates = validCandidates.map((p: any) => {
         try {
           const u = new URL(p.url);
           if (u.username) {
