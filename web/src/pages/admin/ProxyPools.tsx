@@ -209,7 +209,7 @@ function CreateDialog({ onCreated }: { onCreated: () => void }) {
       <DialogTrigger asChild>
         <Button><Plus className="h-4 w-4" /> {t('pools.create')}</Button>
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent className="max-h-[90vh] overflow-y-auto">
         <DialogHeader><DialogTitle>{t('pools.create')}</DialogTitle></DialogHeader>
         <PoolForm form={form} set={set} error={error} onSubmit={submit} submitLabel={t('common.create')} />
       </DialogContent>
@@ -264,7 +264,7 @@ function EditDialog({ pool, onClose, onSaved }: { pool: ProxyPool; onClose: () =
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent>
+      <DialogContent className="max-h-[90vh] overflow-y-auto">
         <DialogHeader><DialogTitle>{t('pools.editTitle')}</DialogTitle></DialogHeader>
         <PoolForm form={form} set={set} error={error} onSubmit={submit} submitLabel={t('common.save')} />
       </DialogContent>

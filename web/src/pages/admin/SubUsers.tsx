@@ -408,7 +408,7 @@ export default function SubUsers() {
           }
         }}
       >
-        <DialogContent>
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{t('sub.stickyList')}</DialogTitle>
           </DialogHeader>

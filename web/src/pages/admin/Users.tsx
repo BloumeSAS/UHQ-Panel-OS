@@ -301,7 +301,7 @@ function EditDialog({ user, onClose, onChanged }: { user: PanelUser; onClose: ()
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent>
+      <DialogContent className="max-h-[90vh] overflow-y-auto">
         <DialogHeader><DialogTitle>{t('users.editTitle')}</DialogTitle></DialogHeader>
         <form onSubmit={submit} className="space-y-4">
           <div className="space-y-1.5">
@@ -366,7 +366,7 @@ function InviteDialog() {
           {t('users.invite')}
         </Button>
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent className="max-h-[90vh] overflow-y-auto">
         <DialogHeader><DialogTitle>{t('users.inviteTitle')}</DialogTitle></DialogHeader>
         {sent ? (
           <p className="text-sm text-green-600 py-4 text-center">✅ {t('users.inviteSent')}</p>
@@ -422,7 +422,7 @@ function CreateDialog({ onCreated }: { onCreated: () => void }) {
       <DialogTrigger asChild>
         <Button><Plus className="h-4 w-4" /> {t('users.create')}</Button>
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent className="max-h-[90vh] overflow-y-auto">
         <DialogHeader><DialogTitle>{t('users.create')}</DialogTitle></DialogHeader>
         <form onSubmit={submit} className="space-y-4">
           <div className="space-y-1.5">
@@ -469,7 +469,7 @@ function AssignDialog({ user, onClose, onChanged }: { user: PanelUser; onClose: 
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent>
+      <DialogContent className="max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{t('users.assignedProxies')} — {user.email}</DialogTitle>
         </DialogHeader>

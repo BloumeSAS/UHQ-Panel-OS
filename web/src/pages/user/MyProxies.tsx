@@ -226,7 +226,7 @@ function EditDialog({
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent>
+      <DialogContent className="max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{t('me.editTitle')} — {proxy.label}</DialogTitle>
         </DialogHeader>

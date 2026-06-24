@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { api, apiError } from '@/lib/api';
 import { useT } from '@/lib/i18n';
+import { toast } from '@/lib/toast';
 import {
   Badge,
   Button,
@@ -145,7 +146,7 @@ export default function Pool() {
       await api.post(`/checker/proxies/${id}/check`);
       invalidate();
     } catch (err) {
-      alert(apiError(err));
+      toast.error(apiError(err));
     } finally {
       setTestingIds((s) => {
         const next = new Set(s);
@@ -173,7 +174,7 @@ export default function Pool() {
       a.click();
       URL.revokeObjectURL(url);
     } catch (err) {
-      alert(apiError(err));
+      toast.error(apiError(err));
     } finally {
       setExporting(false);
     }
@@ -186,7 +187,7 @@ export default function Pool() {
       await api.delete('/monitoring/proxies?working=false');
       invalidate();
     } catch (err) {
-      alert(apiError(err));
+      toast.error(apiError(err));
     } finally {
       setCleaning(false);
     }
@@ -199,7 +200,7 @@ export default function Pool() {
       await api.post('/monitoring/proxies/revive-dead');
       invalidate();
     } catch (err) {
-      alert(apiError(err));
+      toast.error(apiError(err));
     } finally {
       setRevivedAll(false);
     }
@@ -673,7 +674,7 @@ function ImportDialog({ onDone }: { onDone: () => void }) {
           <Upload className="h-4 w-4" /> {t('pool.import')}
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{t('pool.import')}</DialogTitle>
         </DialogHeader>

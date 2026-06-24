@@ -279,7 +279,7 @@ function EditDialog({ source, onClose, onSaved }: { source: Source; onClose: () 
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent>
+      <DialogContent className="max-h-[90vh] overflow-y-auto">
         <DialogHeader><DialogTitle>{t('scraper.editTitle')}</DialogTitle></DialogHeader>
         <form onSubmit={submit} className="space-y-4">
           <div className="space-y-1.5">
@@ -355,7 +355,7 @@ function CreateDialog({ onCreated }: { onCreated: () => void }) {
       <DialogTrigger asChild>
         <Button><Plus className="h-4 w-4" /> {t('scraper.create')}</Button>
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent className="max-h-[90vh] overflow-y-auto">
         <DialogHeader><DialogTitle>{t('scraper.create')}</DialogTitle></DialogHeader>
         <form onSubmit={submit} className="space-y-4">
           <div className="space-y-1.5">
@@ -510,7 +510,7 @@ function BulkCreateDialog({ onCreated }: { onCreated: () => void }) {
           <Layers className="h-4 w-4" /> {t('scraper.bulkCreate')}
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-[520px]">
+      <DialogContent className="sm:max-w-[520px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{t('scraper.bulkCreate')}</DialogTitle>
         </DialogHeader>

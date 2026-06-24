@@ -10,6 +10,7 @@ import { useT, useI18n } from '@/lib/i18n';
 import { useSite } from '@/lib/site';
 import { Button, Input, Label, Switch } from '@/components/ui';
 import { cn } from '@/lib/utils';
+import { toast } from '@/lib/toast';
 
 // ── Tabs definition ──────────────────────────────────────────────────────────
 const TABS = [
@@ -43,8 +44,6 @@ export default function Settings() {
     queryFn: async () => (await api.get('/settings')).data.data as Record<string, any>,
   });
   const [form, setForm] = useState<Record<string, any>>({});
-  const [msg, setMsg]   = useState('');
-  const [error, setError] = useState('');
 
   // Backup queries and actions
   const { data: backupsList, refetch: refetchBackups } = useQuery({
@@ -72,7 +71,6 @@ export default function Settings() {
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
-    setMsg(''); setError('');
     try {
       const payload: Record<string, any> = { ...form };
       for (const s of SECRETS)
@@ -94,13 +92,12 @@ export default function Settings() {
       ])
         payload[b] = payload[b] === true || payload[b] === 'true';
       await api.put('/settings', payload);
-      setMsg(t('settings.saved'));
+      toast.success(t('settings.saved'));
       await Promise.all([refetch(), refresh()]);
-    } catch (err) { setError(apiError(err)); }
+    } catch (err) { toast.error(apiError(err)); }
   };
 
   const handleExportSettings = async () => {
-    setMsg(''); setError('');
     try {
       const res = await api.get('/backup/settings/export', { responseType: 'blob' });
       const url = window.URL.createObjectURL(new Blob([res.data]));
@@ -110,55 +107,53 @@ export default function Settings() {
       document.body.appendChild(link);
       link.click();
       link.parentNode?.removeChild(link);
-      setMsg(t('settings.exported'));
-    } catch (err) { setError(apiError(err)); }
+      toast.success(t('settings.exported'));
+    } catch (err) { toast.error(apiError(err)); }
   };
 
   const handleImportSettings = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    setMsg(''); setError('');
     const reader = new FileReader();
     reader.onload = async (event) => {
       try {
         const settingsJson = event.target?.result as string;
         await api.post('/backup/settings/import', { settingsJson });
-        setMsg(t('settings.imported'));
+        toast.success(t('settings.imported'));
         refetch();
-      } catch (err) { setError(apiError(err)); }
+      } catch (err) { toast.error(apiError(err)); }
     };
     reader.readAsText(file);
   };
 
   const handleRunBackup = async () => {
-    setBackupBusy(true); setMsg(''); setError('');
+    setBackupBusy(true);
     try {
       await api.post('/backup/run');
-      setMsg(t('settings.backupCreated'));
+      toast.success(t('settings.backupCreated'));
       refetchBackups();
-    } catch (err) { setError(apiError(err)); }
+    } catch (err) { toast.error(apiError(err)); }
     finally { setBackupBusy(false); }
   };
 
   const handleRestoreBackup = async (filename: string) => {
     if (!confirm(t('settings.confirmRestore').replace('{filename}', filename))) return;
-    setBackupBusy(true); setMsg(''); setError('');
+    setBackupBusy(true);
     try {
       await api.post('/backup/restore', { filename });
-      setMsg(t('settings.backupRestored'));
+      toast.success(t('settings.backupRestored'));
       await Promise.all([refetch(), refresh(), refetchBackups()]);
-    } catch (err) { setError(apiError(err)); }
+    } catch (err) { toast.error(apiError(err)); }
     finally { setBackupBusy(false); }
   };
 
   const handleDeleteBackup = async (filename: string) => {
     if (!confirm(t('settings.confirmDeleteBackup').replace('{filename}', filename))) return;
-    setMsg(''); setError('');
     try {
       await api.delete(`/backup/${filename}`);
-      setMsg(t('settings.backupDeleted'));
+      toast.success(t('settings.backupDeleted'));
       refetchBackups();
-    } catch (err) { setError(apiError(err)); }
+    } catch (err) { toast.error(apiError(err)); }
   };
 
   const formatSize = (bytes: number) => {
@@ -179,10 +174,6 @@ export default function Settings() {
         <h1 className="text-2xl font-bold">{t('settings.title')}</h1>
         <p className="text-sm text-muted-foreground mt-0.5">{t('settings.savedSubtitle')}</p>
       </div>
-
-      {/* ── Feedback ── */}
-      {msg   && <div className="mb-4 rounded-md bg-primary/10 border border-primary/20 px-4 py-2 text-sm text-primary">{msg}</div>}
-      {error && <div className="mb-4 rounded-md bg-destructive/10 border border-destructive/20 px-4 py-2 text-sm text-destructive">{error}</div>}
 
       {/* ── Tab bar ── */}
       <div className="flex gap-1 overflow-x-auto border-b pb-0 mb-6 scrollbar-none">
@@ -829,16 +820,16 @@ function Toggle({
 function SmtpTestCard() {
   const t = useT();
   const [email, setEmail] = useState('');
-  const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState(false);
 
   const test = async () => {
     if (!email) return;
-    setBusy(true); setMsg('');
+    setBusy(true);
     try {
       const { data } = await api.post('/settings/smtp/test', { email });
-      setMsg(data.status === 'success' ? t('settings.smtpTestSent') : t('settings.smtpTestFailed'));
-    } catch { setMsg(t('settings.smtpTestFailed')); }
+      if (data.status === 'success') toast.success(t('settings.smtpTestSent'));
+      else toast.error(t('settings.smtpTestFailed'));
+    } catch { toast.error(t('settings.smtpTestFailed')); }
     finally { setBusy(false); }
   };
 
@@ -850,7 +841,6 @@ function SmtpTestCard() {
       <Button type="button" variant="outline" size="sm" className="mb-[1px]" onClick={test} disabled={busy || !email}>
         <Send className="h-3.5 w-3.5 mr-1.5" />{t('settings.smtpTest')}
       </Button>
-      {msg && <p className="w-full text-xs text-primary">{msg}</p>}
     </div>
   );
 }
@@ -859,15 +849,15 @@ function SmtpTestCard() {
 
 function WebhookTestButton({ target }: { target: 'discord' | 'slack' | 'bloumechat' }) {
   const t = useT();
-  const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState(false);
 
   const test = async () => {
-    setBusy(true); setMsg('');
+    setBusy(true);
     try {
       const { data } = await api.post('/settings/webhook/test', { target });
-      setMsg(data.status === 'success' ? t('settings.webhookTestSent') : (data.message || t('settings.webhookTestFailed')));
-    } catch { setMsg(t('settings.webhookTestFailed')); }
+      if (data.status === 'success') toast.success(t('settings.webhookTestSent'));
+      else toast.error(data.message || t('settings.webhookTestFailed'));
+    } catch { toast.error(t('settings.webhookTestFailed')); }
     finally { setBusy(false); }
   };
 
@@ -876,7 +866,6 @@ function WebhookTestButton({ target }: { target: 'discord' | 'slack' | 'bloumech
       <Button type="button" variant="outline" size="sm" onClick={test} disabled={busy}>
         <Send className="h-3.5 w-3.5 mr-1.5" />{t('settings.testWebhook')}
       </Button>
-      {msg && <p className="text-xs text-muted-foreground">{msg}</p>}
     </div>
   );
 }
@@ -893,20 +882,19 @@ function SecretField({
   const [prompting, setPrompting] = useState(false);
   const [pwd, setPwd] = useState('');
   const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState('');
 
   const value = form[k] ?? '';
   const isMasked = /^•+$/.test(value);
 
   const toggle = () => {
     if (revealed) { setRevealed(false); return; }
-    if (isMasked) { setErr(''); setPwd(''); setPrompting(true); return; }
+    if (isMasked) { setPwd(''); setPrompting(true); return; }
     setRevealed(true);
   };
 
   const confirmReveal = async () => {
     if (!pwd || busy) return;
-    setBusy(true); setErr('');
+    setBusy(true);
     try {
       const { data } = await api.post('/settings/reveal', { key: k, password: pwd });
       set(k, data.value ?? '');
@@ -914,7 +902,7 @@ function SecretField({
       setPrompting(false);
       setPwd('');
     } catch (e) {
-      setErr(apiError(e));
+      toast.error(apiError(e));
     } finally {
       setBusy(false);
     }
@@ -953,10 +941,9 @@ function SecretField({
           <Button type="button" size="sm" disabled={busy || !pwd} onClick={confirmReveal}>
             {t('common.confirm')}
           </Button>
-          <Button type="button" size="sm" variant="outline" onClick={() => { setPrompting(false); setPwd(''); setErr(''); }}>
+          <Button type="button" size="sm" variant="outline" onClick={() => { setPrompting(false); setPwd(''); }}>
             {t('common.cancel')}
           </Button>
-          {err && <p className="w-full text-xs text-destructive">{err}</p>}
         </div>
       )}
     </div>
@@ -978,7 +965,12 @@ function ApiKeyCard() {
   const regenerate = async () => {
     if (!confirm('Régénérer la clé ? L\'ancienne sera invalidée.')) return;
     setBusy(true);
-    try { const { data } = await api.post('/settings/api-key/regenerate'); setKey(data.apiKey); setShown(true); }
+    try {
+      const { data } = await api.post('/settings/api-key/regenerate');
+      setKey(data.apiKey);
+      setShown(true);
+      toast.success(t('settings.saved'));
+    } catch (err) { toast.error(apiError(err)); }
     finally { setBusy(false); }
   };
 
@@ -989,7 +981,13 @@ function ApiKeyCard() {
         {shown ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
         <span className="ml-1.5">{shown ? t('common.hide') : t('common.show')}</span>
       </Button>
-      <Button type="button" variant="outline" size="sm" disabled={!key} onClick={() => navigator.clipboard.writeText(key)}>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        disabled={!key}
+        onClick={() => { navigator.clipboard.writeText(key); toast.success(t('common.copy')); }}
+      >
         <Copy className="h-3.5 w-3.5" /><span className="ml-1.5">{t('common.copy')}</span>
       </Button>
       <Button type="button" variant="destructive" size="sm" disabled={busy} onClick={regenerate}>
