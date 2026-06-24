@@ -14,11 +14,14 @@ import { randomUUID } from 'crypto';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../../common/guards/roles.guard';
 import { Roles } from '../../../common/decorators/roles.decorator';
+import { CurrentUser } from '../../../common/decorators/current-user.decorator';
+import type { JwtUser } from '../../../common/guards/jwt-auth.guard';
 import { PrismaService } from '../../../database/prisma.service';
 import { ProxyServerService } from '../../proxy-engine/proxy-server.service';
 import { parseProxyList, parseProxyLine } from '../../../common/utils/proxy-parse';
 import { ImportProxiesDto } from '../../../common/dto/panel.dto';
 import { PoolHealthSnapshotService } from '../pool-health-snapshot.service';
+import { AuditService } from '../../audit/audit.service';
 
 @ApiTags('panel-monitoring')
 @ApiBearerAuth()
@@ -30,6 +33,7 @@ export class PanelMonitoringController {
     private readonly prisma: PrismaService,
     private readonly engine: ProxyServerService,
     private readonly poolHealth: PoolHealthSnapshotService,
+    private readonly auditService: AuditService,
   ) {}
 
   /** Historique de la santé du pool (time series). */
@@ -288,8 +292,11 @@ export class PanelMonitoringController {
   /** Supprime un proxy du pool. */
   @ApiParam({ name: 'id', description: 'ID du proxy dans le pool' })
   @Delete('proxies/:id')
-  async deleteProxy(@Param('id') id: string) {
+  async deleteProxy(@Param('id') id: string, @CurrentUser() me: JwtUser) {
     await this.prisma.backendProxy.delete({ where: { id } }).catch(() => undefined);
+    void this.auditService
+      .log({ userId: me.id, userEmail: me.email, action: 'proxy.delete', target: id })
+      .catch(() => undefined);
     return { status: 'success' };
   }
 
@@ -301,10 +308,19 @@ export class PanelMonitoringController {
    */
   @ApiQuery({ name: 'working', required: false, type: String, description: 'false pour supprimer uniquement les proxies HS' })
   @Delete('proxies')
-  async deleteManyProxies(@Query('working') working?: string) {
+  async deleteManyProxies(@Query('working') working?: string, @CurrentUser() me?: JwtUser) {
     const where: any = { isBlacklisted: false };
     if (working === 'false') where.isWorking = false;
     const res = await this.prisma.backendProxy.deleteMany({ where });
+    void this.auditService
+      .log({
+        userId: me?.id,
+        userEmail: me?.email,
+        action: 'proxy.deleteMany',
+        target: working === 'false' ? 'working=false' : 'all',
+        details: { deleted: res.count },
+      })
+      .catch(() => undefined);
     return { status: 'success', deleted: res.count };
   }
 

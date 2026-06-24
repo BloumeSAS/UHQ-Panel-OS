@@ -24,6 +24,7 @@ import { BulkUsersDto } from '../../../common/dto/security.dto';
 import { t } from '../../../common/utils/i18n';
 
 import { NotificationService } from '../../notifications/notification.service';
+import { AuditService } from '../../audit/audit.service';
 
 @ApiTags('panel-users')
 @ApiBearerAuth()
@@ -34,6 +35,7 @@ export class PanelUserController {
   constructor(
     private readonly prisma: PrismaService,
     private readonly notificationService: NotificationService,
+    private readonly auditService: AuditService,
   ) {}
 
   @Get()
@@ -58,7 +60,7 @@ export class PanelUserController {
   }
 
   @Post()
-  async create(@Body() dto: CreatePanelUserDto) {
+  async create(@Body() dto: CreatePanelUserDto, @CurrentUser() me: JwtUser) {
     const exists = await this.prisma.panelUser.findUnique({
       where: { email: dto.email.toLowerCase() },
     });
@@ -71,6 +73,9 @@ export class PanelUserController {
       },
     });
     void this.notificationService.notifyUserCreated(u.email, u.role);
+    void this.auditService
+      .log({ userId: me.id, userEmail: me.email, action: 'user.create', target: u.id, details: { email: u.email, role: u.role } })
+      .catch(() => undefined);
     return { status: 'success', data: this.publicUser(u) };
   }
 
@@ -103,6 +108,9 @@ export class PanelUserController {
         throw new BadRequestException(`Unknown action: ${dto.action}`);
     }
 
+    void this.auditService
+      .log({ userId: me.id, userEmail: me.email, action: `user.bulk.${dto.action}`, target: dto.ids.join(','), details: { count: dto.ids.length } })
+      .catch(() => undefined);
     return { status: 'success', affected: dto.ids.length };
   }
 
@@ -119,7 +127,7 @@ export class PanelUserController {
 
   @ApiParam({ name: 'id', description: 'ID de l\'utilisateur panel' })
   @Patch(':id')
-  async update(@Param('id') id: string, @Body() dto: UpdatePanelUserDto) {
+  async update(@Param('id') id: string, @Body() dto: UpdatePanelUserDto, @CurrentUser() me: JwtUser) {
     const data: any = {};
     if (dto.email !== undefined) {
       const normalized = dto.email.toLowerCase();
@@ -135,6 +143,10 @@ export class PanelUserController {
     }
     try {
       const u = await this.prisma.panelUser.update({ where: { id }, data });
+      const action = dto.role !== undefined ? 'user.role.update' : 'user.update';
+      void this.auditService
+        .log({ userId: me.id, userEmail: me.email, action, target: u.id, details: { changed: Object.keys(data) } })
+        .catch(() => undefined);
       return { status: 'success', data: this.publicUser(u) };
     } catch {
       throw new NotFoundException(t('errors.userNotFound'));
@@ -147,6 +159,9 @@ export class PanelUserController {
     if (id === me.id) throw new BadRequestException(t('errors.cannotDeleteSelf'));
     try {
       await this.prisma.panelUser.delete({ where: { id } });
+      void this.auditService
+        .log({ userId: me.id, userEmail: me.email, action: 'user.delete', target: id })
+        .catch(() => undefined);
       return { status: 'success' };
     } catch {
       throw new NotFoundException(t('errors.userNotFound'));

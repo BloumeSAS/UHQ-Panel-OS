@@ -27,6 +27,7 @@ const SINGLETON = 'singleton';
 
 import { NotificationService } from '../../notifications/notification.service';
 import { APP_VERSION } from '../../../version';
+import { AuditService } from '../../audit/audit.service';
 
 @ApiTags('panel-auth')
 @Controller('api/panel')
@@ -37,6 +38,7 @@ export class PanelAuthController {
     private readonly jwt: JwtService,
     private readonly mail: MailService,
     private readonly notificationService: NotificationService,
+    private readonly auditService: AuditService,
   ) {}
 
   /** Lecture publique : pilote l'écran de démarrage du front. */
@@ -152,6 +154,9 @@ export class PanelAuthController {
     // Notification de connexion (si SMTP configuré et option activée)
     const ip = req.headers['x-forwarded-for']?.split(',')[0] ?? req.socket?.remoteAddress;
     void this.mail.sendLoginNotification(user.email, this.settings.get('siteName'), ip);
+    void this.auditService
+      .log({ userId: user.id, userEmail: user.email, action: 'auth.login', ip })
+      .catch(() => undefined);
 
     const token = this.sign(user);
     await this.createSession(user.id, token, req);

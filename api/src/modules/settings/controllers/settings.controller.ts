@@ -12,6 +12,7 @@ import { UpdateSettingsDto, SmtpTestDto, WebhookTestDto, RevealSettingDto, REVEA
 import { MailService } from '../../mail/mail.service';
 import { NotificationService } from '../../notifications/notification.service';
 import { t } from '../../../common/utils/i18n';
+import { AuditService } from '../../audit/audit.service';
 
 @ApiTags('panel-settings')
 @ApiBearerAuth()
@@ -24,6 +25,7 @@ export class PanelSettingsController {
     private readonly prisma: PrismaService,
     private readonly mail: MailService,
     private readonly notifications: NotificationService,
+    private readonly auditService: AuditService,
   ) {}
 
   /** Toutes les clés résolues, secrets masqués. */
@@ -37,7 +39,7 @@ export class PanelSettingsController {
    * est ignorée (on ne réécrase jamais un secret par accident).
    */
   @Put()
-  async update(@Body() dto: UpdateSettingsDto) {
+  async update(@Body() dto: UpdateSettingsDto, @CurrentUser() me: JwtUser) {
     const patch: Record<string, string> = {};
     for (const [k, v] of Object.entries(dto)) {
       if (v === undefined) continue;
@@ -55,6 +57,9 @@ export class PanelSettingsController {
       }
     }
     await this.settings.setMany(patch as any);
+    void this.auditService
+      .log({ userId: me.id, userEmail: me.email, action: 'settings.update', details: { keys: Object.keys(patch) } })
+      .catch(() => undefined);
     return { status: 'success', data: this.settings.getAllMasked() };
   }
 
@@ -81,8 +86,12 @@ export class PanelSettingsController {
 
   /** Régénère la clé API (invalide l'ancienne) et renvoie la nouvelle. */
   @Post('api-key/regenerate')
-  async regenerateApiKey() {
-    return { status: 'success', apiKey: await this.settings.regenerateApiKey() };
+  async regenerateApiKey(@CurrentUser() me: JwtUser) {
+    const apiKey = await this.settings.regenerateApiKey();
+    void this.auditService
+      .log({ userId: me.id, userEmail: me.email, action: 'apikey.regenerate' })
+      .catch(() => undefined);
+    return { status: 'success', apiKey };
   }
 
   /** Envoie un e-mail de test à l'adresse fournie pour vérifier la config SMTP. */

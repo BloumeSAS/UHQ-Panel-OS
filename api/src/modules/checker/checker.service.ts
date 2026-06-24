@@ -95,15 +95,19 @@ export class CheckerService implements OnModuleInit {
 
       // Hygiène : une ligne scrapée malformée (ex. export Tor "ExitAddress
       // <ip> <date>" sans port réel) peut avoir glissé en base avant le
-      // filtre côté scraper. On valide `ip` ici aussi : récupérable (un
-      // couple ip:port collé trouvé ailleurs dans la ligne) → corrigé en
-      // base ; sinon → supprimé directement, JAMAIS testé ni notifié KO —
-      // ce n'était jamais un vrai proxy.
+      // filtre côté scraper. `ip` n'a PAS besoin d'être une IPv4 stricte —
+      // les proxies importés manuellement (provider Manual) ont souvent un
+      // hostname (`gate.provider.com`) au lieu d'une IP, et c'est valide
+      // (résolution DNS native côté connect). Seule une valeur contenant un
+      // ESPACE est une signature fiable de ligne polluée (un hostname ou une
+      // IP n'en contient jamais) : récupérable (un couple ip:port collé
+      // trouvé ailleurs dans la ligne) → corrigé en base ; sinon → supprimé,
+      // JAMAIS testé ni notifié KO — ce n'était jamais un vrai proxy.
       const validCandidates: typeof rawCandidates = [];
       const garbageIds: string[] = [];
       const toFix: Array<{ id: string; ip: string; port: number; url: string }> = [];
       for (const p of rawCandidates) {
-        if (isValidIPv4(p.ip)) {
+        if (isValidIPv4(p.ip) || !/\s/.test(p.ip)) {
           validCandidates.push(p);
           continue;
         }

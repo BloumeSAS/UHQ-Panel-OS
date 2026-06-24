@@ -15,6 +15,8 @@ import { ApiBearerAuth, ApiParam, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../../common/guards/roles.guard';
 import { Roles } from '../../../common/decorators/roles.decorator';
+import { CurrentUser } from '../../../common/decorators/current-user.decorator';
+import type { JwtUser } from '../../../common/guards/jwt-auth.guard';
 import { PrismaService } from '../../../database/prisma.service';
 import { SettingsService } from '../../../config/settings.service';
 import { ProxyServerService } from '../../proxy-engine/proxy-server.service';
@@ -24,6 +26,7 @@ import { SetBlockedDto, BulkSubUsersDto } from '../../../common/dto/panel.dto';
 import { t } from '../../../common/utils/i18n';
 import { assertPortAvailable } from '../../../common/utils/port-validation';
 import { buildPoolEndpointMap, resolveConnectionEndpoint, resolveHostPortSync } from '../../../common/utils/connection-endpoint';
+import { AuditService } from '../../audit/audit.service';
 
 /**
  * Gestion des comptes proxy (UserProxy) côté panel admin, en JWT.
@@ -39,6 +42,7 @@ export class PanelSubUserController {
     private readonly prisma: PrismaService,
     private readonly settings: SettingsService,
     private readonly engine: ProxyServerService,
+    private readonly auditService: AuditService,
   ) {}
 
   @Get()
@@ -63,7 +67,7 @@ export class PanelSubUserController {
   }
 
   @Post()
-  async create(@Body() dto: PanelSubUserCreateDto) {
+  async create(@Body() dto: PanelSubUserCreateDto, @CurrentUser() me: JwtUser) {
     if (dto.port != null) await assertPortAvailable(this.prisma, dto.port);
     const user = await this.prisma.userProxy.create({
       data: {
@@ -87,6 +91,9 @@ export class PanelSubUserController {
     });
     if (dto.port != null) this.engine.invalidatePortCache();
     const created = await resolveConnectionEndpoint(this.prisma, this.settings, user);
+    void this.auditService
+      .log({ userId: me.id, userEmail: me.email, action: 'subuser.create', target: user.id, details: { username: user.username } })
+      .catch(() => undefined);
     return {
       status: 'success',
       data: {
@@ -104,7 +111,7 @@ export class PanelSubUserController {
    * Déclaré avant les routes `:id` (route littérale prioritaire).
    */
   @Post('bulk')
-  async bulk(@Body() dto: BulkSubUsersDto) {
+  async bulk(@Body() dto: BulkSubUsersDto, @CurrentUser() me: JwtUser) {
     if (!dto.ids?.length) throw new BadRequestException('No sub-user IDs provided');
     const targets = await this.prisma.userProxy.findMany({
       where: { id: { in: dto.ids } },
@@ -130,12 +137,15 @@ export class PanelSubUserController {
         throw new BadRequestException(`Unknown action: ${dto.action}`);
     }
     for (const u of targets) this.engine.invalidateUserCache(u.username);
+    void this.auditService
+      .log({ userId: me.id, userEmail: me.email, action: `subuser.bulk.${dto.action}`, target: dto.ids.join(','), details: { count: dto.ids.length } })
+      .catch(() => undefined);
     return { status: 'success', affected: dto.ids.length };
   }
 
   @ApiParam({ name: 'id', description: 'ID du sous-utilisateur proxy' })
   @Patch(':id')
-  async update(@Param('id') id: string, @Body() dto: PanelSubUserUpdatePortDto) {
+  async update(@Param('id') id: string, @Body() dto: PanelSubUserUpdatePortDto, @CurrentUser() me: JwtUser) {
     if (dto.port != null) await assertPortAvailable(this.prisma, dto.port, { table: 'user', id });
     const data: any = {};
     if (dto.label !== undefined) data.name = dto.label;
@@ -160,6 +170,9 @@ export class PanelSubUserController {
       this.engine.invalidateUserCache(user.username);
       if (dto.port !== undefined) this.engine.invalidatePortCache();
       const resolved = await resolveConnectionEndpoint(this.prisma, this.settings, user);
+      void this.auditService
+        .log({ userId: me.id, userEmail: me.email, action: 'subuser.update', target: user.id, details: { changed: Object.keys(data) } })
+        .catch(() => undefined);
       return {
         status: 'success',
         data: {
@@ -208,13 +221,16 @@ export class PanelSubUserController {
 
   @ApiParam({ name: 'id', description: 'ID du sous-utilisateur proxy' })
   @Delete(':id')
-  async remove(@Param('id') id: string) {
+  async remove(@Param('id') id: string, @CurrentUser() me: JwtUser) {
     try {
       const user = await this.prisma.userProxy.findUnique({ where: { id } });
       if (!user) throw new NotFoundException(t('errors.proxyNotFound'));
       await this.prisma.userProxy.delete({ where: { id } });
       this.engine.invalidateUserCache(user.username);
       if (user.port != null) this.engine.invalidatePortCache();
+      void this.auditService
+        .log({ userId: me.id, userEmail: me.email, action: 'subuser.delete', target: id, details: { username: user.username } })
+        .catch(() => undefined);
       return { status: 'success' };
     } catch (e) {
       if (e instanceof NotFoundException) throw e;
