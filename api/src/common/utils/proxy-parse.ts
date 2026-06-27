@@ -144,7 +144,10 @@ export function parseProxyList(text: string): ParsedProxy[] {
     for (const line of candidates) {
       const p = parseProxyLine(line);
       if (!p) continue;
-      const key = `${p.protocol}://${p.ip}:${p.port}`;
+      // Inclure l'auth dans la clé : plusieurs lignes peuvent partager le même
+      // host:port (gateway résidentielle rotative) avec des user:pass distincts
+      // — ce sont des proxies différents, pas des doublons.
+      const key = `${p.protocol}://${p.auth ?? ''}@${p.ip}:${p.port}`;
       if (seen.has(key)) continue;
       seen.add(key);
       out.push(p);

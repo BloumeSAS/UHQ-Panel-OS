@@ -216,6 +216,7 @@ export class ScraperService implements OnModuleInit {
                                    ELSE EXCLUDED."isWorking" END,
               "country"     = COALESCE(NULLIF(EXCLUDED."country", 'Unknown'), "BackendProxy"."country"),
               pool          = EXCLUDED.pool
+            WHERE "BackendProxy"."archived" = FALSE
           `;
           await this.prisma.$executeRawUnsafe(sql, ...params);
         });

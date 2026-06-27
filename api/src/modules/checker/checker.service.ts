@@ -78,7 +78,10 @@ export class CheckerService implements OnModuleInit {
 
       const skipDead = this.settings.getBool('skipDeadProxies');
       const maxRetries = this.settings.getNumber('deadProxyMaxRetries');
-      const andConditions: any[] = [{ isBlacklisted: false }];
+      // Archivé = mort définitif : jamais re-testé (et jamais réactivé par un
+      // re-scrape, cf. scraper.service.ts). Seule une suppression manuelle
+      // admin peut le faire sortir de la base.
+      const andConditions: any[] = [{ isBlacklisted: false }, { archived: false }];
       if (alwaysOnlineNames.length > 0) {
         // `pool` est nullable : un simple `notIn` exclurait à tort les lignes
         // sans pool (NULL NOT IN (...) = NULL côté SQL) — OR explicite requis.
@@ -247,6 +250,10 @@ export class CheckerService implements OnModuleInit {
         row.averageLatency != null ? row.averageLatency * 0.7 + result.latencyMs * 0.3 : result.latencyMs;
     }
     for (const k of Object.keys(data)) if (data[k] === undefined) delete data[k];
+    if (!effectiveAlive) {
+      const maxRetries = this.settings.getNumber('deadProxyMaxRetries');
+      if (row.failCount + 1 >= maxRetries) data.archived = true;
+    }
     await this.prisma.backendProxy.update({ where: { id }, data });
 
     if (!effectiveAlive) {
@@ -392,6 +399,14 @@ export class CheckerService implements OnModuleInit {
           this.prisma.backendProxy.updateMany({
             where: { id: { in: dead } },
             data: { isWorking: false, lastChecked: new Date(), failCount: { increment: 1 } },
+          }),
+        );
+        // Archivage : passé le seuil, plus jamais re-testé/re-scrapé/supprimé auto.
+        const maxRetries = this.settings.getNumber('deadProxyMaxRetries');
+        await this.prisma.withRetry(() =>
+          this.prisma.backendProxy.updateMany({
+            where: { id: { in: dead }, failCount: { gte: maxRetries } },
+            data: { archived: true },
           }),
         );
       }

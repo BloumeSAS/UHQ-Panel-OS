@@ -227,6 +227,10 @@ model BackendProxy {
   lastChecked    DateTime      @default(now())
   isWorking      Boolean       @default(true)
   isBlacklisted  Boolean       @default(false)
+  // Mort définitif (failCount >= deadProxyMaxRetries) : jamais re-testé, jamais
+  // réactivé par un re-scrape, jamais supprimé automatiquement. Suppression =
+  // action manuelle admin uniquement.
+  archived       Boolean       @default(false)
   failCount      Int           @default(0)
   averageLatency Float?
   successCount   Int           @default(0)
@@ -241,6 +245,7 @@ model BackendProxy {
   @@index([isWorking])
   @@index([isBlacklisted])
   @@index([provider])
+  @@index([archived])
 }
 
 model TargetBlock {

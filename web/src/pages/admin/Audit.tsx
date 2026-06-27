@@ -82,7 +82,9 @@ export default function AuditPage() {
                   <td className="px-4 py-3 font-mono text-xs">{log.userEmail ?? '—'}</td>
                   <td className="px-4 py-3">
                     <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${actionColor(log.action)}`}>
-                      {log.action}
+                      {t(`audit.actions.${log.action}` as any) !== `audit.actions.${log.action}`
+                        ? t(`audit.actions.${log.action}` as any)
+                        : log.action}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-muted-foreground text-xs">{log.target ?? '—'}</td>

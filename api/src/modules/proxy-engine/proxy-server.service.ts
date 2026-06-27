@@ -200,18 +200,6 @@ export class ProxyServerService implements OnModuleDestroy {
   }
 
   private startBackgroundTasks(): void {
-    // _background_cleaner — dead-proxy DB purge every 12h
-    setInterval(async () => {
-      try {
-        const r = await this.prisma.backendProxy.deleteMany({
-          where: { isWorking: false, isBlacklisted: false },
-        });
-        this.logger.log(`Cleanup: deleted ${r.count} dead proxies.`);
-      } catch (e) {
-        this.logger.error(`Cleanup task failed: ${e}`);
-      }
-    }, 43_200_000);
-
     // _session_cleaner — expired sticky sessions every 60s
     setInterval(() => {
       const now = Date.now();
