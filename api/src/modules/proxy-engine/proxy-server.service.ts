@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { createServer, Server as NetServer, Socket } from 'net';
 import { URL } from 'url';
+import { timingSafeEqual } from 'crypto';
 import { PrismaService } from '../../database/prisma.service';
 import { TrafficService } from '../traffic/traffic.service';
 import { SettingsService } from '../../config/settings.service';
@@ -784,7 +785,7 @@ export class ProxyServerService implements OnModuleDestroy {
         user = await this.prisma.userProxy.findUnique({ where: { username } });
         if (user) this.userListCache.set(username, user);
       }
-      if (!user || user.password !== password) return null;
+      if (!user || !safeEqual(user.password, password)) return null;
       if (user.isBlocked) {
         this.logger.warn(`Blocked user ${username} attempted connection.`);
         return null;
@@ -1054,4 +1055,12 @@ export class ProxyServerService implements OnModuleDestroy {
       if (reason) this.logger.warn(`Target blocking on ${cleanHost}: ${reason}`);
     }
   }
+}
+
+/** Comparaison à temps constant — évite un timing attack sur le mot de passe proxy. */
+function safeEqual(a: string, b: string): boolean {
+  const ab = Buffer.from(a);
+  const bb = Buffer.from(b);
+  if (ab.length !== bb.length) return false;
+  return timingSafeEqual(ab, bb);
 }

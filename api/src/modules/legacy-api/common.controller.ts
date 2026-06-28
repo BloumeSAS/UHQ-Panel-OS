@@ -157,7 +157,8 @@ export class CommonController {
   @ApiQuery({ name: 'pool', required: false, description: 'Nom de la catégorie/pool (vide = tout le pool)' })
   @Get('category-stats')
   @Scopes('read:pool')
-  async categoryStats(@Query('pool') pool?: string) {
+  async categoryStats(@Query('pool') poolRaw?: string) {
+    const pool = poolRaw?.trim() || undefined;
     const where: any = { isWorking: true };
     if (pool) where.pool = pool;
     const proxies = await this.prisma.backendProxy.findMany({

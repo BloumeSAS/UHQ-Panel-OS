@@ -32,8 +32,6 @@ export class JwtAuthGuard implements CanActivate {
     let token = '';
     if (header && header.startsWith('Bearer ')) {
       token = header.substring(7);
-    } else if (req.query && req.query.token) {
-      token = req.query.token as string;
     }
 
     if (!token) {

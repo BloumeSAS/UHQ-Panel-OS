@@ -36,7 +36,7 @@ export class CreatePoolDto {
   @IsBoolean()
   alwaysOnline?: boolean;
 
-  @ApiPropertyOptional({ example: 'FR,DE,US,GB', description: 'Pays simulés (codes ISO 2 lettres, virgules) pour category-stats si alwaysOnline.' })
+  @ApiPropertyOptional({ example: 'FR,DE,US,GB', description: 'Pays simulés (codes ISO 2 lettres, virgules), ajoutés aux vraies stats de category-stats. Indépendant de alwaysOnline.' })
   @IsOptional()
   @IsString()
   @MaxLength(255)
@@ -78,7 +78,7 @@ export class UpdatePoolDto {
   @IsBoolean()
   alwaysOnline?: boolean;
 
-  @ApiPropertyOptional({ example: 'FR,DE,US,GB', description: 'Pays simulés (codes ISO 2 lettres, virgules) pour category-stats si alwaysOnline (null = retire).' })
+  @ApiPropertyOptional({ example: 'FR,DE,US,GB', description: 'Pays simulés (codes ISO 2 lettres, virgules), ajoutés aux vraies stats de category-stats (null = retire). Indépendant de alwaysOnline.' })
   @IsOptional()
   @IsString()
   @MaxLength(255)

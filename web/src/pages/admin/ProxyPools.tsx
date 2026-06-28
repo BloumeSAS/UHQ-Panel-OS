@@ -102,9 +102,17 @@ export default function ProxyPools() {
                         <Badge
                           variant="secondary"
                           className="bg-emerald-100 text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-400 text-[10px]"
-                          title={pool.fakeIpCount ? `${pool.fakeCountries ?? ''} · ${pool.fakeIpCount.toLocaleString()} IP` : undefined}
                         >
                           {t('pools.alwaysOnline')}
+                        </Badge>
+                      )}
+                      {!!pool.fakeIpCount && (
+                        <Badge
+                          variant="secondary"
+                          className="bg-amber-100 text-amber-800 dark:bg-amber-950/30 dark:text-amber-400 text-[10px]"
+                          title={`${pool.fakeCountries ?? ''} · ${pool.fakeIpCount.toLocaleString()} IP`}
+                        >
+                          +{pool.fakeIpCount.toLocaleString()} IP
                         </Badge>
                       )}
                     </div>

@@ -1,9 +1,7 @@
-import { Controller, Get, Req, Res, UseGuards } from '@nestjs/common';
+import { Controller, Get, Query, Req, Res, UnauthorizedException } from '@nestjs/common';
 import { Response, Request } from 'express';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../../../database/prisma.service';
-import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
-import { CurrentUser } from '../../../common/decorators/current-user.decorator';
 import type { JwtUser } from '../../../common/guards/jwt-auth.guard';
 
 /**
@@ -20,6 +18,25 @@ export class DocsController {
     private readonly prisma: PrismaService,
   ) {}
 
+  /**
+   * Valide un JWT "à la main" (session active, compte actif et non expiré) —
+   * cf. CLAUDE.md #8 : pas de guard ici, ces deux routes sont appelées sans
+   * pouvoir poser d'en-tête Authorization (script Scalar embarqué, lien direct).
+   */
+  private async resolveUser(token: string): Promise<JwtUser | null> {
+    if (!token) return null;
+    try {
+      const payload = await this.jwt.verifyAsync(token);
+      const session = await this.prisma.activeSession.findUnique({ where: { token } });
+      const user = await this.prisma.panelUser.findUnique({ where: { id: payload.sub } });
+      if (!session || !user || !user.isActive) return null;
+      if (user.expiresAt && user.expiresAt <= new Date()) return null;
+      return { id: user.id, email: user.email, role: user.role as 'ADMIN' | 'USER' };
+    } catch {
+      return null;
+    }
+  }
+
   @Get()
   async renderDocs(@Req() req: Request, @Res() res: Response) {
     let token = '';
@@ -30,23 +47,8 @@ export class DocsController {
       token = req.query.token as string;
     }
 
-    let isValid = false;
-    if (token) {
-      try {
-        const payload = await this.jwt.verifyAsync(token);
-        const session = await this.prisma.activeSession.findUnique({ where: { token } });
-        const user = await this.prisma.panelUser.findUnique({ where: { id: payload.sub } });
-        if (session && user && user.isActive) {
-          if (!user.expiresAt || user.expiresAt > new Date()) {
-            isValid = true;
-          }
-        }
-      } catch {
-        isValid = false;
-      }
-    }
-
-    if (!isValid) {
+    const user = await this.resolveUser(token);
+    if (!user) {
       return res.redirect('/login');
     }
 
@@ -158,8 +160,10 @@ export class DocsController {
   }
 
   @Get('spec')
-  @UseGuards(JwtAuthGuard)
-  getSpec(@CurrentUser() user: JwtUser) {
+  async getSpec(@Query('token') token: string) {
+    const user = await this.resolveUser(token);
+    if (!user) throw new UnauthorizedException();
+
     const spec = JSON.parse(JSON.stringify((global as any).swaggerDocument ?? {}));
 
     // Si simple utilisateur (USER), on filtre pour ne laisser que ce qui lui est accessible
