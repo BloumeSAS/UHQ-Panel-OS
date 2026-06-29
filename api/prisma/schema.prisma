@@ -214,8 +214,15 @@ model ProxyPool {
   // IP simulées PAR PAYS (clé = code ISO 2, valeur = tirage indépendant dans
   // [fakeIpCountMin,fakeIpCountMax] propre à CE pays, stable). Un pays n'est
   // (re)tiré que s'il est ajouté à fakeCountries ou que la plage change ; le
-  // bouton "Régénérer" du panel force un nouveau tirage complet.
+  // bouton "Régénérer" du panel force un nouveau tirage complet. Ignorée si
+  // fakeIpRotateSeconds est actif (cf. ci-dessous).
   fakeIpCountByCountry Json @default("{}")
+  // Mode rotatif : si renseigné, category-stats calcule l'IP de chaque pays
+  // à la volée à partir de l'heure courante (fenêtre de N secondes) au lieu
+  // de lire fakeIpCountByCountry — la valeur change donc automatiquement
+  // toutes les N secondes, sans tâche planifiée ni écriture en base.
+  // Null/0 = désactivé (comportement stable habituel).
+  fakeIpRotateSeconds  Int?
 }
 
 model BackendProxy {

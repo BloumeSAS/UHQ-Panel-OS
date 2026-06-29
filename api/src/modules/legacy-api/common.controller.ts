@@ -184,7 +184,7 @@ export class CommonController {
       const pools = await this.prisma.proxyPool.findMany();
       const target = normalizePoolName(pool);
       const poolRow = pools.find((p) => normalizePoolName(p.name) === target);
-      const fakeByCountry = (poolRow?.fakeIpCountByCountry as Record<string, number> | null) ?? {};
+      const fakeByCountry = resolveFakeByCountry(poolRow);
       for (const [code, n] of Object.entries(fakeByCountry)) {
         if (!n) continue;
         byCountry[code] = (byCountry[code] ?? 0) + n;
@@ -212,5 +212,56 @@ export class CommonController {
 /** Unicode NFC + espaces (y compris insécables) réduits — tolère les artefacts de copier-coller dans le nom d'une pool. */
 function normalizePoolName(name: string): string {
   return name.normalize('NFC').replace(/\s+/g, ' ').trim();
+}
+
+type FakeStatsPool = {
+  id: string;
+  fakeCountries: string | null;
+  fakeIpCountMin: number | null;
+  fakeIpCountMax: number | null;
+  fakeIpCountByCountry: unknown;
+  fakeIpRotateSeconds: number | null;
+};
+
+/**
+ * IP simulée par pays pour une pool. Si `fakeIpRotateSeconds` est actif, la
+ * valeur de chaque pays est recalculée à la volée depuis l'heure courante
+ * (fenêtre de N secondes) — elle change donc automatiquement toutes les N
+ * secondes sans cron ni écriture en base. Sinon, lit la valeur stable
+ * stockée (`fakeIpCountByCountry`, gérée par ProxyPoolsService).
+ */
+function resolveFakeByCountry(poolRow: FakeStatsPool | undefined): Record<string, number> {
+  if (!poolRow) return {};
+  const countries = (poolRow.fakeCountries ?? '')
+    .split(',')
+    .map((c) => c.trim().toUpperCase())
+    .filter(Boolean);
+  if (!countries.length) return {};
+
+  const { fakeIpCountMin: min, fakeIpCountMax: max, fakeIpRotateSeconds: rotate, id } = poolRow;
+  if (rotate && rotate > 0 && min != null && max != null) {
+    const bucket = Math.floor(Date.now() / (rotate * 1000));
+    const out: Record<string, number> = {};
+    for (const c of countries) out[c] = hashToRange(`${id}:${c}:${bucket}`, min, max);
+    return out;
+  }
+  return (poolRow.fakeIpCountByCountry as Record<string, number> | null) ?? {};
+}
+
+/**
+ * FNV-1a — déterministe à partir d'un seed, jamais Math.random(). Choisi
+ * pour son bon avalanche : deux fenêtres de temps consécutives (seeds qui
+ * ne diffèrent que par un compteur +1) doivent donner des valeurs très
+ * différentes, pas juste +1 (un hash polynomial naïf type `h*31+c` ne le
+ * garantit pas et rendrait le mode rotatif quasi invisible).
+ */
+function hashToRange(seed: string, min: number, max: number): number {
+  if (min >= max) return min;
+  let h = 0x811c9dc5;
+  for (let i = 0; i < seed.length; i++) {
+    h ^= seed.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return min + ((h >>> 0) % (max - min + 1));
 }
 

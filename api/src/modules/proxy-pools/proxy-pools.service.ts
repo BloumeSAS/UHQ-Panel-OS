@@ -55,6 +55,7 @@ export class ProxyPoolsService {
         fakeIpCountMin: dto.fakeIpCountMin ?? null,
         fakeIpCountMax: dto.fakeIpCountMax ?? null,
         fakeIpCountByCountry,
+        fakeIpRotateSeconds: dto.fakeIpRotateSeconds ?? null,
       },
     });
     if (dto.port != null) this.engine.invalidatePortCache();
@@ -106,6 +107,7 @@ export class ProxyPoolsService {
           ...(dto.fakeIpCountMin !== undefined && { fakeIpCountMin: dto.fakeIpCountMin }),
           ...(dto.fakeIpCountMax !== undefined && { fakeIpCountMax: dto.fakeIpCountMax }),
           ...(fakeIpCountByCountry !== undefined && { fakeIpCountByCountry }),
+          ...(dto.fakeIpRotateSeconds !== undefined && { fakeIpRotateSeconds: dto.fakeIpRotateSeconds }),
         },
       });
       if (dto.port !== undefined) this.engine.invalidatePortCache();

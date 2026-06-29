@@ -36,10 +36,9 @@ export class CreatePoolDto {
   @IsBoolean()
   alwaysOnline?: boolean;
 
-  @ApiPropertyOptional({ example: 'FR,DE,US,GB', description: 'Pays simulés (codes ISO 2 lettres, virgules), ajoutés aux vraies stats de category-stats. Indépendant de alwaysOnline.' })
+  @ApiPropertyOptional({ example: 'FR,DE,US,GB', description: 'Pays simulés (codes ISO 2 lettres, virgules), ajoutés aux vraies stats de category-stats. Indépendant de alwaysOnline. Aucune limite sur le nombre de pays.' })
   @IsOptional()
   @IsString()
-  @MaxLength(255)
   fakeCountries?: string;
 
   @ApiPropertyOptional({ example: 100000, description: "Borne min du nombre d'IP simulé (= max pour une valeur fixe)." })
@@ -53,6 +52,12 @@ export class CreatePoolDto {
   @IsInt()
   @Min(0)
   fakeIpCountMax?: number;
+
+  @ApiPropertyOptional({ example: 60, description: "Mode rotatif : ré-tire l'IP simulée de chaque pays toutes les N secondes (calculé à la volée, sans tâche planifiée). Null/absent = désactivé (valeur stable)." })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  fakeIpRotateSeconds?: number;
 }
 
 export class UpdatePoolDto {
@@ -78,10 +83,9 @@ export class UpdatePoolDto {
   @IsBoolean()
   alwaysOnline?: boolean;
 
-  @ApiPropertyOptional({ example: 'FR,DE,US,GB', description: 'Pays simulés (codes ISO 2 lettres, virgules), ajoutés aux vraies stats de category-stats (null = retire). Indépendant de alwaysOnline.' })
+  @ApiPropertyOptional({ example: 'FR,DE,US,GB', description: 'Pays simulés (codes ISO 2 lettres, virgules), ajoutés aux vraies stats de category-stats (null = retire). Indépendant de alwaysOnline. Aucune limite sur le nombre de pays.' })
   @IsOptional()
   @IsString()
-  @MaxLength(255)
   fakeCountries?: string | null;
 
   @ApiPropertyOptional({ example: 100000, description: "Borne min du nombre d'IP simulé (= max pour une valeur fixe)." })
@@ -95,4 +99,10 @@ export class UpdatePoolDto {
   @IsInt()
   @Min(0)
   fakeIpCountMax?: number | null;
+
+  @ApiPropertyOptional({ example: 60, description: "Mode rotatif : ré-tire l'IP simulée de chaque pays toutes les N secondes (calculé à la volée, sans tâche planifiée). Null = désactivé (valeur stable)." })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  fakeIpRotateSeconds?: number | null;
 }

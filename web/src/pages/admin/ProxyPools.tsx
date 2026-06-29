@@ -40,6 +40,7 @@ interface ProxyPool {
   fakeIpCountMin: number | null;
   fakeIpCountMax: number | null;
   fakeIpCountByCountry: Record<string, number> | null;
+  fakeIpRotateSeconds: number | null;
   createdAt: string;
 }
 
@@ -126,6 +127,15 @@ export default function ProxyPools() {
                           +{fakeIpTotal(pool).toLocaleString()} IP
                         </Badge>
                       )}
+                      {!!pool.fakeIpRotateSeconds && (
+                        <Badge
+                          variant="secondary"
+                          className="bg-sky-100 text-sky-800 dark:bg-sky-950/30 dark:text-sky-400 text-[10px]"
+                          title={t('pools.fakeIpRotateHint')}
+                        >
+                          <RefreshCw className="h-2.5 w-2.5" /> {pool.fakeIpRotateSeconds}s
+                        </Badge>
+                      )}
                     </div>
                   </TD>
                   <TD className="text-sm text-muted-foreground">{pool.description || '—'}</TD>
@@ -188,6 +198,8 @@ const EMPTY_POOL_FORM = {
   fakeIpFixed: '',
   fakeIpMin: '',
   fakeIpMax: '',
+  fakeIpRotateEnabled: false,
+  fakeIpRotateSeconds: '',
 };
 
 function CreateDialog({ onCreated }: { onCreated: () => void }) {
@@ -213,6 +225,7 @@ function CreateDialog({ onCreated }: { onCreated: () => void }) {
         fakeCountries: form.fakeCountries || undefined,
         fakeIpCountMin: fakeMin ? Number(fakeMin) : undefined,
         fakeIpCountMax: fakeMax ? Number(fakeMax) : undefined,
+        fakeIpRotateSeconds: form.fakeIpRotateEnabled && form.fakeIpRotateSeconds ? Number(form.fakeIpRotateSeconds) : undefined,
       });
       setOpen(false);
       setForm(EMPTY_POOL_FORM);
@@ -254,6 +267,8 @@ function EditDialog({ pool, onClose, onSaved }: { pool: ProxyPool; onClose: () =
     fakeIpFixed: !isRandom && pool.fakeIpCountMin != null ? String(pool.fakeIpCountMin) : '',
     fakeIpMin: pool.fakeIpCountMin != null ? String(pool.fakeIpCountMin) : '',
     fakeIpMax: pool.fakeIpCountMax != null ? String(pool.fakeIpCountMax) : '',
+    fakeIpRotateEnabled: pool.fakeIpRotateSeconds != null,
+    fakeIpRotateSeconds: pool.fakeIpRotateSeconds != null ? String(pool.fakeIpRotateSeconds) : '',
   });
   const [error, setError] = useState('');
   const set = (k: string, v: any) => setForm((f) => ({ ...f, [k]: v }));
@@ -283,6 +298,7 @@ function EditDialog({ pool, onClose, onSaved }: { pool: ProxyPool; onClose: () =
         fakeCountries: form.fakeCountries || null,
         fakeIpCountMin: fakeMin ? Number(fakeMin) : null,
         fakeIpCountMax: fakeMax ? Number(fakeMax) : null,
+        fakeIpRotateSeconds: form.fakeIpRotateEnabled && form.fakeIpRotateSeconds ? Number(form.fakeIpRotateSeconds) : null,
       });
       toast.success(t('pools.updated'));
       onSaved();
@@ -319,6 +335,7 @@ function PoolForm({
     name: string; description: string; color: string; port: string; domain: string;
     alwaysOnline: boolean; fakeCountries: string; fakeIpMode: 'fixed' | 'random';
     fakeIpFixed: string; fakeIpMin: string; fakeIpMax: string;
+    fakeIpRotateEnabled: boolean; fakeIpRotateSeconds: string;
   };
   set: (k: string, v: any) => void;
   error: string;
@@ -445,7 +462,25 @@ function PoolForm({
           </div>
         )}
         <p className="text-xs text-muted-foreground">{t('pools.fakeIpCountHint')}</p>
-        {onReroll && (
+
+        <div className="flex items-center justify-between rounded-lg border bg-muted/20 px-3 py-2 gap-3 mt-2">
+          <div className="min-w-0">
+            <p className="text-sm font-medium">{t('pools.fakeIpRotate')}</p>
+            <p className="text-xs text-muted-foreground mt-0.5 leading-snug">{t('pools.fakeIpRotateHint')}</p>
+          </div>
+          <Switch checked={form.fakeIpRotateEnabled} onCheckedChange={(v) => set('fakeIpRotateEnabled', v)} />
+        </div>
+        {form.fakeIpRotateEnabled && (
+          <Input
+            type="number"
+            min={1}
+            value={form.fakeIpRotateSeconds}
+            onChange={(e) => set('fakeIpRotateSeconds', e.target.value)}
+            placeholder={t('pools.fakeIpRotateSecondsPlaceholder')}
+          />
+        )}
+
+        {onReroll && !form.fakeIpRotateEnabled && (
           <>
             {!!fakeIpDetail && <p className="text-xs text-muted-foreground">{fakeIpDetail}</p>}
             <Button type="button" variant="outline" size="sm" onClick={onReroll} disabled={rerolling}>
