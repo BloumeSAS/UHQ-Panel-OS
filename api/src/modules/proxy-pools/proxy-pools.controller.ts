@@ -46,6 +46,16 @@ export class ProxyPoolsController {
     return { status: 'success', data: pool };
   }
 
+  @Post(':id/reroll-fake-ips')
+  @ApiOperation({ summary: "Retire un nouveau nombre d'IP simulé pour chaque pays déjà configuré" })
+  async rerollFakeIps(@Param('id') id: string, @CurrentUser() me: JwtUser) {
+    const pool = await this.service.rerollFakeIps(id);
+    void this.auditService
+      .log({ userId: me.id, userEmail: me.email, action: 'pool.reroll_fake_ips', target: id })
+      .catch(() => undefined);
+    return { status: 'success', data: pool };
+  }
+
   @Delete(':id')
   @ApiOperation({ summary: 'Supprime un pool de proxies' })
   async remove(@Param('id') id: string, @CurrentUser() me: JwtUser) {

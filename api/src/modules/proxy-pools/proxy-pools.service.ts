@@ -11,6 +11,20 @@ function rollFakeCount(min: number, max: number): number {
   return min + Math.floor(Math.random() * (max - min + 1));
 }
 
+function parseFakeCountries(fakeCountries: string | null | undefined): string[] {
+  return (fakeCountries ?? '')
+    .split(',')
+    .map((c) => c.trim().toUpperCase())
+    .filter(Boolean);
+}
+
+/** Tire un nombre d'IP indépendant pour CHAQUE pays — pas un total partagé à répartir. */
+function rollAllCountries(countries: string[], min: number, max: number): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const c of countries) out[c] = rollFakeCount(min, max);
+  return out;
+}
+
 @Injectable()
 export class ProxyPoolsService {
   constructor(
@@ -24,10 +38,11 @@ export class ProxyPoolsService {
 
   async create(dto: CreatePoolDto) {
     if (dto.port != null) await assertPortAvailable(this.prisma, dto.port);
-    const fakeIpCount =
-      dto.fakeIpCountMin != null && dto.fakeIpCountMax != null
-        ? rollFakeCount(dto.fakeIpCountMin, dto.fakeIpCountMax)
-        : null;
+    const countries = parseFakeCountries(dto.fakeCountries);
+    const fakeIpCountByCountry =
+      countries.length && dto.fakeIpCountMin != null && dto.fakeIpCountMax != null
+        ? rollAllCountries(countries, dto.fakeIpCountMin, dto.fakeIpCountMax)
+        : {};
     const pool = await this.prisma.proxyPool.create({
       data: {
         name: dto.name.trim(),
@@ -39,7 +54,7 @@ export class ProxyPoolsService {
         fakeCountries: dto.fakeCountries || null,
         fakeIpCountMin: dto.fakeIpCountMin ?? null,
         fakeIpCountMax: dto.fakeIpCountMax ?? null,
-        fakeIpCount,
+        fakeIpCountByCountry,
       },
     });
     if (dto.port != null) this.engine.invalidatePortCache();
@@ -49,16 +64,32 @@ export class ProxyPoolsService {
   async update(id: string, dto: UpdatePoolDto) {
     if (dto.port != null) await assertPortAvailable(this.prisma, dto.port, { table: 'pool', id });
 
-    // Ne re-tirer fakeIpCount que si min/max ont réellement changé — sinon
-    // sauvegarder le formulaire (même sans toucher au champ) ferait sauter le
-    // nombre simulé à chaque fois.
-    let fakeIpCount: number | null | undefined;
-    if (dto.fakeIpCountMin !== undefined || dto.fakeIpCountMax !== undefined) {
+    // Re-tirage par pays — UNIQUEMENT si la plage ou la liste de pays change :
+    // - plage changée → tout le monde est re-tiré dans la nouvelle plage.
+    // - seule la liste change → les pays déjà présents gardent leur valeur
+    //   (stable), les nouveaux sont tirés, ceux retirés disparaissent.
+    // Sauvegarder le formulaire sans rien changer ne doit jamais relancer un
+    // tirage (sinon les chiffres affichés sauteraient à chaque "Enregistrer").
+    let fakeIpCountByCountry: Record<string, number> | undefined;
+    if (dto.fakeIpCountMin !== undefined || dto.fakeIpCountMax !== undefined || dto.fakeCountries !== undefined) {
       const existing = await this.prisma.proxyPool.findUnique({ where: { id } });
       const min = dto.fakeIpCountMin !== undefined ? dto.fakeIpCountMin : existing?.fakeIpCountMin ?? null;
       const max = dto.fakeIpCountMax !== undefined ? dto.fakeIpCountMax : existing?.fakeIpCountMax ?? null;
-      const changed = min !== (existing?.fakeIpCountMin ?? null) || max !== (existing?.fakeIpCountMax ?? null);
-      fakeIpCount = changed && min != null && max != null ? rollFakeCount(min, max) : existing?.fakeIpCount ?? null;
+      const countries = parseFakeCountries(
+        dto.fakeCountries !== undefined ? dto.fakeCountries : existing?.fakeCountries,
+      );
+      const rangeChanged =
+        min !== (existing?.fakeIpCountMin ?? null) || max !== (existing?.fakeIpCountMax ?? null);
+
+      if (min == null || max == null || countries.length === 0) {
+        fakeIpCountByCountry = {};
+      } else if (rangeChanged) {
+        fakeIpCountByCountry = rollAllCountries(countries, min, max);
+      } else {
+        const existingMap = (existing?.fakeIpCountByCountry as Record<string, number> | null) ?? {};
+        fakeIpCountByCountry = {};
+        for (const c of countries) fakeIpCountByCountry[c] = existingMap[c] ?? rollFakeCount(min, max);
+      }
     }
 
     try {
@@ -74,7 +105,7 @@ export class ProxyPoolsService {
           ...(dto.fakeCountries !== undefined && { fakeCountries: dto.fakeCountries || null }),
           ...(dto.fakeIpCountMin !== undefined && { fakeIpCountMin: dto.fakeIpCountMin }),
           ...(dto.fakeIpCountMax !== undefined && { fakeIpCountMax: dto.fakeIpCountMax }),
-          ...(fakeIpCount !== undefined && { fakeIpCount }),
+          ...(fakeIpCountByCountry !== undefined && { fakeIpCountByCountry }),
         },
       });
       if (dto.port !== undefined) this.engine.invalidatePortCache();
@@ -82,6 +113,17 @@ export class ProxyPoolsService {
     } catch {
       throw new NotFoundException('Pool introuvable');
     }
+  }
+
+  /** Force un nouveau tirage par pays dans la plage déjà configurée — bouton "Régénérer" du panel. */
+  async rerollFakeIps(id: string) {
+    const existing = await this.prisma.proxyPool.findUnique({ where: { id } });
+    if (!existing) throw new NotFoundException('Pool introuvable');
+    const countries = parseFakeCountries(existing.fakeCountries);
+    const { fakeIpCountMin: min, fakeIpCountMax: max } = existing;
+    const fakeIpCountByCountry =
+      countries.length && min != null && max != null ? rollAllCountries(countries, min, max) : {};
+    return this.prisma.proxyPool.update({ where: { id }, data: { fakeIpCountByCountry } });
   }
 
   async remove(id: string) {

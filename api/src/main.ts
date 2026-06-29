@@ -60,7 +60,7 @@ async function bootstrap() {
   await app.listen(apiPort, '0.0.0.0');
   Logger.log(`API listening on :${apiPort}`, 'Bootstrap');
   // Build marker — bump this string on every deploy you want to confirm is live.
-  Logger.log('BUILD MARKER: panel-os-v2.0.19', 'Bootstrap');
+  Logger.log('BUILD MARKER: panel-os-v2.0.20', 'Bootstrap');
 
   // Le moteur proxy TCP n'a de sens qu'avec une base connectée (auth des
   // sous-utilisateurs). On ne le démarre donc pas tant que la base n'est pas

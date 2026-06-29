@@ -207,13 +207,15 @@ model ProxyPool {
   // de alwaysOnline (fonctionne même sans l'activer). Purement déclaratif
   // côté API legacy — ne crée ni ne déplace aucun BackendProxy réel.
   fakeCountries   String?
-  // Bornes saisies par l'admin pour le nombre d'IPs simulé (égales = valeur
-  // fixe, différentes = tirage aléatoire UNE fois — cf. fakeIpCount).
+  // Bornes saisies par l'admin pour le nombre d'IPs simulé PAR PAYS (égales
+  // = valeur fixe, différentes = tirage aléatoire — cf. fakeIpCountByCountry).
   fakeIpCountMin  Int?
   fakeIpCountMax  Int?
-  // Valeur résolue (tirée une fois dans [min,max], stable) effectivement
-  // renvoyée par category-stats — recalculée seulement si min/max changent.
-  fakeIpCount     Int?
+  // IP simulées PAR PAYS (clé = code ISO 2, valeur = tirage indépendant dans
+  // [fakeIpCountMin,fakeIpCountMax] propre à CE pays, stable). Un pays n'est
+  // (re)tiré que s'il est ajouté à fakeCountries ou que la plage change ; le
+  // bouton "Régénérer" du panel force un nouveau tirage complet.
+  fakeIpCountByCountry Json @default("{}")
 }
 
 model BackendProxy {

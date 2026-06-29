@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2, Pencil, Layers } from 'lucide-react';
+import { Plus, Trash2, Pencil, Layers, RefreshCw } from 'lucide-react';
 import { api, apiError } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import {
@@ -39,11 +39,22 @@ interface ProxyPool {
   fakeCountries: string | null;
   fakeIpCountMin: number | null;
   fakeIpCountMax: number | null;
-  fakeIpCount: number | null;
+  fakeIpCountByCountry: Record<string, number> | null;
   createdAt: string;
 }
 
 const DEFAULT_COLORS = ['#6366f1', '#f59e0b', '#10b981', '#ef4444', '#3b82f6', '#8b5cf6', '#ec4899', '#14b8a6'];
+
+function fakeIpTotal(pool: ProxyPool): number {
+  return Object.values(pool.fakeIpCountByCountry ?? {}).reduce((a, b) => a + b, 0);
+}
+
+function fakeIpDetail(pool: ProxyPool): string {
+  return Object.entries(pool.fakeIpCountByCountry ?? {})
+    .sort(([, a], [, b]) => b - a)
+    .map(([c, n]) => `${c}: ${n.toLocaleString()}`)
+    .join(' · ');
+}
 
 export default function ProxyPools() {
   const t = useT();
@@ -106,13 +117,13 @@ export default function ProxyPools() {
                           {t('pools.alwaysOnline')}
                         </Badge>
                       )}
-                      {!!pool.fakeIpCount && (
+                      {!!fakeIpTotal(pool) && (
                         <Badge
                           variant="secondary"
                           className="bg-amber-100 text-amber-800 dark:bg-amber-950/30 dark:text-amber-400 text-[10px]"
-                          title={`${pool.fakeCountries ?? ''} · ${pool.fakeIpCount.toLocaleString()} IP`}
+                          title={fakeIpDetail(pool)}
                         >
-                          +{pool.fakeIpCount.toLocaleString()} IP
+                          +{fakeIpTotal(pool).toLocaleString()} IP
                         </Badge>
                       )}
                     </div>
@@ -229,6 +240,7 @@ function CreateDialog({ onCreated }: { onCreated: () => void }) {
 
 function EditDialog({ pool, onClose, onSaved }: { pool: ProxyPool; onClose: () => void; onSaved: () => void }) {
   const t = useT();
+  const qc = useQueryClient();
   const isRandom = pool.fakeIpCountMin != null && pool.fakeIpCountMax != null && pool.fakeIpCountMin !== pool.fakeIpCountMax;
   const [form, setForm] = useState({
     name: pool.name,
@@ -245,6 +257,15 @@ function EditDialog({ pool, onClose, onSaved }: { pool: ProxyPool; onClose: () =
   });
   const [error, setError] = useState('');
   const set = (k: string, v: any) => setForm((f) => ({ ...f, [k]: v }));
+
+  const reroll = useMutation({
+    mutationFn: () => api.post(`/proxy-pools/${pool.id}/reroll-fake-ips`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['proxy-pools'] });
+      toast.success(t('pools.fakeIpRerolled'));
+    },
+    onError: (e: any) => toast.error(e.response?.data?.message || t('common.error')),
+  });
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -274,7 +295,16 @@ function EditDialog({ pool, onClose, onSaved }: { pool: ProxyPool; onClose: () =
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-h-[90vh] overflow-y-auto">
         <DialogHeader><DialogTitle>{t('pools.editTitle')}</DialogTitle></DialogHeader>
-        <PoolForm form={form} set={set} error={error} onSubmit={submit} submitLabel={t('common.save')} />
+        <PoolForm
+          form={form}
+          set={set}
+          error={error}
+          onSubmit={submit}
+          submitLabel={t('common.save')}
+          fakeIpDetail={fakeIpDetail(pool)}
+          onReroll={() => reroll.mutate()}
+          rerolling={reroll.isPending}
+        />
       </DialogContent>
     </Dialog>
   );
@@ -283,7 +313,7 @@ function EditDialog({ pool, onClose, onSaved }: { pool: ProxyPool; onClose: () =
 // ── Shared form ───────────────────────────────────────────────────────────────
 
 function PoolForm({
-  form, set, error, onSubmit, submitLabel,
+  form, set, error, onSubmit, submitLabel, fakeIpDetail, onReroll, rerolling,
 }: {
   form: {
     name: string; description: string; color: string; port: string; domain: string;
@@ -294,6 +324,9 @@ function PoolForm({
   error: string;
   onSubmit: (e: React.FormEvent) => void;
   submitLabel: string;
+  fakeIpDetail?: string;
+  onReroll?: () => void;
+  rerolling?: boolean;
 }) {
   const t = useT();
   return (
@@ -412,6 +445,15 @@ function PoolForm({
           </div>
         )}
         <p className="text-xs text-muted-foreground">{t('pools.fakeIpCountHint')}</p>
+        {onReroll && (
+          <>
+            {!!fakeIpDetail && <p className="text-xs text-muted-foreground">{fakeIpDetail}</p>}
+            <Button type="button" variant="outline" size="sm" onClick={onReroll} disabled={rerolling}>
+              <RefreshCw className={`h-3.5 w-3.5 ${rerolling ? 'animate-spin' : ''}`} /> {t('pools.fakeIpReroll')}
+            </Button>
+            <p className="text-xs text-muted-foreground">{t('pools.fakeIpRerollHint')}</p>
+          </>
+        )}
       </div>
 
       {error && <p className="text-sm text-destructive">{error}</p>}

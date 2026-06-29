@@ -143,16 +143,14 @@ export class CommonController {
   /**
    * Nombre de pays et d'IPs disponibles dans une catégorie (pool). Sans
    * `pool`, porte sur l'ensemble du pool partagé (toutes catégories).
-   */
-  /**
-   * Nombre de pays et d'IPs disponibles dans une catégorie (pool). Sans
-   * `pool`, porte sur l'ensemble du pool partagé (toutes catégories).
    *
-   * Une pool peut déclarer des pays/IP "en plus" simulés (`fakeCountries`/
-   * `fakeIpCount`), INDÉPENDAMMENT de `alwaysOnline` — ils s'AJOUTENT aux
-   * vraies stats (jamais un remplacement) : une pool avec 0 vrai proxy
-   * affiche donc uniquement les chiffres simulés, une pool avec du vrai
-   * stock affiche du réel + simulé combiné.
+   * Une pool peut déclarer des pays simulés (`fakeCountries`) ; CHAQUE pays
+   * de la liste a son propre nombre d'IP simulé (`fakeIpCountByCountry`,
+   * tiré indépendamment dans `fakeIpCountMin..Max`), INDÉPENDAMMENT de
+   * `alwaysOnline`. Ces chiffres s'AJOUTENT aux vraies stats (jamais un
+   * remplacement) : une pool avec 0 vrai proxy affiche donc uniquement les
+   * chiffres simulés, une pool avec du vrai stock affiche du réel + simulé
+   * combiné.
    */
   @ApiQuery({ name: 'pool', required: false, description: 'Nom de la catégorie/pool (vide = tout le pool)' })
   @Get('category-stats')
@@ -178,13 +176,20 @@ export class CommonController {
     let proxyCount = proxies.length;
 
     if (pool) {
-      const poolRow = await this.prisma.proxyPool.findUnique({ where: { name: pool } });
-      if (poolRow?.fakeCountries && poolRow.fakeIpCount) {
-        const countries = poolRow.fakeCountries.split(',').map((c) => c.trim().toUpperCase()).filter(Boolean);
-        const fakeByCountry = distributeFakeCount(poolRow.fakeIpCount, countries, pool);
-        for (const [code, n] of Object.entries(fakeByCountry)) byCountry[code] = (byCountry[code] ?? 0) + n;
-        ipCount += poolRow.fakeIpCount;
-        proxyCount += poolRow.fakeIpCount;
+      // findUnique exigerait une égalité octet pour octet : un espace
+      // insécable ou une double-espace collés par erreur dans le nom suffit
+      // à rater silencieusement la pool (vu en prod). On matche donc sur le
+      // nom normalisé (Unicode NFC + espaces internes réduits) plutôt que
+      // sur la chaîne brute.
+      const pools = await this.prisma.proxyPool.findMany();
+      const target = normalizePoolName(pool);
+      const poolRow = pools.find((p) => normalizePoolName(p.name) === target);
+      const fakeByCountry = (poolRow?.fakeIpCountByCountry as Record<string, number> | null) ?? {};
+      for (const [code, n] of Object.entries(fakeByCountry)) {
+        if (!n) continue;
+        byCountry[code] = (byCountry[code] ?? 0) + n;
+        ipCount += n;
+        proxyCount += n;
       }
     }
 
@@ -204,24 +209,8 @@ export class CommonController {
   }
 }
 
-/** Hash simple et stable (FNV-like) — pas de Math.random() : reproductible entre appels. */
-function stableWeight(seed: string): number {
-  let h = 0;
-  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
-  return (h % 1000) + 100;
+/** Unicode NFC + espaces (y compris insécables) réduits — tolère les artefacts de copier-coller dans le nom d'une pool. */
+function normalizePoolName(name: string): string {
+  return name.normalize('NFC').replace(/\s+/g, ' ').trim();
 }
 
-function distributeFakeCount(total: number, countries: string[], poolName: string): Record<string, number> {
-  if (countries.length === 0 || total <= 0) return {};
-  const weights = countries.map((c) => stableWeight(`${poolName}:${c}`));
-  const sumWeights = weights.reduce((a, b) => a + b, 0);
-  const counts = countries.map((c, i) => Math.round((weights[i] / sumWeights) * total));
-  // Corrige la dérive d'arrondi sur la plus grosse entrée pour que la somme
-  // reste exactement égale à `total`.
-  const diff = total - counts.reduce((a, b) => a + b, 0);
-  const maxIdx = counts.indexOf(Math.max(...counts));
-  counts[maxIdx] += diff;
-  const byCountry: Record<string, number> = {};
-  countries.forEach((c, i) => { byCountry[c] = counts[i]; });
-  return Object.fromEntries(Object.entries(byCountry).sort(([, a], [, b]) => b - a));
-}
