@@ -13,6 +13,7 @@ import { ApiKeyGuard } from '../../common/guards/api-key.guard';
 import { Scopes } from '../../common/decorators/scopes.decorator';
 import { PrismaService } from '../../database/prisma.service';
 import { ProxyServerService } from '../proxy-engine/proxy-server.service';
+import { hashToRange, parseCountryCodes, splitRangeForPriority } from '../../common/utils/fake-stats';
 import { StickySettingsDto } from './dto';
 
 @ApiTags('legacy-common')
@@ -217,6 +218,7 @@ function normalizePoolName(name: string): string {
 type FakeStatsPool = {
   id: string;
   fakeCountries: string | null;
+  fakePriorityCountries: string | null;
   fakeIpCountMin: number | null;
   fakeIpCountMax: number | null;
   fakeIpCountByCountry: unknown;
@@ -228,40 +230,26 @@ type FakeStatsPool = {
  * valeur de chaque pays est recalculée à la volée depuis l'heure courante
  * (fenêtre de N secondes) — elle change donc automatiquement toutes les N
  * secondes sans cron ni écriture en base. Sinon, lit la valeur stable
- * stockée (`fakeIpCountByCountry`, gérée par ProxyPoolsService).
+ * stockée (`fakeIpCountByCountry`, gérée par ProxyPoolsService). Dans les
+ * deux cas, un pays listé dans `fakePriorityCountries` tire toujours plus
+ * haut qu'un pays non-prioritaire (cf. splitRangeForPriority).
  */
 function resolveFakeByCountry(poolRow: FakeStatsPool | undefined): Record<string, number> {
   if (!poolRow) return {};
-  const countries = (poolRow.fakeCountries ?? '')
-    .split(',')
-    .map((c) => c.trim().toUpperCase())
-    .filter(Boolean);
+  const countries = parseCountryCodes(poolRow.fakeCountries);
   if (!countries.length) return {};
 
   const { fakeIpCountMin: min, fakeIpCountMax: max, fakeIpRotateSeconds: rotate, id } = poolRow;
   if (rotate && rotate > 0 && min != null && max != null) {
+    const priority = parseCountryCodes(poolRow.fakePriorityCountries);
     const bucket = Math.floor(Date.now() / (rotate * 1000));
     const out: Record<string, number> = {};
-    for (const c of countries) out[c] = hashToRange(`${id}:${c}:${bucket}`, min, max);
+    for (const c of countries) {
+      const [subMin, subMax] = splitRangeForPriority(min, max, priority.includes(c));
+      out[c] = hashToRange(`${id}:${c}:${bucket}`, subMin, subMax);
+    }
     return out;
   }
   return (poolRow.fakeIpCountByCountry as Record<string, number> | null) ?? {};
-}
-
-/**
- * FNV-1a — déterministe à partir d'un seed, jamais Math.random(). Choisi
- * pour son bon avalanche : deux fenêtres de temps consécutives (seeds qui
- * ne diffèrent que par un compteur +1) doivent donner des valeurs très
- * différentes, pas juste +1 (un hash polynomial naïf type `h*31+c` ne le
- * garantit pas et rendrait le mode rotatif quasi invisible).
- */
-function hashToRange(seed: string, min: number, max: number): number {
-  if (min >= max) return min;
-  let h = 0x811c9dc5;
-  for (let i = 0; i < seed.length; i++) {
-    h ^= seed.charCodeAt(i);
-    h = Math.imul(h, 0x01000193);
-  }
-  return min + ((h >>> 0) % (max - min + 1));
 }
 

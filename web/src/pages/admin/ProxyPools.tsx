@@ -37,6 +37,7 @@ interface ProxyPool {
   domain: string | null;
   alwaysOnline: boolean;
   fakeCountries: string | null;
+  fakePriorityCountries: string | null;
   fakeIpCountMin: number | null;
   fakeIpCountMax: number | null;
   fakeIpCountByCountry: Record<string, number> | null;
@@ -51,9 +52,10 @@ function fakeIpTotal(pool: ProxyPool): number {
 }
 
 function fakeIpDetail(pool: ProxyPool): string {
+  const priority = new Set((pool.fakePriorityCountries ?? '').split(',').map((c) => c.trim().toUpperCase()).filter(Boolean));
   return Object.entries(pool.fakeIpCountByCountry ?? {})
     .sort(([, a], [, b]) => b - a)
-    .map(([c, n]) => `${c}: ${n.toLocaleString()}`)
+    .map(([c, n]) => `${priority.has(c) ? '★' : ''}${c}: ${n.toLocaleString()}`)
     .join(' · ');
 }
 
@@ -194,6 +196,7 @@ const EMPTY_POOL_FORM = {
   name: '', description: '', color: '#6366f1', port: '', domain: '',
   alwaysOnline: false,
   fakeCountries: '',
+  fakePriorityCountries: '',
   fakeIpMode: 'fixed' as 'fixed' | 'random',
   fakeIpFixed: '',
   fakeIpMin: '',
@@ -223,6 +226,7 @@ function CreateDialog({ onCreated }: { onCreated: () => void }) {
         domain: form.domain || undefined,
         alwaysOnline: form.alwaysOnline,
         fakeCountries: form.fakeCountries || undefined,
+        fakePriorityCountries: form.fakePriorityCountries || undefined,
         fakeIpCountMin: fakeMin ? Number(fakeMin) : undefined,
         fakeIpCountMax: fakeMax ? Number(fakeMax) : undefined,
         fakeIpRotateSeconds: form.fakeIpRotateEnabled && form.fakeIpRotateSeconds ? Number(form.fakeIpRotateSeconds) : undefined,
@@ -263,6 +267,7 @@ function EditDialog({ pool, onClose, onSaved }: { pool: ProxyPool; onClose: () =
     domain: pool.domain ?? '',
     alwaysOnline: pool.alwaysOnline,
     fakeCountries: pool.fakeCountries ?? '',
+    fakePriorityCountries: pool.fakePriorityCountries ?? '',
     fakeIpMode: (isRandom ? 'random' : 'fixed') as 'fixed' | 'random',
     fakeIpFixed: !isRandom && pool.fakeIpCountMin != null ? String(pool.fakeIpCountMin) : '',
     fakeIpMin: pool.fakeIpCountMin != null ? String(pool.fakeIpCountMin) : '',
@@ -296,6 +301,7 @@ function EditDialog({ pool, onClose, onSaved }: { pool: ProxyPool; onClose: () =
         domain: form.domain || null,
         alwaysOnline: form.alwaysOnline,
         fakeCountries: form.fakeCountries || null,
+        fakePriorityCountries: form.fakePriorityCountries || null,
         fakeIpCountMin: fakeMin ? Number(fakeMin) : null,
         fakeIpCountMax: fakeMax ? Number(fakeMax) : null,
         fakeIpRotateSeconds: form.fakeIpRotateEnabled && form.fakeIpRotateSeconds ? Number(form.fakeIpRotateSeconds) : null,
@@ -333,7 +339,7 @@ function PoolForm({
 }: {
   form: {
     name: string; description: string; color: string; port: string; domain: string;
-    alwaysOnline: boolean; fakeCountries: string; fakeIpMode: 'fixed' | 'random';
+    alwaysOnline: boolean; fakeCountries: string; fakePriorityCountries: string; fakeIpMode: 'fixed' | 'random';
     fakeIpFixed: string; fakeIpMin: string; fakeIpMax: string;
     fakeIpRotateEnabled: boolean; fakeIpRotateSeconds: string;
   };
@@ -423,6 +429,16 @@ function PoolForm({
           placeholder={t('pools.fakeCountriesPlaceholder')}
         />
         <p className="text-xs text-muted-foreground">{t('pools.fakeCountriesHint')}</p>
+      </div>
+
+      <div className="space-y-1.5">
+        <Label>{t('pools.fakePriorityCountries')}</Label>
+        <Input
+          value={form.fakePriorityCountries}
+          onChange={(e) => set('fakePriorityCountries', e.target.value)}
+          placeholder={t('pools.fakePriorityCountriesPlaceholder')}
+        />
+        <p className="text-xs text-muted-foreground">{t('pools.fakePriorityCountriesHint')}</p>
       </div>
 
       <div className="space-y-1.5">

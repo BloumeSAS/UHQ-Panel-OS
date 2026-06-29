@@ -41,6 +41,11 @@ export class CreatePoolDto {
   @IsString()
   fakeCountries?: string;
 
+  @ApiPropertyOptional({ example: 'FR,DE', description: "Sous-ensemble de fakeCountries à toujours faire tirer plus haut en IP que les autres (la plage est découpée en deux moitiés, prioritaire = moitié haute)." })
+  @IsOptional()
+  @IsString()
+  fakePriorityCountries?: string;
+
   @ApiPropertyOptional({ example: 100000, description: "Borne min du nombre d'IP simulé (= max pour une valeur fixe)." })
   @IsOptional()
   @IsInt()
@@ -87,6 +92,11 @@ export class UpdatePoolDto {
   @IsOptional()
   @IsString()
   fakeCountries?: string | null;
+
+  @ApiPropertyOptional({ example: 'FR,DE', description: "Sous-ensemble de fakeCountries à toujours faire tirer plus haut en IP que les autres (la plage est découpée en deux moitiés, prioritaire = moitié haute). Null = retire." })
+  @IsOptional()
+  @IsString()
+  fakePriorityCountries?: string | null;
 
   @ApiPropertyOptional({ example: 100000, description: "Borne min du nombre d'IP simulé (= max pour une valeur fixe)." })
   @IsOptional()
