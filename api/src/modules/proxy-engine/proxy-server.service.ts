@@ -68,6 +68,10 @@ export class ProxyServerService implements OnModuleDestroy {
   private syncing = false;
   /** port → nom de pool : ce port force CETTE pool, prioritaire sur `user.pool`. */
   private readonly portPoolMap = new Map<number, string>();
+  /** nom de pool → port : pool assignée à un compte, dédiée à CE port (407 sur tout autre port). */
+  private readonly poolPortMap = new Map<string, number>();
+  /** Pools "Toujours en ligne" : un échec réel de connexion ne doit jamais les marquer KO (le checker les force déjà à isWorking=true, cf. checker.service.ts). */
+  private readonly alwaysOnlinePoolSet = new Set<string>();
   /** port → username : ce port est exclusif à CE compte (407 pour tout autre). */
   private readonly portUserMap = new Map<number, string>();
   /** Plage publiée par Docker (PROXY_PORT_RANGE="min-max", défaut 9000-9999) — avertissement non-bloquant ici (le blocage dur est fait à l'écriture, cf. `assertPortAvailable`). */
@@ -136,14 +140,21 @@ export class ProxyServerService implements OnModuleDestroy {
     if (this.syncing) return;
     this.syncing = true;
     try {
-      const [pools, users] = await Promise.all([
+      const [pools, users, alwaysOnlinePools] = await Promise.all([
         this.prisma.proxyPool.findMany({ where: { port: { not: null } } }),
         this.prisma.userProxy.findMany({ where: { port: { not: null } } }),
+        this.prisma.proxyPool.findMany({ where: { alwaysOnline: true }, select: { name: true } }),
       ]);
       this.portPoolMap.clear();
-      for (const p of pools) if (p.port) this.portPoolMap.set(p.port, p.name);
+      this.poolPortMap.clear();
+      for (const p of pools) if (p.port) {
+        this.portPoolMap.set(p.port, p.name);
+        this.poolPortMap.set(p.name, p.port);
+      }
       this.portUserMap.clear();
       for (const u of users) if (u.port) this.portUserMap.set(u.port, u.username);
+      this.alwaysOnlinePoolSet.clear();
+      for (const p of alwaysOnlinePools) this.alwaysOnlinePoolSet.add(p.name);
 
       const desired = new Set<number>([
         this.port,
@@ -355,6 +366,23 @@ export class ProxyServerService implements OnModuleDestroy {
         );
         client.end();
         return;
+      }
+
+      // --- Pool dédiée : si la pool du compte a son propre domaine/port, ce
+      // compte ne doit être utilisable que via CE port (sinon la pool dédiée
+      // devient accessible via le port par défaut / une autre pool). ---
+      if (user.pool) {
+        const requiredPoolPort = this.poolPortMap.get(user.pool);
+        if (requiredPoolPort && requiredPoolPort !== boundPort) {
+          this.logger.warn(
+            `User ${username} belongs to pool "${user.pool}" dedicated to port ${requiredPoolPort}, rejecting on port ${boundPort}`,
+          );
+          client.write(
+            'HTTP/1.1 407 Proxy Authentication Required\r\nProxy-Authenticate: Basic realm="Proxy"\r\n\r\n',
+          );
+          client.end();
+          return;
+        }
       }
 
       const userTtlSec = user.stickySessionTtl ?? 1800;
@@ -740,7 +768,12 @@ export class ProxyServerService implements OnModuleDestroy {
       }
       // Les upstreams `fallback` et les listes privées (`custom:ip:port`) ne sont
       // pas des BackendProxy en base → ne jamais tenter d'update DB sur eux.
-      if (upstream.id !== 'fallback' && !isCustom) {
+      // Pools "Toujours en ligne" : un échec de connexion réel (souvent transitoire)
+      // ne doit jamais marquer isWorking=false ni blacklister — sinon on casse la
+      // promesse "jamais KO" et on rétrécit le pool jusqu'au prochain cycle checker.
+      // Le fallback résidentiel gère déjà cette requête individuelle plus bas.
+      const isAlwaysOnline = !!upstream.pool && this.alwaysOnlinePoolSet.has(upstream.pool);
+      if (upstream.id !== 'fallback' && !isCustom && !isAlwaysOnline) {
         const msg = String((e as Error)?.message ?? e).toUpperCase();
         const permanent = msg.includes('CODE 400') || msg.includes('CODE 407');
         try {

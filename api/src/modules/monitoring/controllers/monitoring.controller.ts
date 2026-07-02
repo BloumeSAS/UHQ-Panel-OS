@@ -224,27 +224,35 @@ export class PanelMonitoringController {
       return { status: 'success', imported: 0, message: 'Aucun proxy valide détecté' };
     }
     const forceProto = body?.protocol?.toLowerCase();
+    // Upsert (pas createMany+skipDuplicates) : une ligne dont l'URL existe déjà
+    // en base (proxy archivé/mort, ou déjà importé dans une autre catégorie) doit
+    // être réactivée et réassignée à la pool demandée, pas silencieusement ignorée
+    // (sinon "0 proxy importé" et le proxy reste invisible dans la catégorie visée).
     let imported = 0;
-    const CHUNK = 500;
-    for (let i = 0; i < parsed.length; i += CHUNK) {
-      const slice = parsed.slice(i, i + CHUNK);
-      const res = await this.prisma.backendProxy.createMany({
-        skipDuplicates: true,
-        data: slice.map((p) => {
-          const protocol = forceProto || p.protocol;
-          return {
-            id: randomUUID(),
-            url: p.auth ? `${protocol}://${p.auth}@${p.ip}:${p.port}` : `${protocol}://${p.ip}:${p.port}`,
-            protocol,
-            ip: p.ip,
-            port: p.port,
-            provider: 'Manual',
-            isWorking: true,
-            pool: body.pool || null,
-          };
-        }),
+    for (const p of parsed) {
+      const protocol = forceProto || p.protocol;
+      const url = p.auth ? `${protocol}://${p.auth}@${p.ip}:${p.port}` : `${protocol}://${p.ip}:${p.port}`;
+      await this.prisma.backendProxy.upsert({
+        where: { url },
+        create: {
+          id: randomUUID(),
+          url,
+          protocol,
+          ip: p.ip,
+          port: p.port,
+          provider: 'Manual',
+          isWorking: true,
+          pool: body.pool || null,
+        },
+        update: {
+          isWorking: true,
+          isBlacklisted: false,
+          archived: false,
+          failCount: 0,
+          pool: body.pool || null,
+        },
       });
-      imported += res.count;
+      imported += 1;
     }
     return { status: 'success', imported, message: `${imported} proxies importés` };
   }

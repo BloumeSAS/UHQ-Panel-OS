@@ -165,6 +165,7 @@ export class SubUserController {
     if (!user) throw new HttpException('Sub-user not found', HttpStatus.NOT_FOUND);
     const active = this.engine.getActiveThreads().get(user.username) ?? 0;
     const totalBytes = Number(user.totalBytesSent) + Number(user.totalBytesReceived);
+    const { host, port } = await resolveConnectionEndpoint(this.prisma, this.settings, user);
     return {
       status: 'success',
       data: {
@@ -175,6 +176,8 @@ export class SubUserController {
         received: Number(user.totalBytesReceived),
         active_threads: active,
         threads_limit: user.threadsLimit,
+        host,
+        port,
       },
     };
   }
