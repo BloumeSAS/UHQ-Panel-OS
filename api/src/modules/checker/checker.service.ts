@@ -94,6 +94,15 @@ export class CheckerService implements OnModuleInit {
         where: { AND: andConditions },
         orderBy: { lastChecked: 'asc' },
         take: 150_000,
+        // Ne charger QUE les colonnes réellement relues côté JS pendant le
+        // cycle (id/url/ip/port/protocol). Les ~15 autres colonnes de
+        // BackendProxy (failCount, country, averageLatency, successCount,
+        // failureCount, isWorking, pool, provider, archived…) ne sont jamais
+        // lues ici — les mises à jour les touchent en SQL (updateMany /
+        // $executeRawUnsafe), pas depuis ces objets. Les tirer pour 150k
+        // lignes ne fait que gonfler la RAM : sélection ciblée ≈ ÷3 sur
+        // l'empreinte du lot de candidats.
+        select: { id: true, url: true, ip: true, port: true, protocol: true },
       });
 
       // Hygiène : une ligne scrapée malformée (ex. export Tor "ExitAddress
@@ -143,19 +152,12 @@ export class CheckerService implements OnModuleInit {
         this.logger.warn(`${toFix.length} entrée(s) corrigée(s) (ip:port récupéré dans une ligne polluée).`);
       }
 
-      const candidates = validCandidates.map((p: any) => {
-        try {
-          const u = new URL(p.url);
-          if (u.username) {
-            p.auth = `${decodeURIComponent(u.username)}:${decodeURIComponent(u.password)}`;
-          } else {
-            p.auth = null;
-          }
-        } catch {
-          p.auth = null;
-        }
-        return p as UpstreamProxy;
-      });
+      // Ne PAS pré-parser l'auth des (jusqu'à) 150k lignes ici : enchaîner
+      // 150k `new URL()` synchrones gèle l'event loop — partagé avec le serveur
+      // proxy live (:990) tournant dans le même process. L'auth est désormais
+      // résolue paresseusement dans le worker (répartie sur les tâches async,
+      // donc jamais bloquante). Cf. `parseProxyAuth`.
+      const candidates = validCandidates as unknown as UpstreamProxy[];
       this.totalCount = candidates.length;
       if (candidates.length === 0) {
         this.logger.log('No proxies to check.');
@@ -174,7 +176,9 @@ export class CheckerService implements OnModuleInit {
         while (cursor < candidates.length) {
           const p = candidates[cursor++];
           if (!p) break;
-          const r = await this.checkSingle(p as UpstreamProxy);
+          // Auth résolue ici (async), pas en amont : évite le gel event-loop
+          // d'un parse synchrone de tout le lot.
+          const r = await this.checkSingle({ ...p, auth: parseProxyAuth(p.url) });
           results.push({ id: p.id, url: p.url, ...r });
           processed += 1;
           this.processedCount = processed;
@@ -219,14 +223,7 @@ export class CheckerService implements OnModuleInit {
   async checkOne(id: string): Promise<{ id: string; alive: boolean; latencyMs: number | null; country: string | null }> {
     const row = await this.prisma.backendProxy.findUnique({ where: { id } });
     if (!row) throw new NotFoundException('Proxy introuvable');
-    let auth: string | null = null;
-    try {
-      const u = new URL(row.url);
-      if (u.username) auth = `${decodeURIComponent(u.username)}:${decodeURIComponent(u.password)}`;
-    } catch {
-      /* */
-    }
-    const result = await this.checkSingle({ ...row, auth } as UpstreamProxy);
+    const result = await this.checkSingle({ ...row, auth: parseProxyAuth(row.url) } as UpstreamProxy);
 
     // Pool "Toujours en ligne" : le test réel s'exécute (diagnostic visible
     // par l'admin), mais le résultat persisté en DB ne marque jamais ce proxy
@@ -506,4 +503,14 @@ interface CheckResult {
   alive: boolean;
   country: string | null;
   latencyMs: number | null;
+}
+
+/** Extrait "user:pass" d'une URL de proxy, ou null. Tolérant (ne throw jamais). */
+function parseProxyAuth(url: string): string | null {
+  try {
+    const u = new URL(url);
+    return u.username ? `${decodeURIComponent(u.username)}:${decodeURIComponent(u.password)}` : null;
+  } catch {
+    return null;
+  }
 }

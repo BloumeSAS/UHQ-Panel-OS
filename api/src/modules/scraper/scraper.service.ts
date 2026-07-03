@@ -82,7 +82,15 @@ export class ScraperService implements OnModuleInit {
         return;
       }
 
-      const allProxies: ProxyItem[] = [];
+      // Dédup INCRÉMENTAL : chaque source est repliée dans cette Map partagée
+      // (clé = URL) dès qu'elle a fini de fetch, puis son tableau est relâché.
+      // Évite d'accumuler des millions d'items simultanément dans un
+      // `allProxies` géant (≈150 sources × jusqu'à 50k) avant de dédupliquer —
+      // le pic mémoire tombe à ≈ (une source en vol) + (Map d'uniques) au lieu
+      // de la SOMME de toutes les sources. Supprime aussi le `push(...items)`
+      // (spread de 50k args, proche de la limite d'arguments V8).
+      const dedup = new Map<string, ProxyItem>();
+      const counters = { collected: 0, torSkipped: 0, urlSkipped: 0 };
 
       // ── GroqAI provider ────────────────────────────────────────────────────
       if (groqKey) {
@@ -91,7 +99,7 @@ export class ScraperService implements OnModuleInit {
         try {
           const items = await groq.fetch();
           this.logger.log(`[GroqAI] → ${items.length} proxies`);
-          allProxies.push(...items);
+          await this.foldInto(dedup, items, counters);
         } catch (e) {
           this.logger.warn(`[GroqAI] ERREUR: ${e}`);
         }
@@ -119,7 +127,7 @@ export class ScraperService implements OnModuleInit {
             items = sampleRandom(items, this.MAX_ITEMS_PER_SOURCE);
           }
           this.logger.log(`[${s.name}] → ${items.length} proxies`);
-          allProxies.push(...items);
+          await this.foldInto(dedup, items, counters);
           await this.prisma.scraperSource.update({
             where: { id: s.id },
             data: { failCount: 0, lastError: null, lastSuccess: new Date() },
@@ -137,38 +145,53 @@ export class ScraperService implements OnModuleInit {
         }
       }));
 
-      // ── Dedup & upsert ─────────────────────────────────────────────────────
-      // Boucle volontairement non-bloquante : avec ~150 sources, un cumul de
-      // plusieurs millions d'items est possible même avec le plafond par source.
-      // On rend la main à l'event loop périodiquement pour ne jamais geler le
-      // process (et donc le serveur proxy live, qui tourne dans le même process).
-      const dedup = new Map<string, ProxyItem>();
-      let torSkipped = 0;
-      let urlSkipped = 0;
-      const YIELD_EVERY = 50_000;
-      for (let i = 0; i < allProxies.length; i++) {
-        const p = allProxies[i];
-        if (this.torPorts.has(Number(p.port))) { torSkipped++; continue; }
-        const url = urlOf(p);
-        // Protège l'index btree PostgreSQL (max ~2700 octets) contre les auth trop longs
-        if (url.length > 500) { urlSkipped++; continue; }
-        if (!dedup.has(url)) dedup.set(url, p);
-        if (i > 0 && i % YIELD_EVERY === 0) await new Promise((r) => setImmediate(r));
-      }
-      if (torSkipped > 0) this.logger.log(`Skipped ${torSkipped} Tor-port proxies`);
-      if (urlSkipped > 0) this.logger.warn(`Skipped ${urlSkipped} proxies with oversized URL (auth trop long — données corrompues ?)`);
+      // ── Upsert ─────────────────────────────────────────────────────────────
+      // La dédup a déjà été faite incrémentalement (cf. `foldInto`) au fil des
+      // sources, sans jamais matérialiser un tableau global de plusieurs
+      // millions d'items.
+      if (counters.torSkipped > 0) this.logger.log(`Skipped ${counters.torSkipped} Tor-port proxies`);
+      if (counters.urlSkipped > 0) this.logger.warn(`Skipped ${counters.urlSkipped} proxies with oversized URL (auth trop long — données corrompues ?)`);
 
       const merged = [...dedup.values()];
+      // Normalisation pays sur les UNIQUES seulement (moins de travail que de
+      // mapper chaque doublon comme avant).
       for (const p of merged) {
         if (p.country) p.country = CountryMapper.toCode(p.country);
       }
-      const dupes = allProxies.length - torSkipped - merged.length;
+      const dupes = counters.collected - counters.torSkipped - merged.length;
       this.logger.log(`Collecté ${merged.length} proxies uniques${dupes > 0 ? ` (${dupes} doublons ignorés)` : ''}`);
 
       await this.bulkUpsert(merged);
       this.backgroundGeo().catch((e) => this.logger.error(`Background geo failed: ${e}`));
     } finally {
       this.running = false;
+    }
+  }
+
+  /**
+   * Replie une liste d'items dans la Map de dédup partagée (clé = URL), en
+   * appliquant les filtres Tor-port et URL trop longue (index btree ~2700 o).
+   * Rend la main à l'event loop tous les `YIELD_EVERY` items pour ne jamais
+   * geler le process (le serveur proxy live tourne dans le même process).
+   *
+   * Sûr en parallèle (appelé depuis plusieurs sources via `Promise.all`) : Node
+   * est mono-thread et `Map.set` + les incréments de compteurs sont synchrones,
+   * donc aucune section critique n'est jamais coupée par un `await`.
+   */
+  private async foldInto(
+    dedup: Map<string, ProxyItem>,
+    items: ProxyItem[],
+    counters: { collected: number; torSkipped: number; urlSkipped: number },
+  ): Promise<void> {
+    const YIELD_EVERY = 50_000;
+    for (let i = 0; i < items.length; i++) {
+      const p = items[i];
+      counters.collected++;
+      if (this.torPorts.has(Number(p.port))) { counters.torSkipped++; continue; }
+      const url = urlOf(p);
+      if (url.length > 500) { counters.urlSkipped++; continue; }
+      if (!dedup.has(url)) dedup.set(url, p);
+      if (i > 0 && i % YIELD_EVERY === 0) await new Promise((r) => setImmediate(r));
     }
   }
 

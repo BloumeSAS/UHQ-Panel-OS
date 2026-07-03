@@ -127,6 +127,12 @@ export function buildProxyUrl(raw: string | null | undefined): string | null {
  * (ex : `<a href="http://1.2.3.4:8080">1.2.3.4:8080</a>`).
  */
 function stripHtml(text: string): string {
+  // Court-circuit : la grande majorité des sources sont des listes ip:port
+  // pures, sans aucune balise. Le regex-replace ci-dessous fait une passe +
+  // une copie complète de la chaîne (jusqu'à des dizaines de Mo pour une grosse
+  // source) : l'éviter quand il n'y a pas de `<` économise beaucoup de CPU et
+  // d'allocations sur le cas dominant.
+  if (text.indexOf('<') === -1) return text;
   // Remplace les balises par des sauts de ligne pour ne pas fusionner les tokens
   return text.replace(/<[^>]+>/g, '\n');
 }
@@ -166,6 +172,13 @@ export function parseProxyList(text: string): ParsedProxy[] {
 function extractCandidates(line: string): string[] {
   line = line.trim();
   if (!line || line.startsWith('#')) return [];
+
+  // Fast-path : sans `://`, aucun schéma à extraire. On évite le `matchAll`
+  // regex — exécuté sur CHAQUE ligne, soit potentiellement des millions de
+  // fois par cycle — pour le cas dominant `ip:port`. Résultat identique :
+  // sans schéma, le regex ci-dessous ne matcherait rien et on retournerait
+  // déjà `[line]`.
+  if (line.indexOf('://') === -1) return [line];
 
   // Extraction de tous les `proto://...` ou `ip:port` trouvés dans la ligne
   const schemeMatches = [...line.matchAll(/((?:https?|socks[45]?|socks4a):\/\/(?:[^\s"'<>]+))/gi)];
