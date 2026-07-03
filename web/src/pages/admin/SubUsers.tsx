@@ -698,7 +698,7 @@ function SubUserForm({
         <Input
           type="number"
           min={9000}
-          max={9999}
+          max={9250}
           value={form.port}
           onChange={(e) => set('port', e.target.value)}
           placeholder={t('sub.portPlaceholder')}

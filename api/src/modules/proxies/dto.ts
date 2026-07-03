@@ -9,11 +9,11 @@ import { SubUserCreateDto, PanelSubUserUpdateDto } from '../legacy-api/dto';
  * (/api/v1/sub-user/*), qui ne doit jamais pouvoir lire/écrire ces champs.
  */
 export class PanelSubUserCreateDto extends SubUserCreateDto {
-  @ApiPropertyOptional({ example: 9101, description: 'Port TCP dédié à ce compte, entre 9000 et 9999 (null = aucun).' })
+  @ApiPropertyOptional({ example: 9101, description: 'Port TCP dédié à ce compte, entre 9000 et 9250 (null = aucun).' })
   @IsOptional()
   @IsInt()
   @Min(9000)
-  @Max(9999)
+  @Max(9250)
   port?: number;
 
   @ApiPropertyOptional({ example: 'client1.example.com', description: 'Domaine affiché pour ce compte (null = utilise celui de sa pool, sinon publicProxyHost).' })
@@ -24,11 +24,11 @@ export class PanelSubUserCreateDto extends SubUserCreateDto {
 }
 
 export class PanelSubUserUpdatePortDto extends PanelSubUserUpdateDto {
-  @ApiPropertyOptional({ example: 9101, description: 'Port TCP dédié à ce compte, entre 9000 et 9999 (null = retire le port dédié).' })
+  @ApiPropertyOptional({ example: 9101, description: 'Port TCP dédié à ce compte, entre 9000 et 9250 (null = retire le port dédié).' })
   @IsOptional()
   @IsInt()
   @Min(9000)
-  @Max(9999)
+  @Max(9250)
   port?: number | null;
 
   @ApiPropertyOptional({ example: 'client1.example.com', description: 'Domaine affiché pour ce compte (null = retire le domaine dédié).' })

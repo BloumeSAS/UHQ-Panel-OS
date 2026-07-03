@@ -18,11 +18,11 @@ export class CreatePoolDto {
   @IsString()
   color?: string;
 
-  @ApiPropertyOptional({ example: 9001, description: 'Port TCP dédié à cette pool, entre 9000 et 9999 (null = aucun).' })
+  @ApiPropertyOptional({ example: 9001, description: 'Port TCP dédié à cette pool, entre 9000 et 9250 (null = aucun).' })
   @IsOptional()
   @IsInt()
   @Min(9000)
-  @Max(9999)
+  @Max(9250)
   port?: number;
 
   @ApiPropertyOptional({ example: 'mobile.example.com', description: 'Domaine affiché pour cette pool (null = utilise publicProxyHost).' })
@@ -70,11 +70,11 @@ export class UpdatePoolDto {
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(255) description?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() color?: string;
 
-  @ApiPropertyOptional({ example: 9001, description: 'Port TCP dédié à cette pool, entre 9000 et 9999 (null = retire le port dédié).' })
+  @ApiPropertyOptional({ example: 9001, description: 'Port TCP dédié à cette pool, entre 9000 et 9250 (null = retire le port dédié).' })
   @IsOptional()
   @IsInt()
   @Min(9000)
-  @Max(9999)
+  @Max(9250)
   port?: number | null;
 
   @ApiPropertyOptional({ example: 'mobile.example.com', description: 'Domaine affiché pour cette pool (null = retire le domaine dédié, utilise publicProxyHost).' })
