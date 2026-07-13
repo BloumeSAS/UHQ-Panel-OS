@@ -209,6 +209,14 @@ export default function Settings() {
               />
             </F>
 
+            <F label={t('settings.logoUrl')} hint={t('settings.logoUrlHint')}>
+              <Input
+                value={form.logoUrl ?? ''}
+                onChange={(e) => set('logoUrl', e.target.value)}
+                placeholder={t('settings.logoUrlPlaceholder')}
+              />
+            </F>
+
             <F label={t('settings.defaultLang')} hint={t('settings.defaultLangHint')}>
               <select
                 value={form.defaultLang || 'fr'}

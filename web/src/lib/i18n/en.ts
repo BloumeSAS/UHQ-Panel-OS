@@ -447,6 +447,9 @@ const en: Language = {
 
     // New translations for settings & inputs
     'settings.siteNameHint': 'Displayed in the panel title and emails.',
+    'settings.logoUrl': 'Panel icon',
+    'settings.logoUrlHint': "URL of the image shown in the panel header (e.g. /static/logo.png or an external URL). Does not affect the editor credit in the footer.",
+    'settings.logoUrlPlaceholder': '/static/logo.png',
     'settings.proxyHostHint': 'Default host shown in the generated proxy lists. A category (Proxy Pools) or an account (Sub-users) can set its own dedicated domain, which then takes precedence over this value.',
     'settings.proxyPortHint': 'Default port shown in these lists. A category or an account can set its own dedicated port (9000-9250), which then takes precedence over this value.',
     'settings.proxyOverrides': 'Active overrides',

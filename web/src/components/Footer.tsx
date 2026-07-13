@@ -6,6 +6,8 @@ import { useT } from '@/lib/i18n';
 /**
  * Footer global : marque cliquable « UHQ Panel OS by Bloume.fr » (→ bloume.fr),
  * version, et bouton de bascule du thème clair/sombre.
+ * Le nom et le logo affichés ici sont FIXES (non liés aux settings siteName/logoUrl
+ * éditables par l'admin) — c'est le crédit éditeur Bloume.fr, pas la marque du panel.
  */
 export function Footer({ className = '' }: { className?: string }) {
   const { status } = useSite();
@@ -25,10 +27,8 @@ export function Footer({ className = '' }: { className?: string }) {
         rel="noopener noreferrer"
         className="inline-flex items-center gap-1.5 font-medium text-foreground transition-colors hover:text-primary"
       >
-        {status?.logoUrl && (
-          <img src={status.logoUrl} alt="Logo" className="h-3.5 w-3.5 object-contain" />
-        )}
-        <span>{status?.siteName || 'UHQ Panel OS by Bloume.fr'}</span>
+        <img src="/static/logo.png" alt="Logo" className="h-3.5 w-3.5 object-contain" />
+        <span>UHQ Panel OS by Bloume.fr</span>
       </a>
       {status?.version && (
         <>

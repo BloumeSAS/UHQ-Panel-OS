@@ -231,6 +231,20 @@ export class NotificationService {
   }
 
   /**
+   * Notify that a scraper cycle was manually triggered from the panel.
+   */
+  async notifyScraperRun(triggeredBy?: string): Promise<void> {
+    await this.createInApp({
+      type: 'info',
+      title: '🔄 Scraper Démarré',
+      message: triggeredBy
+        ? `Un cycle de scraping a été déclenché manuellement par ${triggeredBy}.`
+        : 'Un cycle de scraping a été déclenché manuellement.',
+      link: '/scraper',
+    });
+  }
+
+  /**
    * Alert when a new panel user is created.
    */
   async notifyUserCreated(email: string, role: string): Promise<void> {

@@ -12,12 +12,14 @@ import {
 } from '@nestjs/common';
 import { request } from 'undici';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
+import { JwtAuthGuard, JwtUser } from '../../../common/guards/jwt-auth.guard';
+import { CurrentUser } from '../../../common/decorators/current-user.decorator';
 import { RolesGuard } from '../../../common/guards/roles.guard';
 import { Roles } from '../../../common/decorators/roles.decorator';
 import { PrismaService } from '../../../database/prisma.service';
 import { SettingsService } from '../../../config/settings.service';
 import { ScraperService } from '../scraper.service';
+import { NotificationService } from '../../notifications/notification.service';
 import { DynamicProvider } from '../providers/dynamic.provider';
 import { CreateScraperSourceDto, UpdateScraperSourceDto } from '../dto/scraper-source.dto';
 import { t } from '../../../common/utils/i18n';
@@ -36,6 +38,7 @@ export class ScraperSourcesController {
     private readonly prisma: PrismaService,
     private readonly scraper: ScraperService,
     private readonly settings: SettingsService,
+    private readonly notifications: NotificationService,
   ) {}
 
   @Get()
@@ -248,9 +251,10 @@ export class ScraperSourcesController {
 
   /** Déclenche immédiatement un cycle de scraping (toutes sources). */
   @Post('run')
-  async run() {
+  async run(@CurrentUser() user: JwtUser) {
     // Fire & forget — le cycle peut être long.
     this.scraper.runOnce().catch(() => undefined);
+    void this.notifications.notifyScraperRun(user?.email);
     return { status: 'success', message: 'Cycle de scraping déclenché' };
   }
 }
