@@ -28,15 +28,19 @@ import {
   ClipboardList,
   UserPlus,
   Layers,
+  Rows3,
+  Rows4,
 } from 'lucide-react';
 import * as LucideIcons from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 import { useSite } from '@/lib/site';
 import { useI18n } from '@/lib/i18n';
 import { useTheme } from '@/lib/theme';
+import { useDensity } from '@/lib/density';
 import { Button } from '@/components/ui';
 import { Footer } from '@/components/Footer';
 import { AddonTopbarSlots, TopbarSlotItem } from '@/components/AddonTopbarSlots';
+import { GlobalSearch } from '@/components/GlobalSearch';
 import { cn } from '@/lib/utils';
 
 interface NavItem {
@@ -50,6 +54,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const { status } = useSite();
   const { t, lang, setLang, languages, mergeAddonTranslations } = useI18n();
   const { theme, toggle } = useTheme();
+  const { density, toggle: toggleDensity } = useDensity();
   const [open, setOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
@@ -138,6 +143,16 @@ export function Layout({ children }: { children: React.ReactNode }) {
     { to: '/api-keys', label: t('nav.apiKeys'), icon: KeyRound },
     { to: '/about', label: t('nav.about'), icon: Info },
   ];
+  // SUPPORT : accès lecture seule (dashboard, pool, logs, rapports, audit) —
+  // pas de gestion sous-users/users/settings/scraper/pools.
+  const supportNav: NavItem[] = [
+    { to: '/', label: t('nav.dashboard'), icon: LayoutDashboard },
+    { to: '/pool', label: t('nav.pool'), icon: Server },
+    { to: '/logs', label: t('nav.logs'), icon: ScrollText },
+    { to: '/reports', label: t('nav.reports'), icon: BarChart3 },
+    { to: '/audit', label: t('nav.audit'), icon: ClipboardList },
+    { to: '/about', label: t('nav.about'), icon: Info },
+  ];
 
   // ─── Fusion des traductions d'addons au runtime ───────────────────────────
   useEffect(() => {
@@ -194,7 +209,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         });
     });
 
-  const baseNav = user?.role === 'ADMIN' ? adminNav : userNav;
+  const baseNav = user?.role === 'ADMIN' ? adminNav : user?.role === 'SUPPORT' ? supportNav : userNav;
   const nav = [...baseNav];
   if (addonNav.length > 0) {
     const insertAt = nav.findIndex((item) => item.to === '/settings' || item.to === '/about');
@@ -280,6 +295,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             {open ? <X /> : <Menu />}
           </Button>
           <div className="flex flex-1 items-center justify-end gap-2">
+            <GlobalSearch nav={nav} />
             <div className="relative">
               <select
                 aria-label="Langue"
@@ -297,6 +313,15 @@ export function Layout({ children }: { children: React.ReactNode }) {
             </div>
             <Button variant="ghost" size="icon" onClick={toggle} aria-label="Thème">
               {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={toggleDensity}
+              aria-label="Densité des tableaux"
+              title={density === 'compact' ? 'Mode confortable' : 'Mode compact'}
+            >
+              {density === 'compact' ? <Rows4 className="h-4 w-4" /> : <Rows3 className="h-4 w-4" />}
             </Button>
 
             {/* Notification Bell */}
