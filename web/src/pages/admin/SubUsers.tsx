@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2, List, Copy, Check, Pencil, Tag, Calendar, Zap, CheckSquare, Square, RotateCcw, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Plus, Trash2, List, Copy, Check, Pencil, Tag, Calendar, Zap, CheckSquare, Square, RotateCcw, ChevronLeft, ChevronRight, Upload, Link2, Ban } from 'lucide-react';
 import { AddonPageBar } from '@/components/AddonPageBar';
 import { api, apiError } from '@/lib/api';
 import { useT } from '@/lib/i18n';
@@ -85,6 +85,7 @@ export default function SubUsers() {
   const [sticky, setSticky] = useState<string[] | null>(null);
   const [rotating, setRotating] = useState<string | null>(null);
   const [editing, setEditing] = useState<SubUser | null>(null);
+  const [sharingFor, setSharingFor] = useState<SubUser | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [page, setPage] = useState(0);
@@ -161,7 +162,10 @@ export default function SubUsers() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">{t('nav.subusers')}</h1>
-        <CreateDialog onCreated={invalidate} />
+        <div className="flex items-center gap-2">
+          <BulkImportDialog onImported={invalidate} />
+          <CreateDialog onCreated={invalidate} />
+        </div>
       </div>
 
       {/* Tag Filter bar */}
@@ -353,6 +357,9 @@ export default function SubUsers() {
                       <Button variant="ghost" size="icon" onClick={() => showSticky(u.id)} title={t('sub.stickyList')}>
                         <List className="h-4 w-4" />
                       </Button>
+                      <Button variant="ghost" size="icon" onClick={() => setSharingFor(u)} title="Lien de partage">
+                        <Link2 className="h-4 w-4" />
+                      </Button>
                       <Button
                         variant="ghost"
                         size="icon"
@@ -444,9 +451,258 @@ export default function SubUsers() {
         />
       )}
 
+      {/* Share link dialog */}
+      {sharingFor && (
+        <ShareLinkDialog subUser={sharingFor} onClose={() => setSharingFor(null)} />
+      )}
+
       {/* Widgets injectés automatiquement par les addons connectés */}
       <AddonPageBar />
     </div>
+  );
+}
+
+// ── Lien de partage temporaire ──────────────────────────────────────────────
+
+interface ShareLink {
+  id: string;
+  token: string;
+  expiresAt: string | null;
+  revoked: boolean;
+  createdAt: string;
+}
+
+const EXPIRY_PRESETS = [
+  { label: '1 heure', hours: 1 },
+  { label: '24 heures', hours: 24 },
+  { label: '7 jours', hours: 24 * 7 },
+  { label: '30 jours', hours: 24 * 30 },
+  { label: 'Illimité (révocation manuelle)', hours: null as number | null },
+];
+
+function ShareLinkDialog({ subUser, onClose }: { subUser: SubUser; onClose: () => void }) {
+  const [expiresInHours, setExpiresInHours] = useState<number | null>(24);
+  const [busy, setBusy] = useState(false);
+  const [copiedToken, setCopiedToken] = useState<string | null>(null);
+
+  const { data: links, refetch } = useQuery({
+    queryKey: ['share-links', subUser.id],
+    queryFn: async () => (await api.get(`/subusers/${subUser.id}/share-links`)).data.data as ShareLink[],
+  });
+
+  const generate = async () => {
+    setBusy(true);
+    try {
+      await api.post(`/subusers/${subUser.id}/share-links`, { expires_in_hours: expiresInHours });
+      refetch();
+      toast.success('Lien de partage créé.');
+    } catch (e) {
+      toast.error(apiError(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const revoke = async (linkId: string) => {
+    await api.post(`/subusers/share-links/${linkId}/revoke`);
+    refetch();
+  };
+
+  const linkUrl = (token: string) => `${window.location.origin}/share/${token}`;
+
+  const copy = (token: string) => {
+    navigator.clipboard.writeText(linkUrl(token));
+    setCopiedToken(token);
+    setTimeout(() => setCopiedToken(null), 1500);
+  };
+
+  const status = (l: ShareLink) => {
+    if (l.revoked) return { label: 'Révoqué', cls: 'text-destructive' };
+    if (l.expiresAt && new Date(l.expiresAt) < new Date()) return { label: 'Expiré', cls: 'text-muted-foreground' };
+    return { label: 'Actif', cls: 'text-emerald-600 dark:text-emerald-400' };
+  };
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Lien de partage — {subUser.label}</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <p className="text-xs text-muted-foreground">
+            Donne accès aux identifiants de connexion complets (username/password/host/port) sans créer de compte
+            panel. Quiconque a le lien peut les voir jusqu'à expiration ou révocation.
+          </p>
+
+          <div className="flex items-center gap-2">
+            <select
+              value={String(expiresInHours)}
+              onChange={(e) => setExpiresInHours(e.target.value === 'null' ? null : Number(e.target.value))}
+              className="h-9 flex-1 rounded-md border border-input bg-background px-3 text-sm"
+            >
+              {EXPIRY_PRESETS.map((p) => (
+                <option key={p.label} value={p.hours === null ? 'null' : p.hours}>{p.label}</option>
+              ))}
+            </select>
+            <Button type="button" onClick={generate} disabled={busy}>Générer</Button>
+          </div>
+
+          <div className="space-y-2">
+            {!links?.length && <p className="text-sm text-muted-foreground text-center py-4">Aucun lien généré.</p>}
+            {links?.map((l) => {
+              const s = status(l);
+              return (
+                <div key={l.id} className="flex items-center gap-2 rounded-md border px-3 py-2 text-xs">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className={`font-semibold ${s.cls}`}>{s.label}</span>
+                      <span className="text-muted-foreground">
+                        {l.expiresAt ? `expire ${new Date(l.expiresAt).toLocaleString()}` : 'sans expiration'}
+                      </span>
+                    </div>
+                    <code className="block truncate text-muted-foreground mt-0.5">{linkUrl(l.token)}</code>
+                  </div>
+                  <Button variant="ghost" size="icon" onClick={() => copy(l.token)} title="Copier">
+                    {copiedToken === l.token ? <Check className="h-4 w-4 text-emerald-500" /> : <Copy className="h-4 w-4" />}
+                  </Button>
+                  {s.label === 'Actif' && (
+                    <Button variant="ghost" size="icon" onClick={() => revoke(l.id)} title="Révoquer">
+                      <Ban className="h-4 w-4 text-destructive" />
+                    </Button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={onClose}>Fermer</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── Bulk CSV import dialog ──────────────────────────────────────────────────
+// Format attendu, une ligne par compte : label,username,password,threads,quota_gb
+// username/password/quota_gb sont optionnels (vide = généré / illimité).
+
+interface ParsedRow {
+  label: string;
+  username?: string;
+  password?: string;
+  threads_limit: number;
+  traffic_limit_bytes?: number;
+}
+
+function parseCsv(text: string): ParsedRow[] {
+  return text
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l && !l.startsWith('#'))
+    .map((line) => {
+      const [label, username, password, threads, quotaGb] = line.split(',').map((s) => s.trim());
+      return {
+        label: label || username || 'Import',
+        username: username || undefined,
+        password: password || undefined,
+        threads_limit: threads ? Number(threads) : 100,
+        traffic_limit_bytes: quotaGb ? Math.round(Number(quotaGb) * 1024 ** 3) : undefined,
+      };
+    })
+    .filter((r) => r.label);
+}
+
+function BulkImportDialog({ onImported }: { onImported: () => void }) {
+  const t = useT();
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<{ created: number; failed: number; errors: any[] } | null>(null);
+
+  const rows = parseCsv(text);
+
+  const submit = async () => {
+    if (!rows.length) return;
+    setBusy(true);
+    setResult(null);
+    try {
+      const { data } = await api.post('/subusers/bulk-import', { items: rows });
+      setResult(data);
+      if (data.created > 0) onImported();
+      if (!data.failed) {
+        toast.success(`${data.created} compte(s) importé(s).`);
+        setText('');
+      }
+    } catch (err) {
+      toast.error(apiError(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => setText(String(reader.result || ''));
+    reader.readAsText(file);
+    e.target.value = '';
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) { setResult(null); } }}>
+      <DialogTrigger asChild>
+        <Button variant="outline"><Upload className="h-4 w-4" /> Import CSV</Button>
+      </DialogTrigger>
+      <DialogContent className="max-h-[90vh] overflow-y-auto max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Import en masse (CSV)</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          <p className="text-xs text-muted-foreground">
+            Une ligne par compte : <code className="bg-muted px-1 rounded">label,username,password,threads,quota_gb</code>
+            <br />Seul <code className="bg-muted px-1 rounded">label</code> est obligatoire — les autres champs vides sont générés (username/password) ou illimités (quota).
+          </p>
+          <textarea
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder={'client1,,,100,50\nclient2,u_client2,MyP@ss,200,'}
+            rows={8}
+            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          />
+          <div className="flex items-center justify-between">
+            <label className="text-sm cursor-pointer inline-flex items-center gap-1.5 text-primary hover:underline">
+              <Upload className="h-3.5 w-3.5" /> Charger un fichier .csv
+              <input type="file" accept=".csv,text/csv,text/plain" onChange={onFile} className="hidden" />
+            </label>
+            <span className="text-xs text-muted-foreground">{rows.length} ligne(s) valide(s)</span>
+          </div>
+
+          {result && (
+            <div className="rounded-md border p-3 text-sm space-y-1">
+              <p className="text-emerald-600 dark:text-emerald-400">{result.created} compte(s) créé(s).</p>
+              {result.failed > 0 && (
+                <>
+                  <p className="text-destructive">{result.failed} échec(s) :</p>
+                  <ul className="text-xs text-muted-foreground max-h-32 overflow-y-auto list-disc pl-4">
+                    {result.errors.map((e: any, i: number) => (
+                      <li key={i}>Ligne {e.line}{e.username ? ` (${e.username})` : ''} : {e.error}</li>
+                    ))}
+                  </ul>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={() => setOpen(false)}>{t('common.cancel')}</Button>
+          <Button type="button" onClick={submit} disabled={busy || !rows.length}>
+            {busy ? '...' : `Importer (${rows.length})`}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
