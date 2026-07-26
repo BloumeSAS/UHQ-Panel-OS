@@ -29,19 +29,26 @@ import AddonDocs from '@/pages/admin/AddonDocs';
 import AddonIframe from '@/pages/AddonIframe';
 
 import Maintenance from '@/pages/Maintenance';
+import ShareLinkView from '@/pages/ShareLinkView';
 
 function Loader() {
   const t = useT();
   return <div className="flex min-h-screen items-center justify-center text-muted-foreground">{t('app.loading')}</div>;
 }
 
-/** Garde : exige une session ; sinon redirige au login. */
-function Protected({ children, admin }: { children: React.ReactNode; admin?: boolean }) {
+/**
+ * Garde : exige une session ; sinon redirige au login.
+ * `admin` = raccourci pour roles=['ADMIN']. `roles` permet d'autoriser aussi
+ * SUPPORT (lecture seule) sur les pages qui le supportent (dashboard, pool,
+ * logs, audit, about) sans lui donner accès aux pages de gestion.
+ */
+function Protected({ children, admin, roles }: { children: React.ReactNode; admin?: boolean; roles?: Array<'ADMIN' | 'SUPPORT'> }) {
   const { user, loading } = useAuth();
   const location = useLocation();
   if (loading) return <Loader />;
   if (!user) return <Navigate to="/login" replace state={{ from: location }} />;
-  if (admin && user.role !== 'ADMIN') return <Navigate to="/" replace />;
+  const allowed = roles ?? (admin ? ['ADMIN'] : null);
+  if (allowed && !allowed.includes(user.role as any)) return <Navigate to="/" replace />;
   return <Layout>{children}</Layout>;
 }
 
@@ -73,7 +80,8 @@ function AppRoutes() {
   const isPublicPage =
     location.pathname === '/login' ||
     location.pathname === '/forgot-password' ||
-    location.pathname === '/reset-password';
+    location.pathname === '/reset-password' ||
+    location.pathname.startsWith('/share/');
 
   if (status?.maintenanceModeEnabled && !isAdmin && !isPublicPage) {
     return <Maintenance />;
@@ -85,20 +93,21 @@ function AppRoutes() {
       <Route path="/register" element={<Register />} />
       <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/reset-password" element={<ResetPassword />} />
+      <Route path="/share/:token" element={<ShareLinkView />} />
 
       <Route path="/" element={<HomeRouter />} />
 
       {/* Admin routes */}
       <Route path="/subusers" element={<Protected admin><SubUsers /></Protected>} />
       <Route path="/users" element={<Protected admin><Users /></Protected>} />
-      <Route path="/pool" element={<Protected admin><Pool /></Protected>} />
+      <Route path="/pool" element={<Protected roles={['ADMIN', 'SUPPORT']}><Pool /></Protected>} />
       <Route path="/proxy-pools" element={<Protected admin><ProxyPools /></Protected>} />
       <Route path="/scraper" element={<Protected admin><Scraper /></Protected>} />
       <Route path="/checker" element={<Protected admin><Checker /></Protected>} />
-      <Route path="/logs" element={<Protected admin><Logs /></Protected>} />
+      <Route path="/logs" element={<Protected roles={['ADMIN', 'SUPPORT']}><Logs /></Protected>} />
       <Route path="/settings" element={<Protected admin><Settings /></Protected>} />
-      <Route path="/reports" element={<Protected admin><Reports /></Protected>} />
-      <Route path="/audit" element={<Protected admin><Audit /></Protected>} />
+      <Route path="/reports" element={<Protected roles={['ADMIN', 'SUPPORT']}><Reports /></Protected>} />
+      <Route path="/audit" element={<Protected roles={['ADMIN', 'SUPPORT']}><Audit /></Protected>} />
       <Route path="/addons-manage" element={<Protected admin><Addons /></Protected>} />
       <Route path="/addon-docs" element={<Protected admin><AddonDocs /></Protected>} />
 
@@ -126,5 +135,6 @@ function HomeRouter() {
   const { user, loading } = useAuth();
   if (loading) return <Loader />;
   if (!user) return <Navigate to="/login" replace />;
-  return <Protected>{user.role === 'ADMIN' ? <Dashboard /> : <MyProxies />}</Protected>;
+  const isStaff = user.role === 'ADMIN' || user.role === 'SUPPORT';
+  return <Protected>{isStaff ? <Dashboard /> : <MyProxies />}</Protected>;
 }
