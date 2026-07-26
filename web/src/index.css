@@ -79,3 +79,15 @@ body {
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
 }
+
+/* Mode compact (densité tableaux) — bascule via useDensity()/lib/density.tsx. */
+.density-compact table th {
+  height: 1.75rem;
+  padding: 0 0.5rem;
+  font-size: 0.75rem;
+}
+.density-compact table td {
+  padding: 0.25rem 0.5rem;
+  font-size: 0.75rem;
+  line-height: 1.1rem;
+}
