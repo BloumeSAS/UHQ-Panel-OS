@@ -60,6 +60,7 @@ export class PanelAuthController {
       resetPasswordEnabled:
         this.settings.getBool('emailResetEnabled') && this.mail.isConfigured(),
       maintenanceModeEnabled: this.settings.getBool('maintenanceModeEnabled'),
+      themeColors: this.settings.get('themeColors') || null,
     };
   }
 
