@@ -13,6 +13,7 @@ export interface SiteStatus {
   captchaCapEndpoint?: string;
   resetPasswordEnabled?: boolean;
   maintenanceModeEnabled?: boolean;
+  themeColors?: { light: Record<string, string>; dark: Record<string, string> } | null;
 }
 
 export interface DbStatus {
