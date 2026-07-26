@@ -6,7 +6,7 @@ import { RolesGuard } from '../../../common/guards/roles.guard';
 import { Roles } from '../../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../../common/decorators/current-user.decorator';
 import type { JwtUser } from '../../../common/guards/jwt-auth.guard';
-import { SettingsService } from '../../../config/settings.service';
+import { SettingsService, SETTING_DEFS, SECRET_MASK } from '../../../config/settings.service';
 import { PrismaService } from '../../../database/prisma.service';
 import { UpdateSettingsDto, SmtpTestDto, WebhookTestDto, RevealSettingDto, REVEALABLE_SECRETS } from '../../../common/dto/panel.dto';
 import { MailService } from '../../mail/mail.service';
@@ -114,5 +114,93 @@ export class PanelSettingsController {
       return { status: 'error', message: t('info.webhookNotConfigured') };
     }
     return { status: 'error', message: `${t('info.webhookTestFailed')} (${res.status ?? res.error ?? 'erreur'}).` };
+  }
+
+  /** Thème custom (tweakcn) : { light: {...}, dark: {...} } ou null si défaut. */
+  @Get('theme')
+  getTheme() {
+    const raw = this.settings.get('themeColors');
+    return { status: 'success', data: raw ? JSON.parse(raw) : null };
+  }
+
+  /** Enregistre le thème custom (color pickers du panel). */
+  @Put('theme')
+  async setTheme(@Body() body: { light: Record<string, string>; dark: Record<string, string> }, @CurrentUser() me: JwtUser) {
+    await this.settings.set('themeColors', JSON.stringify(body));
+    void this.auditService
+      .log({ userId: me.id, userEmail: me.email, action: 'settings.theme.update' })
+      .catch(() => undefined);
+    return { status: 'success', data: body };
+  }
+
+  /** Réinitialise au thème par défaut (supprime le custom). */
+  @Post('theme/reset')
+  async resetTheme(@CurrentUser() me: JwtUser) {
+    await this.settings.set('themeColors', '');
+    void this.auditService
+      .log({ userId: me.id, userEmail: me.email, action: 'settings.theme.reset' })
+      .catch(() => undefined);
+    return { status: 'success' };
+  }
+
+  /**
+   * Export de la config complète (settings non-secrets + sources scraper),
+   * pour migration entre instances. Les secrets (mots de passe SMTP, clés API,
+   * webhooks...) sont volontairement exclus — à ressaisir manuellement sur la
+   * nouvelle instance (règle #3 CLAUDE.md : jamais de secret en clair exporté).
+   */
+  @Get('export')
+  async exportConfig() {
+    const all = this.settings.getAllMasked();
+    const settings: Record<string, string> = {};
+    for (const [k, v] of Object.entries(all)) {
+      if (k.endsWith('Set') || typeof v !== 'string') continue;
+      if (v === SECRET_MASK) continue; // secret non renseigné en clair : on saute
+      settings[k] = v;
+    }
+    const scraperSources = await this.prisma.scraperSource.findMany({
+      select: { name: true, url: true, protocol: true, pattern: true, enabled: true, pool: true },
+    });
+    return {
+      status: 'success',
+      exportedAt: new Date().toISOString(),
+      data: { settings, scraperSources },
+    };
+  }
+
+  /**
+   * Import d'une config exportée : applique les settings connus (ignore les
+   * clés secrètes/inconnues) et upsert les sources scraper par nom.
+   */
+  @Post('import')
+  async importConfig(
+    @Body() body: { settings?: Record<string, string>; scraperSources?: any[] },
+    @CurrentUser() me: JwtUser,
+  ) {
+    const patch: Record<string, string> = {};
+    for (const [k, v] of Object.entries(body.settings || {})) {
+      if (!(k in SETTING_DEFS)) continue;
+      if ((SETTING_DEFS as any)[k].secret) continue; // jamais de secret importé
+      if (k === 'apiKey' || k === 'updateCheckUrl') continue;
+      if (typeof v === 'string') patch[k] = v;
+    }
+    await this.settings.setMany(patch as any);
+
+    let importedSources = 0;
+    for (const s of body.scraperSources || []) {
+      if (!s?.name || !s?.url) continue;
+      await this.prisma.scraperSource.upsert({
+        where: { id: (await this.prisma.scraperSource.findFirst({ where: { name: s.name } }))?.id || '__none__' },
+        create: { name: s.name, url: s.url, protocol: s.protocol || 'http', pattern: s.pattern || null, enabled: s.enabled !== false, pool: s.pool || null },
+        update: { url: s.url, protocol: s.protocol || 'http', pattern: s.pattern || null, enabled: s.enabled !== false, pool: s.pool || null },
+      });
+      importedSources++;
+    }
+
+    void this.auditService
+      .log({ userId: me.id, userEmail: me.email, action: 'settings.import', details: { settings: Object.keys(patch).length, scraperSources: importedSources } })
+      .catch(() => undefined);
+
+    return { status: 'success', importedSettings: Object.keys(patch).length, importedSources };
   }
 }
