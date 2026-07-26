@@ -7,6 +7,7 @@ import { request } from 'undici';
 export class NotificationService {
   private readonly logger = new Logger(NotificationService.name);
   private readonly proxyDeadCache = new Map<string, number>();
+  private lastPoolLowAlert = 0;
 
   constructor(
     private readonly settings: SettingsService,
@@ -242,6 +243,48 @@ export class NotificationService {
         : 'Un cycle de scraping a été déclenché manuellement.',
       link: '/scraper',
     });
+  }
+
+  /**
+   * Alert when the working-proxy percentage of the pool drops below the
+   * configured threshold. Deduped: maximum once per hour.
+   */
+  async notifyPoolLow(healthPct: number, working: number, total: number, thresholdPct: number): Promise<void> {
+    const now = Date.now();
+    const cooldown = 60 * 60 * 1000;
+    if (now - this.lastPoolLowAlert < cooldown) return;
+    this.lastPoolLowAlert = now;
+
+    this.logger.warn(`Pool low alert: ${healthPct.toFixed(1)}% (${working}/${total}) < ${thresholdPct}%`);
+
+    await this.createInApp({
+      type: 'warning',
+      title: '⚠️ Pool de Proxies Faible',
+      message: `Le pool de proxies fonctionnels est descendu à ${healthPct.toFixed(1)}% (${working}/${total}), sous le seuil de ${thresholdPct}%.`,
+      link: '/pool',
+    });
+
+    const discordPayload = {
+      username: 'UHQ Panel OS Alerts',
+      embeds: [
+        {
+          title: '⚠️ Proxy Pool Below Threshold',
+          description: `The working-proxy pool dropped to **${healthPct.toFixed(1)}%** (${working}/${total}), below the configured **${thresholdPct}%** threshold.`,
+          color: 16753920,
+          timestamp: new Date().toISOString(),
+        },
+      ],
+    };
+    const slackPayload = {
+      text: `Pool low: ${healthPct.toFixed(1)}% (${working}/${total}) < ${thresholdPct}%`,
+      blocks: [
+        {
+          type: 'section',
+          text: { type: 'mrkdwn', text: `:warning: Pool de proxies faible : *${healthPct.toFixed(1)}%* (${working}/${total}), sous le seuil de *${thresholdPct}%*.` },
+        },
+      ],
+    };
+    await this.dispatch({ discord: discordPayload, slack: slackPayload });
   }
 
   /**
