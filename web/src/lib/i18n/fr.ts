@@ -89,6 +89,7 @@ const fr: Language = {
     'nav.subusers': 'Comptes proxy',
     'nav.users': 'Utilisateurs',
     'nav.pool': 'Pool de proxies',
+    'nav.analytics': 'Analytics',
     'nav.logs': 'Journaux',
     'nav.scraper': 'Sources scraper',
     'nav.settings': 'Paramètres',
