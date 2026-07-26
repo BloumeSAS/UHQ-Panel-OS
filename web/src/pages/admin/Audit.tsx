@@ -1,14 +1,29 @@
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useT } from '@/lib/i18n';
-import { ClipboardList, ChevronLeft, ChevronRight, Download } from 'lucide-react';
+import { ClipboardList, ChevronLeft, ChevronRight, ChevronDown, Download } from 'lucide-react';
 import { Button, Card } from '@/components/ui';
+
+function parseDetails(details: string | null): any {
+  if (!details) return null;
+  try { return JSON.parse(details); } catch { return null; }
+}
 
 export default function AuditPage() {
   const t = useT();
   const [page, setPage] = useState(1);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const limit = 50;
+
+  const toggleExpand = (id: string) => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   const { data } = useQuery({
     queryKey: ['audit', page],
@@ -77,23 +92,60 @@ export default function AuditPage() {
                   </td>
                 </tr>
               )}
-              {data?.items?.map((log: any) => (
-                <tr key={log.id} className="hover:bg-muted/30 transition-colors">
-                  <td className="px-4 py-3 font-mono text-xs">{log.userEmail ?? '—'}</td>
-                  <td className="px-4 py-3">
-                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${actionColor(log.action)}`}>
-                      {t(`audit.actions.${log.action}` as any) !== `audit.actions.${log.action}`
-                        ? t(`audit.actions.${log.action}` as any)
-                        : log.action}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-muted-foreground text-xs">{log.target ?? '—'}</td>
-                  <td className="px-4 py-3 font-mono text-xs">{log.ip ?? '—'}</td>
-                  <td className="px-4 py-3 text-xs text-muted-foreground">
-                    {new Date(log.createdAt).toLocaleString()}
-                  </td>
-                </tr>
-              ))}
+              {data?.items?.map((log: any) => {
+                const details = parseDetails(log.details);
+                const changes = log.action === 'settings.update' ? details?.changes : null;
+                const isExpanded = expanded.has(log.id);
+                return (
+                  <Fragment key={log.id}>
+                    <tr
+                      className={`hover:bg-muted/30 transition-colors ${changes?.length ? 'cursor-pointer' : ''}`}
+                      onClick={() => changes?.length && toggleExpand(log.id)}
+                    >
+                      <td className="px-4 py-3 font-mono text-xs">{log.userEmail ?? '—'}</td>
+                      <td className="px-4 py-3">
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${actionColor(log.action)}`}>
+                          {t(`audit.actions.${log.action}` as any) !== `audit.actions.${log.action}`
+                            ? t(`audit.actions.${log.action}` as any)
+                            : log.action}
+                        </span>
+                        {!!changes?.length && (
+                          <ChevronDown className={`inline-block h-3.5 w-3.5 ml-1.5 text-muted-foreground transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground text-xs">{log.target ?? '—'}</td>
+                      <td className="px-4 py-3 font-mono text-xs">{log.ip ?? '—'}</td>
+                      <td className="px-4 py-3 text-xs text-muted-foreground">
+                        {new Date(log.createdAt).toLocaleString()}
+                      </td>
+                    </tr>
+                    {isExpanded && changes?.length > 0 && (
+                      <tr key={`${log.id}-diff`} className="bg-muted/20">
+                        <td colSpan={5} className="px-4 py-3">
+                          <table className="w-full text-xs">
+                            <thead>
+                              <tr className="text-muted-foreground">
+                                <th className="text-left font-medium py-1 pr-4">Clé</th>
+                                <th className="text-left font-medium py-1 pr-4">Avant</th>
+                                <th className="text-left font-medium py-1">Après</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {changes.map((c: any) => (
+                                <tr key={c.key}>
+                                  <td className="py-1 pr-4 font-mono">{c.key}</td>
+                                  <td className="py-1 pr-4 font-mono text-destructive/80 truncate max-w-[220px]">{c.from || '∅'}</td>
+                                  <td className="py-1 font-mono text-emerald-600 dark:text-emerald-400 truncate max-w-[220px]">{c.to || '∅'}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                );
+              })}
             </tbody>
           </table>
         </div>
