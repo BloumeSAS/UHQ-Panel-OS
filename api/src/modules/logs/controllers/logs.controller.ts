@@ -29,7 +29,7 @@ export class PanelLogsController {
   /** Snapshot du buffer de logs (filtre niveau optionnel). */
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN')
+  @Roles('ADMIN', 'SUPPORT')
   @ApiQuery({ name: 'level', required: false, enum: ['log', 'error', 'warn', 'debug', 'verbose'], description: 'Filtrer par niveau de log' })
   @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Nombre maximal d\'entrées à retourner' })
   @ApiQuery({ name: 'context', required: false, description: 'Filtrer par contexte (ex. CheckerService)' })
@@ -92,7 +92,7 @@ export class PanelLogsController {
       throw new UnauthorizedException(t('errors.tokenInvalid'));
     }
     const user = await this.prisma.panelUser.findUnique({ where: { id: payload.sub } });
-    if (!user || !user.isActive || user.role !== 'ADMIN') {
+    if (!user || !user.isActive || (user.role !== 'ADMIN' && user.role !== 'SUPPORT')) {
       throw new UnauthorizedException(t('errors.adminOnly'));
     }
   }
