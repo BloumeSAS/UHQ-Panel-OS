@@ -32,7 +32,7 @@ import { toast } from '@/lib/toast';
 interface PanelUser {
   id: string;
   email: string;
-  role: 'ADMIN' | 'USER';
+  role: 'ADMIN' | 'USER' | 'SUPPORT';
   is_active: boolean;
   expires_at: string | null;
   totp_enabled: boolean;
@@ -312,6 +312,7 @@ function EditDialog({ user, onClose, onChanged }: { user: PanelUser; onClose: ()
             <Label>{t('users.role')}</Label>
             <select value={form.role} onChange={(e) => set('role', e.target.value)} className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm">
               <option value="USER">USER</option>
+              <option value="SUPPORT">SUPPORT</option>
               <option value="ADMIN">ADMIN</option>
             </select>
           </div>
@@ -380,6 +381,7 @@ function InviteDialog() {
               <Label>{t('users.role')}</Label>
               <select value={role} onChange={(e) => setRole(e.target.value)} className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm">
                 <option value="USER">USER</option>
+                <option value="SUPPORT">SUPPORT</option>
                 <option value="ADMIN">ADMIN</option>
               </select>
             </div>
@@ -437,6 +439,7 @@ function CreateDialog({ onCreated }: { onCreated: () => void }) {
             <Label>{t('users.role')}</Label>
             <select value={form.role} onChange={(e) => set('role', e.target.value)} className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm">
               <option value="USER">USER</option>
+              <option value="SUPPORT">SUPPORT</option>
               <option value="ADMIN">ADMIN</option>
             </select>
           </div>
