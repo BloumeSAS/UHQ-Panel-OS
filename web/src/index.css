@@ -91,3 +91,17 @@ body {
   font-size: 0.75rem;
   line-height: 1.1rem;
 }
+
+/* Export PDF (window.print()) : ne garder que le contenu de la page, sans chrome du panel. */
+@media print {
+  aside, header {
+    display: none !important;
+  }
+  main {
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+  body {
+    background: white !important;
+  }
+}
