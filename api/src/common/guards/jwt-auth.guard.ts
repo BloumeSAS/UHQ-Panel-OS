@@ -12,7 +12,7 @@ import { t } from '../utils/i18n';
 export interface JwtUser {
   id: string;
   email: string;
-  role: 'ADMIN' | 'USER';
+  role: 'ADMIN' | 'USER' | 'SUPPORT';
 }
 
 /**
@@ -67,7 +67,7 @@ export class JwtAuthGuard implements CanActivate {
       })
       .catch(() => {});
 
-    req.user = { id: user.id, email: user.email, role: user.role as 'ADMIN' | 'USER' };
+    req.user = { id: user.id, email: user.email, role: user.role as 'ADMIN' | 'USER' | 'SUPPORT' };
     return true;
   }
 }
