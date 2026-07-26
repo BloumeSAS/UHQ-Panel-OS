@@ -3,11 +3,13 @@ import { useQuery } from '@tanstack/react-query';
 import {
   Copy, Eye, EyeOff, RefreshCw, Send,
   Globe, Server, Radio, Shield, Mail, Key,
-  Bell, Database, Trash2, Download, Upload,
+  Bell, Database, Trash2, Download, Upload, Palette, RotateCcw,
 } from 'lucide-react';
 import { api, apiError } from '@/lib/api';
 import { useT, useI18n } from '@/lib/i18n';
 import { useSite } from '@/lib/site';
+import { useTheme } from '@/lib/theme';
+import { hexToHslTriplet, hslTripletToHex, THEME_VARS, type ThemeColors, type ThemeVar } from '@/lib/color';
 import { Button, Input, Label, Switch } from '@/components/ui';
 import { cn } from '@/lib/utils';
 import { toast } from '@/lib/toast';
@@ -15,6 +17,7 @@ import { toast } from '@/lib/toast';
 // ── Tabs definition ──────────────────────────────────────────────────────────
 const TABS = [
   { key: 'general',  icon: Globe,   labelKey: 'settings.general' },
+  { key: 'theme',    icon: Palette, labelKey: 'settings.theme' },
   { key: 'proxy',    icon: Server,  labelKey: 'settings.proxy' },
   { key: 'scraper',  icon: Radio,   labelKey: 'settings.scraper' },
   { key: 'smtp',     icon: Mail,    labelKey: 'settings.smtp' },
@@ -23,6 +26,36 @@ const TABS = [
   { key: 'backups',  icon: Database, labelKey: 'settings.backups' },
   { key: 'apikey',   icon: Key,     labelKey: 'settings.apiKey' },
 ] as const;
+
+// Défaut "Claude" (tweakcn tangerine) — sert de base d'édition et de fallback reset.
+const DEFAULT_THEME: ThemeColors = {
+  light: {
+    background: '0 0% 100%', foreground: '0 0% 20%',
+    card: '0 0% 100%', 'card-foreground': '0 0% 20%',
+    popover: '0 0% 100%', 'popover-foreground': '0 0% 20%',
+    primary: '13 73% 54%', 'primary-foreground': '0 0% 100%',
+    secondary: '24 30% 95%', 'secondary-foreground': '13 40% 30%',
+    muted: '30 20% 96%', 'muted-foreground': '0 0% 45%',
+    accent: '24 60% 92%', 'accent-foreground': '13 50% 30%',
+    destructive: '0 72% 51%', 'destructive-foreground': '0 0% 100%',
+    border: '24 20% 90%', input: '24 20% 90%', ring: '13 73% 54%',
+    sidebar: '24 30% 97%', 'sidebar-foreground': '0 0% 25%',
+    'sidebar-primary': '13 73% 54%', 'sidebar-accent': '24 50% 90%', 'sidebar-border': '24 20% 88%',
+  },
+  dark: {
+    background: '20 14% 8%', foreground: '0 0% 92%',
+    card: '20 14% 11%', 'card-foreground': '0 0% 92%',
+    popover: '20 14% 11%', 'popover-foreground': '0 0% 92%',
+    primary: '13 80% 58%', 'primary-foreground': '0 0% 100%',
+    secondary: '20 10% 18%', 'secondary-foreground': '0 0% 90%',
+    muted: '20 10% 16%', 'muted-foreground': '0 0% 60%',
+    accent: '20 12% 22%', 'accent-foreground': '0 0% 92%',
+    destructive: '0 70% 45%', 'destructive-foreground': '0 0% 100%',
+    border: '20 10% 20%', input: '20 10% 20%', ring: '13 80% 58%',
+    sidebar: '20 14% 10%', 'sidebar-foreground': '0 0% 85%',
+    'sidebar-primary': '13 80% 58%', 'sidebar-accent': '20 12% 20%', 'sidebar-border': '20 10% 18%',
+  },
+};
 
 type TabKey = typeof TABS[number]['key'];
 
@@ -250,8 +283,14 @@ export default function Settings() {
                 k="maintenanceModeEnabled" form={form} set={set}
               />
             </Row>
+
+            <Separator label={t('settings.configImportExport')} />
+            <ConfigImportExport />
           </>
         )}
+
+        {/* ────── THÈME ────── */}
+        {tab === 'theme' && <ThemeTab defaultTheme={DEFAULT_THEME} />}
 
         {/* ────── PROXY PUBLIC ────── */}
         {tab === 'proxy' && (
@@ -441,6 +480,23 @@ export default function Settings() {
             <p className="text-sm text-muted-foreground">
               {t('settings.webhooksDesc')}
             </p>
+
+            <Separator label={t('settings.poolLowAlert')} />
+            <Toggle
+              label={t('settings.poolLowAlertEnabled')}
+              hint={t('settings.poolLowAlertHint')}
+              k="poolLowAlertEnabled" form={form} set={set}
+            />
+            {(form.poolLowAlertEnabled === true || form.poolLowAlertEnabled === 'true') && (
+              <F label={t('settings.poolLowThreshold')} hint={t('settings.poolLowThresholdHint')}>
+                <Input
+                  type="number" min={1} max={99}
+                  value={form.poolLowThresholdPct ?? ''}
+                  onChange={(e) => set('poolLowThresholdPct', e.target.value)}
+                  className="max-w-[120px]"
+                />
+              </F>
+            )}
 
             <Separator label={t('settings.discordAlerts')} />
             <Toggle
@@ -728,6 +784,188 @@ function Separator({ label }: { label: string }) {
     <div className="flex items-center gap-3 pt-2">
       <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground whitespace-nowrap">{label}</span>
       <hr className="flex-1 border-border" />
+    </div>
+  );
+}
+
+// ── Import / export config complète (settings non-secrets + sources scraper) ─
+
+function ConfigImportExport() {
+  const t = useT();
+  const [busy, setBusy] = useState(false);
+  const [summary, setSummary] = useState<string | null>(null);
+
+  const exportConfig = async () => {
+    setBusy(true);
+    try {
+      const { data } = await api.get('/settings/export');
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `uhq-panel-config-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success('Configuration exportée.');
+    } catch (e) {
+      toast.error(apiError(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setBusy(true);
+    setSummary(null);
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      const payload = parsed.data ?? parsed; // accepte le format export brut ou { data: {...} }
+      const { data } = await api.post('/settings/import', payload);
+      setSummary(`${data.importedSettings} setting(s) et ${data.importedSources} source(s) scraper importés.`);
+      toast.success('Configuration importée. Rechargez la page pour voir les changements.');
+    } catch (e) {
+      toast.error(apiError(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="space-y-3">
+      <p className="text-sm text-muted-foreground max-w-xl">
+        Exportez les settings (hors secrets : mots de passe SMTP, clés API/webhooks non inclus) et les sources
+        scraper pour les réimporter sur une autre instance UHQ Panel OS.
+      </p>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button type="button" variant="outline" onClick={exportConfig} disabled={busy}>
+          <Download className="h-4 w-4 mr-2" /> Exporter la config
+        </Button>
+        <label className="inline-flex">
+          <Button type="button" variant="outline" disabled={busy} asChild>
+            <span className="cursor-pointer">
+              <Upload className="h-4 w-4 mr-2" /> Importer une config
+            </span>
+          </Button>
+          <input type="file" accept="application/json,.json" className="hidden" onChange={onFile} />
+        </label>
+      </div>
+      {summary && <p className="text-xs text-muted-foreground">{summary}</p>}
+    </div>
+  );
+}
+
+// ── Onglet Thème (color pickers façon tweakcn) ──────────────────────────────
+
+const VAR_GROUPS: { label: string; vars: ThemeVar[] }[] = [
+  { label: 'Principal', vars: ['primary', 'primary-foreground', 'ring'] },
+  { label: 'Fond & texte', vars: ['background', 'foreground', 'card', 'card-foreground', 'popover', 'popover-foreground'] },
+  { label: 'Secondaire & accent', vars: ['secondary', 'secondary-foreground', 'accent', 'accent-foreground', 'muted', 'muted-foreground'] },
+  { label: 'États & bordures', vars: ['destructive', 'destructive-foreground', 'border', 'input'] },
+  { label: 'Barre latérale', vars: ['sidebar', 'sidebar-foreground', 'sidebar-primary', 'sidebar-accent', 'sidebar-border'] },
+];
+
+function ThemeTab({ defaultTheme }: { defaultTheme: ThemeColors }) {
+  const t = useT();
+  const themeCtx = useTheme();
+  const [mode, setMode] = useState<'light' | 'dark'>('light');
+  const [draft, setDraft] = useState<ThemeColors>(themeCtx.customColors ?? defaultTheme);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (themeCtx.customColors) setDraft(themeCtx.customColors);
+  }, [themeCtx.customColors]);
+
+  const setVar = (key: ThemeVar, hex: string) => {
+    const next: ThemeColors = { ...draft, [mode]: { ...draft[mode], [key]: hexToHslTriplet(hex) } };
+    setDraft(next);
+    themeCtx.preview(next); // aperçu live immédiat
+  };
+
+  const save = async () => {
+    setBusy(true);
+    try {
+      await themeCtx.save(draft);
+      toast.success(t('settings.themeSaved') !== 'settings.themeSaved' ? t('settings.themeSaved') : 'Thème enregistré.');
+    } catch (e) {
+      toast.error(apiError(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const reset = async () => {
+    setBusy(true);
+    try {
+      await themeCtx.reset();
+      setDraft(defaultTheme);
+      toast.success(t('settings.themeReset') !== 'settings.themeReset' ? t('settings.themeReset') : 'Thème réinitialisé (défaut Claude).');
+    } catch (e) {
+      toast.error(apiError(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <p className="text-sm text-muted-foreground max-w-xl">
+          Personnalisez les couleurs du panel (compatible export{' '}
+          <a href="https://tweakcn.com" target="_blank" rel="noreferrer" className="underline text-primary">tweakcn.com</a>).
+          Chaque champ correspond à une variable CSS shadcn. Le thème par défaut ("Claude") reste la base si vous réinitialisez.
+        </p>
+        <div className="flex items-center gap-2 shrink-0">
+          <div className="flex rounded-md border overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setMode('light')}
+              className={cn('px-3 py-1.5 text-sm', mode === 'light' ? 'bg-primary text-primary-foreground' : 'bg-background hover:bg-muted')}
+            >
+              Clair
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode('dark')}
+              className={cn('px-3 py-1.5 text-sm', mode === 'dark' ? 'bg-primary text-primary-foreground' : 'bg-background hover:bg-muted')}
+            >
+              Sombre
+            </button>
+          </div>
+          <Button type="button" variant="outline" onClick={reset} disabled={busy}>
+            <RotateCcw className="h-4 w-4 mr-2" />
+            Réinitialiser
+          </Button>
+          <Button type="button" onClick={save} disabled={busy}>
+            {t('common.save')}
+          </Button>
+        </div>
+      </div>
+
+      {VAR_GROUPS.map((group) => (
+        <div key={group.label} className="space-y-2">
+          <Separator label={group.label} />
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {group.vars.map((v) => {
+              const hsl = draft[mode][v] ?? defaultTheme[mode][v] ?? '0 0% 100%';
+              return (
+                <div key={v} className="flex items-center gap-2 rounded-md border px-2.5 py-1.5">
+                  <input
+                    type="color"
+                    value={hslTripletToHex(hsl)}
+                    onChange={(e) => setVar(v, e.target.value)}
+                    className="h-7 w-7 shrink-0 rounded border cursor-pointer bg-transparent"
+                  />
+                  <span className="text-xs font-mono truncate">{v}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
