@@ -1,6 +1,6 @@
 import { SetMetadata } from '@nestjs/common';
 
-export type PanelRole = 'ADMIN' | 'USER';
+export type PanelRole = 'ADMIN' | 'USER' | 'SUPPORT';
 export const ROLES_KEY = 'roles';
 
 /** Restreint une route aux rôles donnés. À combiner avec JwtAuthGuard + RolesGuard. */
