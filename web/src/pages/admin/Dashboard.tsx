@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Activity, Boxes, Globe2, Network, TrendingUp } from 'lucide-react';
+import { Activity, Boxes, Globe2, Network, TrendingUp, Cpu, MemoryStick, Database, Timer } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui';
@@ -70,6 +70,11 @@ export default function Dashboard() {
     queryFn: async () => (await api.get('/monitoring/pool-health-history?hours=6')).data,
     refetchInterval: 60000,
   });
+  const systemHealth = useQuery({
+    queryKey: ['monitoring', 'system-health'],
+    queryFn: async () => (await api.get('/monitoring/system-health')).data.data,
+    refetchInterval: 10000,
+  });
 
   const l = wsData
     ? {
@@ -107,6 +112,21 @@ export default function Dashboard() {
           </CardHeader>
           <CardContent>
             <MiniChart data={history} />
+          </CardContent>
+        </Card>
+      )}
+
+      {/* System Health */}
+      {systemHealth.data && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Activity className="h-5 w-5" />
+              {t('dash.systemHealth')}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <SystemHealthGrid data={systemHealth.data} />
           </CardContent>
         </Card>
       )}
@@ -158,6 +178,54 @@ function Stat({ icon: Icon, label, value, sub }: { icon: React.ElementType; labe
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+function HealthBar({ label, pct, sub, icon: Icon }: { label: string; pct: number; sub: string; icon: React.ElementType }) {
+  const color = pct >= 85 ? 'bg-destructive' : pct >= 65 ? 'bg-amber-500' : 'bg-primary';
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between text-sm">
+        <span className="flex items-center gap-1.5 font-medium"><Icon className="h-3.5 w-3.5 text-muted-foreground" />{label}</span>
+        <span className="text-muted-foreground text-xs">{sub}</span>
+      </div>
+      <div className="h-1.5 w-full rounded-full bg-muted">
+        <div className={`h-1.5 rounded-full transition-all ${color}`} style={{ width: `${Math.min(100, Math.max(0, pct))}%` }} />
+      </div>
+    </div>
+  );
+}
+
+function SystemHealthGrid({ data }: { data: any }) {
+  const ramPct = data.host.totalMemMb > 0 ? ((data.host.totalMemMb - data.host.freeMemMb) / data.host.totalMemMb) * 100 : 0;
+  const dbOk = data.db.latencyMs != null;
+  return (
+    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <HealthBar
+        icon={Cpu}
+        label="CPU"
+        pct={data.host.cpuLoadPct}
+        sub={`${data.host.cpuLoadPct}% / ${data.host.cpuCount} coeurs`}
+      />
+      <HealthBar
+        icon={MemoryStick}
+        label="RAM"
+        pct={ramPct}
+        sub={`${(data.host.totalMemMb - data.host.freeMemMb).toLocaleString()} / ${data.host.totalMemMb.toLocaleString()} Mo`}
+      />
+      <HealthBar
+        icon={Database}
+        label="Latence DB"
+        pct={dbOk ? Math.min(100, (data.db.latencyMs / 200) * 100) : 100}
+        sub={dbOk ? `${data.db.latencyMs} ms` : 'indisponible'}
+      />
+      <HealthBar
+        icon={Timer}
+        label="Process (heap)"
+        pct={data.process.heapTotalMb > 0 ? (data.process.heapUsedMb / data.process.heapTotalMb) * 100 : 0}
+        sub={`${data.process.heapUsedMb} / ${data.process.heapTotalMb} Mo`}
+      />
+    </div>
   );
 }
 
