@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import {
@@ -59,6 +59,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const [notifOpen, setNotifOpen] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
 
   const { data: addons } = useQuery({
@@ -126,6 +127,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
     { to: '/subusers', label: t('nav.subusers'), icon: Network },
     { to: '/users', label: t('nav.users'), icon: Users },
     { to: '/pool', label: t('nav.pool'), icon: Server },
+    { to: '/analytics', label: t('nav.analytics'), icon: BarChart3 },
     { to: '/proxy-pools', label: t('nav.proxyPools'), icon: Layers },
     { to: '/scraper', label: t('nav.scraper'), icon: Radar },
     { to: '/checker', label: t('nav.checker'), icon: Activity },
@@ -148,6 +150,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const supportNav: NavItem[] = [
     { to: '/', label: t('nav.dashboard'), icon: LayoutDashboard },
     { to: '/pool', label: t('nav.pool'), icon: Server },
+    { to: '/analytics', label: t('nav.analytics'), icon: BarChart3 },
     { to: '/logs', label: t('nav.logs'), icon: ScrollText },
     { to: '/reports', label: t('nav.reports'), icon: BarChart3 },
     { to: '/audit', label: t('nav.audit'), icon: ClipboardList },
@@ -398,7 +401,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
           </div>
         </header>
 
-        <main className="p-4 md:p-6">{children}</main>
+        <main className="p-4 md:p-6">
+          <div key={location.pathname} className="animate-in fade-in slide-in-from-bottom-1 duration-300">
+            {children}
+          </div>
+        </main>
 
         <Footer />
       </div>
