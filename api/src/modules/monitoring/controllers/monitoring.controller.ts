@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiParam, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { randomUUID } from 'crypto';
+import * as os from 'os';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../../common/guards/roles.guard';
 import { Roles } from '../../../common/decorators/roles.decorator';
@@ -23,10 +24,14 @@ import { ImportProxiesDto } from '../../../common/dto/panel.dto';
 import { PoolHealthSnapshotService } from '../pool-health-snapshot.service';
 import { AuditService } from '../../audit/audit.service';
 
+/**
+ * Pas de @Roles() au niveau classe : les routes en lecture (GET) sont
+ * accessibles à ADMIN + SUPPORT, les routes de mutation (POST/PATCH/DELETE)
+ * restent ADMIN uniquement — chaque méthode déclare explicitement les siens.
+ */
 @ApiTags('panel-monitoring')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('ADMIN')
 @Controller('api/panel/monitoring')
 export class PanelMonitoringController {
   constructor(
@@ -37,6 +42,7 @@ export class PanelMonitoringController {
   ) {}
 
   /** Historique de la santé du pool (time series). */
+  @Roles('ADMIN', 'SUPPORT')
   @ApiQuery({ name: 'hours', required: false, type: Number, description: 'Nombre d\'heures (défaut: 24)' })
   @Get('pool-health-history')
   async poolHealthHistory(@Query('hours') hours = '24') {
@@ -50,6 +56,7 @@ export class PanelMonitoringController {
    * lignes `ProxyUsage` du jour en mémoire — appelé fréquemment (dashboard),
    * c'était la requête la plus coûteuse de ce contrôleur sur un pool actif.
    */
+  @Roles('ADMIN', 'SUPPORT')
   @Get('live')
   async live() {
     const threads = Array.from(this.engine.getActiveThreads().values()).reduce(
@@ -94,7 +101,54 @@ export class PanelMonitoringController {
     };
   }
 
+  /**
+   * Santé système : RAM/CPU process + hôte, latence DB, threads/sessions
+   * moteur proxy. Interrogé périodiquement par le dashboard (léger, aucune
+   * lib externe — `os`/`process` natifs Node).
+   */
+  @Roles('ADMIN', 'SUPPORT')
+  @Get('system-health')
+  async systemHealth() {
+    const memProcess = process.memoryUsage();
+    const loadavg = os.loadavg();
+    const cpuCount = os.cpus().length || 1;
+
+    const dbStart = Date.now();
+    let dbLatencyMs: number | null = null;
+    try {
+      await this.prisma.$queryRaw`SELECT 1`;
+      dbLatencyMs = Date.now() - dbStart;
+    } catch {
+      dbLatencyMs = null;
+    }
+
+    return {
+      status: 'success',
+      data: {
+        process: {
+          rssMb: Math.round((memProcess.rss / 1024 ** 2) * 10) / 10,
+          heapUsedMb: Math.round((memProcess.heapUsed / 1024 ** 2) * 10) / 10,
+          heapTotalMb: Math.round((memProcess.heapTotal / 1024 ** 2) * 10) / 10,
+          uptimeSec: Math.round(process.uptime()),
+        },
+        host: {
+          totalMemMb: Math.round(os.totalmem() / 1024 ** 2),
+          freeMemMb: Math.round(os.freemem() / 1024 ** 2),
+          cpuCount,
+          // Charge moyenne (1 min) normalisée par nombre de coeurs, en %.
+          cpuLoadPct: Math.min(100, Math.round((loadavg[0] / cpuCount) * 100)),
+        },
+        db: { latencyMs: dbLatencyMs },
+        engine: {
+          activeThreads: Array.from(this.engine.getActiveThreads().values()).reduce((a, b) => a + b, 0),
+          activeSessions: this.engine.getSessions().size,
+        },
+      },
+    };
+  }
+
   /** Répartition du pool par provider / protocole — agrégé côté DB (`groupBy`). */
+  @Roles('ADMIN', 'SUPPORT')
   @Get('pool')
   async pool() {
     const [total, working, byProviderRaw, byProtocolRaw] = await Promise.all([
@@ -126,6 +180,7 @@ export class PanelMonitoringController {
   @ApiQuery({ name: 'pool', required: false, description: 'Nom de la pool (catégorie)' })
   @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Proxies par page (défaut 100, max 1000)' })
   @ApiQuery({ name: 'page', required: false, type: Number, description: 'Numéro de page 0-based' })
+  @Roles('ADMIN', 'SUPPORT')
   @Get('proxies')
   async proxies(
     @Query('country') country?: string,
@@ -185,6 +240,7 @@ export class PanelMonitoringController {
   @ApiQuery({ name: 'country', required: false, description: 'Code pays à 2 lettres (ex. FR)' })
   @ApiQuery({ name: 'protocol', required: false, enum: ['http', 'socks4', 'socks5'] })
   @ApiQuery({ name: 'working', required: false, type: Boolean })
+  @Roles('ADMIN', 'SUPPORT')
   @Get('proxies/export')
   async exportProxies(
     @Query('format') format = 'standard',
@@ -217,6 +273,7 @@ export class PanelMonitoringController {
    * Import MANUEL de proxies dans le pool (sans scraper). Une ligne par proxy
    * (`[proto://]ip:port`). Provider « Manual ». Validés ensuite par le checker.
    */
+  @Roles('ADMIN')
   @Post('proxies/import')
   async importProxies(@Body() body: ImportProxiesDto) {
     const parsed = parseProxyList(body?.text ?? '');
@@ -259,6 +316,7 @@ export class PanelMonitoringController {
 
   /** Réinitialise un proxy mort : failCount → 0, isWorking → true. */
   @ApiParam({ name: 'id', description: 'ID du proxy dans le pool' })
+  @Roles('ADMIN')
   @Patch('proxies/:id/revive')
   async reviveProxy(@Param('id') id: string) {
     await this.prisma.backendProxy.update({
@@ -269,6 +327,7 @@ export class PanelMonitoringController {
   }
 
   /** Réinitialise en masse tous les proxies morts (failCount → 0, isWorking → true). */
+  @Roles('ADMIN')
   @Post('proxies/revive-dead')
   async reviveDeadProxies() {
     const res = await this.prisma.backendProxy.updateMany({
@@ -283,6 +342,7 @@ export class PanelMonitoringController {
    * déblacklister le réactive (isWorking → true, failCount → 0).
    */
   @ApiParam({ name: 'id', description: 'ID du proxy dans le pool' })
+  @Roles('ADMIN')
   @Patch('proxies/:id/blacklist')
   async blacklistProxy(@Param('id') id: string, @Body() body: { blacklisted?: boolean }) {
     const blacklisted = body?.blacklisted === true;
@@ -299,6 +359,7 @@ export class PanelMonitoringController {
 
   /** Supprime un proxy du pool. */
   @ApiParam({ name: 'id', description: 'ID du proxy dans le pool' })
+  @Roles('ADMIN')
   @Delete('proxies/:id')
   async deleteProxy(@Param('id') id: string, @CurrentUser() me: JwtUser) {
     await this.prisma.backendProxy.delete({ where: { id } }).catch(() => undefined);
@@ -315,6 +376,7 @@ export class PanelMonitoringController {
    * (DELETE /proxies/:id) le permet, en connaissance de cause.
    */
   @ApiQuery({ name: 'working', required: false, type: String, description: 'false pour supprimer uniquement les proxies HS' })
+  @Roles('ADMIN')
   @Delete('proxies')
   async deleteManyProxies(@Query('working') working?: string, @CurrentUser() me?: JwtUser) {
     const where: any = { isBlacklisted: false };
@@ -337,6 +399,7 @@ export class PanelMonitoringController {
    * par pool. Agrégé côté DB (`groupBy`) plutôt que de charger tout le pool.
    */
   @ApiQuery({ name: 'pool', required: false, description: 'Filtrer par pool (catégorie)' })
+  @Roles('ADMIN', 'SUPPORT')
   @Get('countries')
   async countries(@Query('pool') pool?: string) {
     const where: any = { isWorking: true };
@@ -362,6 +425,7 @@ export class PanelMonitoringController {
    * period : 'day' | 'week' | 'month' | 'year' | 'all'
    */
   @ApiQuery({ name: 'period', required: false, enum: ['day', 'week', 'month', 'year', 'all'], description: 'Période du rapport de statistiques' })
+  @Roles('ADMIN', 'SUPPORT')
   @Get('reports')
   async reports(@Query('period') period = 'week') {
     const since = this.periodStart(period);
@@ -526,6 +590,7 @@ export class PanelMonitoringController {
   }
 
   /** Export CSV des sous-utilisateurs proxy (nom, username, trafic). */
+  @Roles('ADMIN', 'SUPPORT')
   @Get('subusers/export.csv')
   async exportSubusersCsv() {
     const list = await this.prisma.userProxy.findMany({ orderBy: { createdAt: 'desc' } });
