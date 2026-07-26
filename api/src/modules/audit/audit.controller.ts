@@ -8,7 +8,7 @@ import { AuditService } from './audit.service';
 @ApiTags('panel-audit')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('ADMIN')
+@Roles('ADMIN', 'SUPPORT')
 @Controller('api/panel/audit')
 export class AuditController {
   constructor(private readonly auditService: AuditService) {}
