@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2, List, Copy, Check, Pencil, Tag, Calendar, Zap, CheckSquare, Square, RotateCcw, ChevronLeft, ChevronRight, Upload, Link2, Ban } from 'lucide-react';
+import { Plus, Trash2, List, Copy, Check, Pencil, Tag, Calendar, Zap, CheckSquare, Square, RotateCcw, ChevronLeft, ChevronRight, Upload, Link2, Ban, Eye } from 'lucide-react';
+import { SlideOver } from '@/components/SlideOver';
 import { AddonPageBar } from '@/components/AddonPageBar';
 import { api, apiError } from '@/lib/api';
 import { useT } from '@/lib/i18n';
@@ -86,6 +87,7 @@ export default function SubUsers() {
   const [rotating, setRotating] = useState<string | null>(null);
   const [editing, setEditing] = useState<SubUser | null>(null);
   const [sharingFor, setSharingFor] = useState<SubUser | null>(null);
+  const [quickViewFor, setQuickViewFor] = useState<SubUser | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [page, setPage] = useState(0);
@@ -346,6 +348,9 @@ export default function SubUsers() {
                       />
                     </TD>
                     <TD className="flex justify-end gap-1">
+                      <Button variant="ghost" size="icon" onClick={() => setQuickViewFor(u)} title="Vue rapide">
+                        <Eye className="h-4 w-4" />
+                      </Button>
                       <Button variant="ghost" size="icon" onClick={() => copyCreds(u)} title={t('common.copy')}>
                         {copiedId === u.id
                           ? <Check className="h-4 w-4 text-emerald-500" />
@@ -456,8 +461,88 @@ export default function SubUsers() {
         <ShareLinkDialog subUser={sharingFor} onClose={() => setSharingFor(null)} />
       )}
 
+      {/* Quick view slide-over */}
+      <SlideOver open={!!quickViewFor} onClose={() => setQuickViewFor(null)} title={quickViewFor?.label ?? ''}>
+        {quickViewFor && (
+          <QuickView
+            subUser={quickViewFor}
+            onBlockToggle={(v) => block.mutate({ id: quickViewFor.id, is_blocked: v })}
+            onResetTraffic={() => confirm(t('sub.confirmResetTraffic')) && resetTraffic.mutate(quickViewFor.id)}
+            onEdit={() => { setQuickViewFor(null); setEditing(quickViewFor); }}
+          />
+        )}
+      </SlideOver>
+
       {/* Widgets injectés automatiquement par les addons connectés */}
       <AddonPageBar />
+    </div>
+  );
+}
+
+// ── Vue rapide (slide-over) ─────────────────────────────────────────────────
+
+function QuickView({
+  subUser,
+  onBlockToggle,
+  onResetTraffic,
+  onEdit,
+}: {
+  subUser: SubUser;
+  onBlockToggle: (v: boolean) => void;
+  onResetTraffic: () => void;
+  onEdit: () => void;
+}) {
+  const used = fmtGb(subUser.bytes_sent + subUser.bytes_received);
+  const limit = fmtLimit(subUser.traffic_limit);
+  const pct = subUser.traffic_limit ? Math.min(100, ((subUser.bytes_sent + subUser.bytes_received) / subUser.traffic_limit) * 100) : 0;
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center justify-between">
+        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${subUser.is_blocked ? 'bg-destructive/10 text-destructive' : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-400'}`}>
+          {subUser.is_blocked ? 'Bloqué' : 'Actif'}
+        </span>
+        <Switch checked={subUser.is_blocked} onCheckedChange={onBlockToggle} />
+      </div>
+
+      <div className="space-y-2 text-sm">
+        <QRow label="Username" value={subUser.username} />
+        <QRow label="Password" value={subUser.password} />
+        <QRow label="Threads" value={String(subUser.threads_limit)} />
+        <QRow label="Pays" value={subUser.country_filter || '—'} />
+        <QRow label="Tags" value={subUser.tags || '—'} />
+        <QRow label="Port dédié" value={subUser.port ? String(subUser.port) : '—'} />
+        <QRow label="Domaine" value={subUser.domain || '—'} />
+        <QRow label="Expire" value={subUser.expires_at ? new Date(subUser.expires_at).toLocaleDateString() : '—'} />
+      </div>
+
+      <div className="space-y-1.5">
+        <div className="flex justify-between text-xs text-muted-foreground">
+          <span>Trafic utilisé</span>
+          <span>{used} / {limit}</span>
+        </div>
+        <div className="h-2 w-full rounded-full bg-muted">
+          <div className={`h-2 rounded-full transition-all ${pct >= 90 ? 'bg-destructive' : 'bg-primary'}`} style={{ width: `${pct}%` }} />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2 pt-2 border-t">
+        <Button variant="outline" size="sm" onClick={onResetTraffic}>
+          <RotateCcw className="h-3.5 w-3.5 mr-1.5" /> Reset trafic
+        </Button>
+        <Button size="sm" onClick={onEdit}>
+          <Pencil className="h-3.5 w-3.5 mr-1.5" /> Modifier
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function QRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between gap-2 py-1 border-b border-dashed last:border-0">
+      <span className="text-muted-foreground text-xs">{label}</span>
+      <span className="font-mono text-xs truncate max-w-[220px]">{value}</span>
     </div>
   );
 }
@@ -727,7 +812,46 @@ function CreateDialog({ onCreated }: { onCreated: () => void }) {
     domain: '',
   });
   const [error, setError] = useState('');
+  const [templateId, setTemplateId] = useState('');
   const set = (k: string, v: any) => setForm((f) => ({ ...f, [k]: v }));
+
+  const { data: templates, refetch: refetchTemplates } = useQuery({
+    queryKey: ['subuser-templates'],
+    queryFn: async () => (await api.get('/subuser-templates')).data.data as any[],
+  });
+
+  const applyTemplate = (id: string) => {
+    setTemplateId(id);
+    const tpl = templates?.find((t) => t.id === id);
+    if (!tpl) return;
+    setForm((f) => ({
+      ...f,
+      threads_limit: tpl.threadsLimit,
+      traffic_limit_gb: tpl.trafficLimitGb ?? 0,
+      country_filter: tpl.countryFilter || '',
+      sticky_session_ttl: tpl.stickySessionTtl,
+      bandwidth_limit: tpl.bandwidthLimit ?? 0,
+    }));
+  };
+
+  const saveAsTemplate = async () => {
+    const name = prompt('Nom du template :', form.label || 'Template');
+    if (!name) return;
+    try {
+      await api.post('/subuser-templates', {
+        name,
+        threads_limit: Number(form.threads_limit),
+        traffic_limit_gb: form.traffic_limit_gb > 0 ? Number(form.traffic_limit_gb) : undefined,
+        country_filter: form.country_filter || undefined,
+        sticky_session_ttl: Number(form.sticky_session_ttl),
+        bandwidth_limit: form.bandwidth_limit ? Number(form.bandwidth_limit) : undefined,
+      });
+      refetchTemplates();
+      toast.success('Template enregistré.');
+    } catch (err) {
+      toast.error(apiError(err));
+    }
+  };
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -782,7 +906,28 @@ function CreateDialog({ onCreated }: { onCreated: () => void }) {
         <DialogHeader>
           <DialogTitle>{t('sub.create')}</DialogTitle>
         </DialogHeader>
+        {!!templates?.length && (
+          <div className="flex items-center gap-2 pb-1">
+            <select
+              value={templateId}
+              onChange={(e) => applyTemplate(e.target.value)}
+              className="h-8 flex-1 rounded-md border border-input bg-background px-2 text-xs"
+            >
+              <option value="">Charger un template…</option>
+              {templates.map((tpl) => (
+                <option key={tpl.id} value={tpl.id}>{tpl.name}</option>
+              ))}
+            </select>
+          </div>
+        )}
         <SubUserForm form={form} set={set} error={error} onSubmit={submit} submitLabel={t('common.create')} />
+        <button
+          type="button"
+          onClick={saveAsTemplate}
+          className="text-xs text-muted-foreground hover:text-primary underline self-start"
+        >
+          Enregistrer ces réglages comme template
+        </button>
       </DialogContent>
     </Dialog>
   );
