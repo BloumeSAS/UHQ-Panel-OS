@@ -153,18 +153,18 @@ export class UpdateSettingsDto {
 export class CreatePanelUserDto {
   @ApiProperty() @IsEmail() email!: string;
   @ApiProperty({ minLength: 8 }) @IsString() @MinLength(8) password!: string;
-  @ApiPropertyOptional({ enum: ['ADMIN', 'USER'], default: 'USER' })
+  @ApiPropertyOptional({ enum: ['ADMIN', 'USER', 'SUPPORT'], default: 'USER' })
   @IsOptional()
-  @IsIn(['ADMIN', 'USER'])
-  role?: 'ADMIN' | 'USER';
+  @IsIn(['ADMIN', 'USER', 'SUPPORT'])
+  role?: 'ADMIN' | 'USER' | 'SUPPORT';
 }
 
 export class UpdatePanelUserDto {
   @ApiPropertyOptional() @IsOptional() @IsEmail() email?: string;
-  @ApiPropertyOptional({ enum: ['ADMIN', 'USER'] })
+  @ApiPropertyOptional({ enum: ['ADMIN', 'USER', 'SUPPORT'] })
   @IsOptional()
-  @IsIn(['ADMIN', 'USER'])
-  role?: 'ADMIN' | 'USER';
+  @IsIn(['ADMIN', 'USER', 'SUPPORT'])
+  role?: 'ADMIN' | 'USER' | 'SUPPORT';
   @ApiPropertyOptional() @IsOptional() @IsBoolean() isActive?: boolean;
   @ApiPropertyOptional({ minLength: 8 }) @IsOptional() @IsString() @MinLength(8) password?: string;
   @ApiPropertyOptional() @IsOptional() expiresAt?: string | null;
