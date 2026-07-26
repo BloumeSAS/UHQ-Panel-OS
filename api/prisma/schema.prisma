@@ -50,6 +50,21 @@ model UserProxy {
   @@index([ownerId])
 }
 
+// Lien de partage temporaire (accès non-authentifié) donnant les identifiants
+// de connexion d'un UserProxy. Généré par un admin depuis le panel, révocable.
+model ShareLink {
+  id          String    @id @default(uuid())
+  token       String    @unique
+  userProxyId String
+  createdById String?
+  createdAt   DateTime  @default(now())
+  // null = pas d'expiration (révocation manuelle uniquement)
+  expiresAt   DateTime?
+  revoked     Boolean   @default(false)
+
+  @@index([userProxyId])
+}
+
 // Utilisateur du panel (login email/mot de passe). Distinct des comptes proxy (UserProxy).
 model PanelUser {
   id                  String               @id @default(uuid())
