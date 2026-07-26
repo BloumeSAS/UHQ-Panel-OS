@@ -345,6 +345,15 @@ const en: Language = {
 
     'settings.apiKey': 'API Key',
     'settings.apiKeyDesc': 'Used for the legacy API /api/v1 via the X-API-Key header or as Basic auth password.',
+    'settings.theme': 'Theme',
+    'settings.themeSaved': 'Theme saved.',
+    'settings.themeReset': 'Theme reset to default (Claude).',
+    'settings.poolLowAlert': 'Low Pool Alert',
+    'settings.poolLowAlertEnabled': 'Enable alert',
+    'settings.poolLowAlertHint': 'Notifies (in-app + webhooks) when the working-proxy % drops below the threshold.',
+    'settings.poolLowThreshold': 'Threshold (%)',
+    'settings.poolLowThresholdHint': 'Triggers the alert when the working pool falls below this percentage.',
+    'settings.configImportExport': 'Config Import / Export',
     'settings.clickReveal': 'Click on "Show"',
     'settings.confirmPasswordPlaceholder': 'Your password',
     'settings.confirmRegenerate': 'Regenerate the key? The old one will be invalidated.',
@@ -612,6 +621,7 @@ const en: Language = {
 
     // ── Dashboard pool health ──────────────────────────────────────────────
     'dash.poolHealthHistory': 'Pool Health History (6h)',
+    'dash.systemHealth': 'System Health',
 
     // ── Users bulk/invite/expiry ───────────────────────────────────────────
     'users.selected': 'selected',
