@@ -31,7 +31,7 @@ export class DocsController {
       const user = await this.prisma.panelUser.findUnique({ where: { id: payload.sub } });
       if (!session || !user || !user.isActive) return null;
       if (user.expiresAt && user.expiresAt <= new Date()) return null;
-      return { id: user.id, email: user.email, role: user.role as 'ADMIN' | 'USER' };
+      return { id: user.id, email: user.email, role: user.role as 'ADMIN' | 'USER' | 'SUPPORT' };
     } catch {
       return null;
     }
