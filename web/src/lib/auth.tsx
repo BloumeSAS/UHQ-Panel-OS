@@ -4,7 +4,7 @@ import { api, clearToken, getToken, setToken } from './api';
 export interface PanelUser {
   id: string;
   email: string;
-  role: 'ADMIN' | 'USER';
+  role: 'ADMIN' | 'USER' | 'SUPPORT';
 }
 
 interface AuthCtx {
