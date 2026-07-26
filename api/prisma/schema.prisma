@@ -65,6 +65,18 @@ model ShareLink {
   @@index([userProxyId])
 }
 
+// Profil réutilisable pour la création rapide de comptes proxy (SubUsers).
+model SubUserTemplate {
+  id               String   @id @default(uuid())
+  name             String
+  threadsLimit     Int      @default(100)
+  trafficLimitGb   Float?
+  countryFilter    String?
+  stickySessionTtl Int      @default(1800)
+  bandwidthLimit   Int?
+  createdAt        DateTime @default(now())
+}
+
 // Utilisateur du panel (login email/mot de passe). Distinct des comptes proxy (UserProxy).
 model PanelUser {
   id                  String               @id @default(uuid())
