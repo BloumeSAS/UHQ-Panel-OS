@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Activity, Database, Users, TrendingUp, Globe2, Boxes } from 'lucide-react';
+import { Activity, Database, Users, TrendingUp, Globe2, Boxes, ArrowUp, ArrowDown, FileDown } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { Card, CardContent, CardHeader, CardTitle, Button, Table, THead, TBody, TR, TH, TD, Badge } from '@/components/ui';
@@ -14,6 +14,8 @@ interface ReportData {
     total_requests: number;
     top_domains: Array<{ hostname: string; requests: number }>;
     daily: Array<{ date: string; gb: number; requests: number }>;
+    previous_total_gb: number | null;
+    previous_total_requests: number | null;
   };
   users: {
     panel_total: number;
@@ -71,6 +73,13 @@ export default function Reports() {
     refetchInterval: 60_000,
   });
 
+  // Toujours sur 1 an, indépendant du filtre période, pour la heatmap calendrier.
+  const { data: yearData } = useQuery({
+    queryKey: ['reports', 'year-heatmap'],
+    queryFn: async () => (await api.get('/monitoring/reports?period=year')).data as ReportData,
+    staleTime: 5 * 60_000,
+  });
+
   const exportJson = () => {
     if (!data) return;
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -79,6 +88,8 @@ export default function Reports() {
     a.download = `uhq-report-${period}-${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
   };
+
+  const exportPdf = () => window.print();
 
   return (
     <div className="space-y-6">
@@ -98,6 +109,9 @@ export default function Reports() {
           <Button variant="outline" size="sm" onClick={exportJson} disabled={!data}>
             {t('common.download')} JSON
           </Button>
+          <Button variant="outline" size="sm" onClick={exportPdf} disabled={!data} className="print:hidden">
+            <FileDown className="h-3.5 w-3.5 mr-1.5" /> Exporter en PDF
+          </Button>
         </div>
       </div>
 
@@ -107,8 +121,18 @@ export default function Reports() {
         <>
           {/* KPIs */}
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <StatCard icon={TrendingUp} label={t('reports.totalGb')} value={`${data.traffic.total_gb} Go`} />
-            <StatCard icon={Activity} label={t('reports.totalRequests')} value={data.traffic.total_requests.toLocaleString()} />
+            <StatCard
+              icon={TrendingUp}
+              label={t('reports.totalGb')}
+              value={`${data.traffic.total_gb} Go`}
+              delta={pctDelta(data.traffic.total_gb, data.traffic.previous_total_gb)}
+            />
+            <StatCard
+              icon={Activity}
+              label={t('reports.totalRequests')}
+              value={data.traffic.total_requests.toLocaleString()}
+              delta={pctDelta(data.traffic.total_requests, data.traffic.previous_total_requests)}
+            />
             <StatCard icon={Users} label={t('reports.panelUsers')} value={`${data.users.panel_active} / ${data.users.panel_total}`} />
             <StatCard
               icon={Boxes}
@@ -117,6 +141,16 @@ export default function Reports() {
               sub={`${data.pool.health_rate}%`}
             />
           </div>
+
+          {/* Heatmap calendrier (activité quotidienne, 1 an) */}
+          {yearData && yearData.traffic.daily.length > 0 && (
+            <Card className="print:hidden">
+              <CardHeader><CardTitle>Activité quotidienne (12 derniers mois)</CardTitle></CardHeader>
+              <CardContent>
+                <CalendarHeatmap data={yearData.traffic.daily} />
+              </CardContent>
+            </Card>
+          )}
 
           <div className="grid gap-6 lg:grid-cols-2">
             {/* Top domaines */}
@@ -302,7 +336,14 @@ export default function Reports() {
   );
 }
 
-function StatCard({ icon: Icon, label, value, sub }: { icon: React.ElementType; label: string; value: any; sub?: string }) {
+/** % de variation vs période précédente de même durée. null si non comparable. */
+function pctDelta(current: number, previous: number | null): number | null {
+  if (previous == null) return null;
+  if (previous === 0) return current > 0 ? 100 : null;
+  return Math.round(((current - previous) / previous) * 1000) / 10;
+}
+
+function StatCard({ icon: Icon, label, value, sub, delta }: { icon: React.ElementType; label: string; value: any; sub?: string; delta?: number | null }) {
   return (
     <Card>
       <CardContent className="flex items-center gap-4 p-5">
@@ -310,13 +351,80 @@ function StatCard({ icon: Icon, label, value, sub }: { icon: React.ElementType; 
           <Icon className="h-5 w-5" />
         </div>
         <div>
-          <div className="text-2xl font-bold">
-            {value} {sub && <span className="text-sm font-normal text-muted-foreground">{sub}</span>}
+          <div className="flex items-center gap-2">
+            <div className="text-2xl font-bold">
+              {value} {sub && <span className="text-sm font-normal text-muted-foreground">{sub}</span>}
+            </div>
+            {delta != null && (
+              <span className={`flex items-center text-xs font-medium ${delta >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-destructive'}`}>
+                {delta >= 0 ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}
+                {Math.abs(delta)}%
+              </span>
+            )}
           </div>
-          <div className="text-xs text-muted-foreground">{label}</div>
+          <div className="text-xs text-muted-foreground">{label} {delta != null && <span className="opacity-70">vs période précédente</span>}</div>
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+/** Heatmap calendrier façon GitHub — intensité = trafic (Go) par jour. */
+function CalendarHeatmap({ data }: { data: Array<{ date: string; gb: number; requests: number }> }) {
+  const byDate = new Map(data.map((d) => [d.date, d]));
+  const max = Math.max(...data.map((d) => d.gb), 0.001);
+
+  const today = new Date();
+  const days: string[] = [];
+  for (let i = 364; i >= 0; i--) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - i);
+    days.push(d.toISOString().slice(0, 10));
+  }
+  // Aligner sur des colonnes de 7 jours (lundi -> dimanche), semaines en colonnes.
+  const firstDow = (new Date(days[0]).getDay() + 6) % 7; // 0 = lundi
+  const padded = Array(firstDow).fill(null).concat(days);
+  const weeks: (string | null)[][] = [];
+  for (let i = 0; i < padded.length; i += 7) weeks.push(padded.slice(i, i + 7));
+
+  const colorFor = (gb: number) => {
+    const ratio = gb / max;
+    if (gb <= 0) return 'bg-muted';
+    if (ratio < 0.25) return 'bg-primary/25';
+    if (ratio < 0.5) return 'bg-primary/50';
+    if (ratio < 0.75) return 'bg-primary/75';
+    return 'bg-primary';
+  };
+
+  return (
+    <div className="overflow-x-auto">
+      <div className="flex gap-1 w-max">
+        {weeks.map((week, wi) => (
+          <div key={wi} className="flex flex-col gap-1">
+            {week.map((date, di) => {
+              if (!date) return <div key={di} className="h-3 w-3" />;
+              const d = byDate.get(date);
+              return (
+                <div
+                  key={date}
+                  title={`${date} — ${d ? `${d.gb.toFixed(3)} Go, ${d.requests} req.` : 'aucune donnée'}`}
+                  className={`h-3 w-3 rounded-sm ${colorFor(d?.gb ?? 0)}`}
+                />
+              );
+            })}
+          </div>
+        ))}
+      </div>
+      <div className="flex items-center gap-1.5 mt-2 text-[10px] text-muted-foreground">
+        <span>Moins</span>
+        <div className="h-3 w-3 rounded-sm bg-muted" />
+        <div className="h-3 w-3 rounded-sm bg-primary/25" />
+        <div className="h-3 w-3 rounded-sm bg-primary/50" />
+        <div className="h-3 w-3 rounded-sm bg-primary/75" />
+        <div className="h-3 w-3 rounded-sm bg-primary" />
+        <span>Plus</span>
+      </div>
+    </div>
   );
 }
 
