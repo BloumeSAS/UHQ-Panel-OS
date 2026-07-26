@@ -1,6 +1,9 @@
-import { Body, Controller, Get, Post, Put, UnauthorizedException, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Post, Put, UnauthorizedException, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import * as bcrypt from 'bcryptjs';
+import { request } from 'undici';
+import { anyColorToHslTriplet } from '../../../common/utils/color-convert';
+import { THEME_VAR_KEYS } from '../../../common/utils/theme-vars';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../../common/guards/roles.guard';
 import { Roles } from '../../../common/decorators/roles.decorator';
@@ -56,9 +59,18 @@ export class PanelSettingsController {
         delete patch[secret];
       }
     }
+    // Diff avant/après par clé pour l'historique (Audit). Les secrets ne sont
+    // jamais consignés en clair — seul un marqueur "modifié" est gardé.
+    const changes = Object.keys(patch).map((key) => {
+      const isSecret = (SETTING_DEFS as any)[key]?.secret;
+      const from = isSecret ? (this.settings.get(key as any) ? SECRET_MASK : '') : this.settings.get(key as any);
+      const to = isSecret ? SECRET_MASK : patch[key];
+      return { key, from, to };
+    });
+
     await this.settings.setMany(patch as any);
     void this.auditService
-      .log({ userId: me.id, userEmail: me.email, action: 'settings.update', details: { keys: Object.keys(patch) } })
+      .log({ userId: me.id, userEmail: me.email, action: 'settings.update', details: { keys: Object.keys(patch), changes } })
       .catch(() => undefined);
     return { status: 'success', data: this.settings.getAllMasked() };
   }
@@ -131,6 +143,61 @@ export class PanelSettingsController {
       .log({ userId: me.id, userEmail: me.email, action: 'settings.theme.update' })
       .catch(() => undefined);
     return { status: 'success', data: body };
+  }
+
+  /**
+   * Importe un thème depuis un JSON tweakcn.com (format registry shadcn,
+   * couleurs en oklch()). Fetch fait côté serveur (évite le CORS navigateur,
+   * et permet de restreindre le domaine autorisé — pas de SSRF vers une
+   * URL interne arbitraire). Ne sauvegarde PAS : renvoie le thème converti
+   * pour prévisualisation, à confirmer via PUT /settings/theme.
+   */
+  @Post('theme/import-url')
+  async importThemeFromUrl(@Body() body: { url: string }) {
+    let parsed: URL;
+    try {
+      parsed = new URL(body.url);
+    } catch {
+      throw new BadRequestException('URL invalide.');
+    }
+    if (!/(^|\.)tweakcn\.com$/i.test(parsed.hostname) || parsed.protocol !== 'https:') {
+      throw new BadRequestException('Seules les URLs https://tweakcn.com sont acceptées.');
+    }
+
+    let json: any;
+    try {
+      const res = await request(parsed.toString(), { method: 'GET' });
+      if (res.statusCode >= 400) throw new Error(`HTTP ${res.statusCode}`);
+      json = await res.body.json();
+    } catch (e: any) {
+      throw new BadRequestException(`Impossible de récupérer le thème : ${e.message}`);
+    }
+
+    const cssVars = json?.cssVars;
+    if (!cssVars?.light && !cssVars?.dark) {
+      throw new BadRequestException('Format de thème non reconnu (cssVars manquant).');
+    }
+
+    const convert = (vars: Record<string, string> | undefined) => {
+      const out: Record<string, string> = {};
+      if (!vars) return out;
+      for (const key of THEME_VAR_KEYS) {
+        const raw = vars[key];
+        if (!raw) continue;
+        const hsl = anyColorToHslTriplet(raw);
+        if (hsl) out[key] = hsl;
+      }
+      return out;
+    };
+
+    return {
+      status: 'success',
+      data: {
+        name: json.name || parsed.pathname.split('/').pop()?.replace('.json', ''),
+        light: convert(cssVars.light),
+        dark: convert(cssVars.dark),
+      },
+    };
   }
 
   /** Réinitialise au thème par défaut (supprime le custom). */
