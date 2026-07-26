@@ -107,6 +107,54 @@ export class PanelSubUserController {
   }
 
   /**
+   * Création en masse (import CSV) : un objet PanelSubUserCreateDto par ligne.
+   * Best-effort : une ligne en erreur (port pris, etc.) n'interrompt pas les
+   * autres — le détail des échecs est renvoyé pour affichage panel.
+   * Déclaré avant les routes `:id` (route littérale prioritaire).
+   */
+  @Post('bulk-import')
+  async bulkImport(@Body() body: { items: PanelSubUserCreateDto[] }, @CurrentUser() me: JwtUser) {
+    const items = body.items || [];
+    if (!items.length) throw new BadRequestException('No items provided');
+    if (items.length > 5000) throw new BadRequestException('Too many items (max 5000)');
+
+    let created = 0;
+    const errors: { line: number; username?: string; error: string }[] = [];
+
+    for (let i = 0; i < items.length; i++) {
+      const dto = items[i];
+      try {
+        if (dto.port != null) await assertPortAvailable(this.prisma, dto.port);
+        const user = await this.prisma.userProxy.create({
+          data: {
+            username: dto.username || `u_${randomString(8)}`,
+            password: dto.password || randomString(16),
+            name: dto.label,
+            ipWhitelist: dto.allowed_ips,
+            threadsLimit: dto.threads_limit,
+            trafficLimit: dto.traffic_limit_bytes ? BigInt(dto.traffic_limit_bytes) : null,
+            totalGb: dto.traffic_limit_bytes ? dto.traffic_limit_bytes / 1024 ** 3 : 0,
+            countryFilter: dto.country_filter,
+            pool: dto.pool || null,
+            port: dto.port ?? null,
+            domain: dto.domain ? normalizeDomain(dto.domain) || null : null,
+          },
+        });
+        if (dto.port != null) this.engine.invalidatePortCache();
+        created++;
+      } catch (err: any) {
+        errors.push({ line: i + 1, username: dto.username, error: err?.message?.slice(0, 200) || 'unknown error' });
+      }
+    }
+
+    void this.auditService
+      .log({ userId: me.id, userEmail: me.email, action: 'subuser.bulk-import', details: { created, errors: errors.length } })
+      .catch(() => undefined);
+
+    return { status: 'success', created, failed: errors.length, errors };
+  }
+
+  /**
    * Opérations en masse sur plusieurs comptes proxy.
    * Déclaré avant les routes `:id` (route littérale prioritaire).
    */
@@ -257,5 +305,62 @@ export class PanelSubUserController {
       rotating_format: 'username:password@host:port',
       rotating: `${user.username}:${user.password}@${host}:${port}`,
     };
+  }
+
+  /**
+   * Liste les liens de partage (actifs et expirés/révoqués) d'un compte proxy,
+   * pour affichage + révocation dans le panel.
+   */
+  @ApiParam({ name: 'id', description: 'ID du sous-utilisateur proxy' })
+  @Get(':id/share-links')
+  async listShareLinks(@Param('id') id: string) {
+    const links = await this.prisma.shareLink.findMany({
+      where: { userProxyId: id },
+      orderBy: { createdAt: 'desc' },
+    });
+    return { status: 'success', data: links };
+  }
+
+  /**
+   * Génère un lien de partage temporaire (accès public sans login) donnant les
+   * identifiants de connexion complets de ce compte proxy. `expires_in_hours`
+   * absent/null = pas d'expiration (révocation manuelle uniquement).
+   */
+  @ApiParam({ name: 'id', description: 'ID du sous-utilisateur proxy' })
+  @Post(':id/share-links')
+  async createShareLink(
+    @Param('id') id: string,
+    @Body() body: { expires_in_hours?: number | null },
+    @CurrentUser() me: JwtUser,
+  ) {
+    const user = await this.prisma.userProxy.findUnique({ where: { id } });
+    if (!user) throw new NotFoundException(t('errors.proxyNotFound'));
+
+    const link = await this.prisma.shareLink.create({
+      data: {
+        token: randomString(40),
+        userProxyId: id,
+        createdById: me.id,
+        expiresAt:
+          body.expires_in_hours != null && body.expires_in_hours > 0
+            ? new Date(Date.now() + body.expires_in_hours * 3600_000)
+            : null,
+      },
+    });
+    void this.auditService
+      .log({ userId: me.id, userEmail: me.email, action: 'subuser.share-link.create', target: id, details: { expiresAt: link.expiresAt } })
+      .catch(() => undefined);
+    return { status: 'success', data: link };
+  }
+
+  /** Révoque un lien de partage (le rend immédiatement inutilisable). */
+  @ApiParam({ name: 'linkId', description: 'ID du lien de partage' })
+  @Post('share-links/:linkId/revoke')
+  async revokeShareLink(@Param('linkId') linkId: string, @CurrentUser() me: JwtUser) {
+    await this.prisma.shareLink.update({ where: { id: linkId }, data: { revoked: true } }).catch(() => undefined);
+    void this.auditService
+      .log({ userId: me.id, userEmail: me.email, action: 'subuser.share-link.revoke', target: linkId })
+      .catch(() => undefined);
+    return { status: 'success' };
   }
 }
