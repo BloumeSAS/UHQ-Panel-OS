@@ -83,6 +83,13 @@ export const SETTING_DEFS = {
   backupS3Region: { def: 'us-east-1', env: undefined, secret: false },
   // ── Invitations ─────────────────────────────────────────────────────────────
   invitationsEnabled: { def: 'false', env: undefined, secret: false },
+  // ── Thème (tweakcn-style) ───────────────────────────────────────────────────
+  // JSON stringifié : { light: Record<cssVar, "H S% L%">, dark: Record<...> }.
+  // Vide = thème par défaut codé en dur dans index.css (aucune régression).
+  themeColors: { def: '', env: undefined, secret: false },
+  // ── Alerte seuil pool ───────────────────────────────────────────────────────
+  poolLowAlertEnabled: { def: 'false', env: undefined, secret: false },
+  poolLowThresholdPct: { def: '20', env: undefined, secret: false },
 } as const;
 
 export type SettingKey = keyof typeof SETTING_DEFS;
