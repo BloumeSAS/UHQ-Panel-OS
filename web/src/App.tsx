@@ -10,6 +10,7 @@ import Register from '@/pages/Register';
 import ForgotPassword from '@/pages/ForgotPassword';
 import ResetPassword from '@/pages/ResetPassword';
 import Dashboard from '@/pages/admin/Dashboard';
+import Analytics from '@/pages/admin/Analytics';
 import SubUsers from '@/pages/admin/SubUsers';
 import Users from '@/pages/admin/Users';
 import Pool from '@/pages/admin/Pool';
@@ -101,6 +102,7 @@ function AppRoutes() {
       <Route path="/subusers" element={<Protected admin><SubUsers /></Protected>} />
       <Route path="/users" element={<Protected admin><Users /></Protected>} />
       <Route path="/pool" element={<Protected roles={['ADMIN', 'SUPPORT']}><Pool /></Protected>} />
+      <Route path="/analytics" element={<Protected roles={['ADMIN', 'SUPPORT']}><Analytics /></Protected>} />
       <Route path="/proxy-pools" element={<Protected admin><ProxyPools /></Protected>} />
       <Route path="/scraper" element={<Protected admin><Scraper /></Protected>} />
       <Route path="/checker" element={<Protected admin><Checker /></Protected>} />
