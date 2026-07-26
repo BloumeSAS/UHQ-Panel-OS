@@ -868,12 +868,39 @@ const VAR_GROUPS: { label: string; vars: ThemeVar[] }[] = [
   { label: 'Barre latérale', vars: ['sidebar', 'sidebar-foreground', 'sidebar-primary', 'sidebar-accent', 'sidebar-border'] },
 ];
 
+const TWEAKCN_GALLERY = [
+  'amber-minimal', 'bubblegum', 'caffeine', 'cyberpunk', 'doom-64', 'mono',
+  'nature', 'ocean-breeze', 'supabase', 'twitter', 'vercel', 'violet-bloom',
+];
+
 function ThemeTab({ defaultTheme }: { defaultTheme: ThemeColors }) {
   const t = useT();
   const themeCtx = useTheme();
   const [mode, setMode] = useState<'light' | 'dark'>('light');
   const [draft, setDraft] = useState<ThemeColors>(themeCtx.customColors ?? defaultTheme);
   const [busy, setBusy] = useState(false);
+  const [importUrl, setImportUrl] = useState('');
+  const [importBusy, setImportBusy] = useState<string | null>(null);
+
+  const importFromUrl = async (url: string) => {
+    setImportBusy(url);
+    try {
+      const { data } = await api.post('/settings/theme/import-url', { url });
+      const next: ThemeColors = {
+        light: { ...defaultTheme.light, ...data.data.light },
+        dark: { ...defaultTheme.dark, ...data.data.dark },
+      };
+      setDraft(next);
+      themeCtx.preview(next);
+      toast.success(`Thème "${data.data.name || 'importé'}" chargé en aperçu — cliquez Enregistrer pour l'appliquer.`);
+    } catch (e) {
+      toast.error(apiError(e));
+    } finally {
+      setImportBusy(null);
+    }
+  };
+
+  const importFromGallery = (slug: string) => importFromUrl(`https://tweakcn.com/r/themes/${slug}.json`);
 
   useEffect(() => {
     if (themeCtx.customColors) setDraft(themeCtx.customColors);
@@ -943,6 +970,51 @@ function ThemeTab({ defaultTheme }: { defaultTheme: ThemeColors }) {
             {t('common.save')}
           </Button>
         </div>
+      </div>
+
+      {/* Import tweakcn.com : galerie de presets + URL libre */}
+      <div className="space-y-3 rounded-lg border p-4 bg-muted/20">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <p className="text-sm font-medium">Importer un thème tweakcn.com</p>
+          <div className="flex items-center gap-2">
+            <Input
+              value={importUrl}
+              onChange={(e) => setImportUrl(e.target.value)}
+              placeholder="https://tweakcn.com/r/themes/mon-theme.json"
+              className="w-72 h-8 text-xs"
+            />
+            <Button
+              type="button" size="sm" variant="outline"
+              disabled={!importUrl || !!importBusy}
+              onClick={() => importFromUrl(importUrl)}
+            >
+              {importBusy === importUrl ? '...' : 'Importer'}
+            </Button>
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {TWEAKCN_GALLERY.map((slug) => (
+            <button
+              key={slug}
+              type="button"
+              disabled={!!importBusy}
+              onClick={() => importFromGallery(slug)}
+              className={cn(
+                'px-2.5 py-1 rounded-full text-xs border transition-colors capitalize',
+                importBusy === `https://tweakcn.com/r/themes/${slug}.json`
+                  ? 'bg-primary text-primary-foreground border-primary'
+                  : 'border-border hover:border-primary hover:text-primary',
+              )}
+            >
+              {slug.replace(/-/g, ' ')}
+            </button>
+          ))}
+        </div>
+        <p className="text-[11px] text-muted-foreground">
+          Cliquer applique un aperçu immédiat (non sauvegardé) — ajustez si besoin puis cliquez Enregistrer.
+          Galerie non-exhaustive : collez l'URL de n'importe quel thème depuis{' '}
+          <a href="https://tweakcn.com/themes" target="_blank" rel="noreferrer" className="underline text-primary">tweakcn.com/themes</a>.
+        </p>
       </div>
 
       {VAR_GROUPS.map((group) => (
