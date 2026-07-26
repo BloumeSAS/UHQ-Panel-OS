@@ -421,6 +421,36 @@ export class PanelMonitoringController {
   }
 
   /**
+   * Distribution de latence des proxies fonctionnels, par tranche. `$queryRaw`
+   * (bucketing par CASE WHEN) plutôt que de charger toutes les latences en
+   * mémoire pour les trier en JS — même logique perf que le reste du fichier.
+   */
+  @Roles('ADMIN', 'SUPPORT')
+  @Get('latency-distribution')
+  async latencyDistribution() {
+    const rows = await this.prisma.$queryRaw<{ bucket: string; count: bigint }[]>`
+      SELECT
+        CASE
+          WHEN "averageLatency" IS NULL THEN 'inconnu'
+          WHEN "averageLatency" < 200 THEN '<200ms'
+          WHEN "averageLatency" < 500 THEN '200-500ms'
+          WHEN "averageLatency" < 1000 THEN '500ms-1s'
+          WHEN "averageLatency" < 3000 THEN '1-3s'
+          ELSE '>3s'
+        END AS bucket,
+        COUNT(*) AS count
+      FROM "BackendProxy"
+      WHERE "isWorking" = true
+      GROUP BY bucket
+    `;
+    const order = ['<200ms', '200-500ms', '500ms-1s', '1-3s', '>3s', 'inconnu'];
+    const data = rows
+      .map((r) => ({ bucket: r.bucket, count: Number(r.count) }))
+      .sort((a, b) => order.indexOf(a.bucket) - order.indexOf(b.bucket));
+    return { status: 'success', data };
+  }
+
+  /**
    * Rapport de statistiques global : trafic, proxies, utilisateurs, scraper.
    * period : 'day' | 'week' | 'month' | 'year' | 'all'
    */
@@ -430,6 +460,18 @@ export class PanelMonitoringController {
   async reports(@Query('period') period = 'week') {
     const since = this.periodStart(period);
     const dateFilter = since ? { date: { gte: since } } : undefined;
+
+    // Période précédente de même durée, pour le delta % (comparaison période
+    // sur période). Non applicable pour period=all (pas de borne de départ).
+    let previousTotals: { _sum: { bytesSent: number | null; bytesReceived: number | null; requests: number | null } } | null = null;
+    if (since) {
+      const durationMs = Date.now() - since.getTime();
+      const previousSince = new Date(since.getTime() - durationMs);
+      previousTotals = await this.prisma.proxyUsage.aggregate({
+        where: { date: { gte: previousSince, lt: since } },
+        _sum: { bytesSent: true, bytesReceived: true, requests: true },
+      });
+    }
 
     // ── Trafic global + top domaines + par compte — agrégés côté DB ─────────
     // (`groupBy`/`aggregate` au lieu de charger toutes les lignes ProxyUsage
@@ -544,6 +586,10 @@ export class PanelMonitoringController {
         total_requests: totalRequests,
         top_domains: topDomains,
         daily: dailyTraffic,
+        previous_total_gb: previousTotals
+          ? Math.round((((previousTotals._sum.bytesSent ?? 0) + (previousTotals._sum.bytesReceived ?? 0)) / 1024 ** 3) * 10000) / 10000
+          : null,
+        previous_total_requests: previousTotals?._sum.requests ?? null,
       },
       users: {
         panel_total: totalPanelUsers,
