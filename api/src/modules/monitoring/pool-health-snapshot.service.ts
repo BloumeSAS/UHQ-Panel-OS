@@ -1,6 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../../database/prisma.service';
+import { SettingsService } from '../../config/settings.service';
+import { NotificationService } from '../notifications/notification.service';
 
 /**
  * Service dédié aux snapshots périodiques de la santé du pool de proxies.
@@ -10,7 +12,11 @@ import { PrismaService } from '../../database/prisma.service';
 export class PoolHealthSnapshotService {
   private readonly logger = new Logger(PoolHealthSnapshotService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly settings: SettingsService,
+    private readonly notifications: NotificationService,
+  ) {}
 
   /** Crée un snapshot toutes les 15 minutes. */
   @Cron('*/15 * * * *')
@@ -26,6 +32,13 @@ export class PoolHealthSnapshotService {
       await this.prisma.poolHealthSnapshot.create({
         data: { total, working, dead, healthPct },
       });
+
+      if (total > 0 && this.settings.getBool('poolLowAlertEnabled')) {
+        const threshold = this.settings.getNumber('poolLowThresholdPct');
+        if (healthPct < threshold) {
+          void this.notifications.notifyPoolLow(healthPct, working, total, threshold);
+        }
+      }
 
       // Nettoyer les anciens snapshots (>7 jours)
       const cutoff = new Date(Date.now() - 7 * 24 * 3600_000);
