@@ -76,16 +76,25 @@ export class CheckerService implements OnModuleInit {
         });
       }
 
+      // Pools "Checker désactivé" : leurs proxies ne sont ni testés ni
+      // touchés (statut figé tel quel) — contrairement à "Toujours en ligne"
+      // qui force isWorking=true, ici on ne remonte rien automatiquement. Le
+      // bouton "Tester" manuel reste actif (checkOne n'en tient pas compte).
+      const checkerDisabledNames = (
+        await this.prisma.proxyPool.findMany({ where: { checkerEnabled: false }, select: { name: true } })
+      ).map((p) => p.name);
+      const skippedNames = [...new Set([...alwaysOnlineNames, ...checkerDisabledNames])];
+
       const skipDead = this.settings.getBool('skipDeadProxies');
       const maxRetries = this.settings.getNumber('deadProxyMaxRetries');
       // Archivé = mort définitif : jamais re-testé (et jamais réactivé par un
       // re-scrape, cf. scraper.service.ts). Seule une suppression manuelle
       // admin peut le faire sortir de la base.
       const andConditions: any[] = [{ isBlacklisted: false }, { archived: false }];
-      if (alwaysOnlineNames.length > 0) {
+      if (skippedNames.length > 0) {
         // `pool` est nullable : un simple `notIn` exclurait à tort les lignes
         // sans pool (NULL NOT IN (...) = NULL côté SQL) — OR explicite requis.
-        andConditions.push({ OR: [{ pool: null }, { pool: { notIn: alwaysOnlineNames } }] });
+        andConditions.push({ OR: [{ pool: null }, { pool: { notIn: skippedNames } }] });
       }
       if (skipDead) {
         andConditions.push({ OR: [{ isWorking: true }, { failCount: { lt: maxRetries } }] });
