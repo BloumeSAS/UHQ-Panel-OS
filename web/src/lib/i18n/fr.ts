@@ -268,6 +268,8 @@ const fr: Language = {
     'settings.backupS3Region': 'Région S3',
     'settings.backupActions': 'Actions de sauvegarde',
     'settings.backupNow': 'Lancer une sauvegarde',
+    'settings.backupNowStorageHint': 'Destination de cette sauvegarde manuelle (n\'affecte pas le stockage utilisé par le cycle automatique).',
+    'settings.backupS3Test': 'Tester la connexion',
     'settings.backupRestore': 'Restaurer',
     'settings.backupSettingsExport': 'Exporter les paramètres',
     'settings.backupSettingsImport': 'Importer les paramètres',
