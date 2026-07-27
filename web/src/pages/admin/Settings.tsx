@@ -86,8 +86,15 @@ export default function Settings() {
   });
 
   const [backupBusy, setBackupBusy] = useState(false);
+  const [s3TestBusy, setS3TestBusy] = useState(false);
+  const [manualBackupStorage, setManualBackupStorage] = useState<'local' | 's3'>('local');
 
   useEffect(() => { if (data) setForm(data); }, [data]);
+  useEffect(() => {
+    if (data?.backupStorageType === 's3' || data?.backupStorageType === 'local') {
+      setManualBackupStorage(data.backupStorageType);
+    }
+  }, [data?.backupStorageType]);
 
   const set = (k: string, v: any) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -162,11 +169,27 @@ export default function Settings() {
   const handleRunBackup = async () => {
     setBackupBusy(true);
     try {
-      await api.post('/backup/run');
+      await api.post('/backup/run', { storageType: manualBackupStorage });
       toast.success(t('settings.backupCreated'));
       refetchBackups();
     } catch (err) { toast.error(apiError(err)); }
     finally { setBackupBusy(false); }
+  };
+
+  const handleTestS3 = async () => {
+    setS3TestBusy(true);
+    try {
+      const res = await api.post('/backup/test-s3', {
+        endpoint: form.backupS3Endpoint || undefined,
+        region: form.backupS3Region || undefined,
+        bucket: form.backupS3Bucket || '',
+        accessKey: form.backupS3AccessKey || undefined,
+        secretKey: form.backupS3SecretKey || undefined,
+      });
+      if (res.data?.ok) toast.success(res.data.message);
+      else toast.error(res.data?.message || t('common.error'));
+    } catch (err) { toast.error(apiError(err)); }
+    finally { setS3TestBusy(false); }
   };
 
   const handleRestoreBackup = async (filename: string) => {
@@ -657,26 +680,48 @@ export default function Settings() {
                       <SecretField k="backupS3SecretKey" form={form} set={set} placeholder="••••••••••••••••" />
                     </F>
                   </Grid>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleTestS3}
+                    disabled={s3TestBusy || !form.backupS3Bucket}
+                    className="gap-1.5"
+                  >
+                    <RefreshCw className={cn('h-3.5 w-3.5', s3TestBusy && 'animate-spin')} />
+                    {t('settings.backupS3Test')}
+                  </Button>
                 </div>
               )}
             </div>
 
             {/* Manual Run actions and Backups list */}
             <div className="rounded-xl border bg-muted/10 p-5 space-y-4">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between flex-wrap gap-2">
                 <h3 className="text-sm font-semibold tracking-wide uppercase text-muted-foreground">
                   {t('settings.backupListTitle')}
                 </h3>
-                <Button
-                  type="button"
-                  size="sm"
-                  onClick={handleRunBackup}
-                  disabled={backupBusy}
-                  className="gap-1.5"
-                >
-                  <RefreshCw className={cn('h-3.5 w-3.5', backupBusy && 'animate-spin')} />
-                  {t('settings.backupNow')}
-                </Button>
+                <div className="flex items-center gap-2">
+                  <select
+                    value={manualBackupStorage}
+                    onChange={(e) => setManualBackupStorage(e.target.value as 'local' | 's3')}
+                    title={t('settings.backupNowStorageHint')}
+                    className="h-9 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  >
+                    <option value="local">{t('settings.backupStorageLocal')}</option>
+                    <option value="s3">{t('settings.backupStorageS3')}</option>
+                  </select>
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={handleRunBackup}
+                    disabled={backupBusy}
+                    className="gap-1.5"
+                  >
+                    <RefreshCw className={cn('h-3.5 w-3.5', backupBusy && 'animate-spin')} />
+                    {t('settings.backupNow')}
+                  </Button>
+                </div>
               </div>
 
               {/* List table */}
