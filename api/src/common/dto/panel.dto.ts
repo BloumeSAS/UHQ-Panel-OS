@@ -215,6 +215,30 @@ export class WebhookTestDto {
   target!: string;
 }
 
+export class RunBackupDto {
+  @ApiPropertyOptional({
+    enum: ['local', 's3'],
+    description: 'Force la destination de CETTE sauvegarde manuelle uniquement (sinon utilise le réglage global backupStorageType).',
+  })
+  @IsOptional()
+  @IsIn(['local', 's3'])
+  storageType?: 'local' | 's3';
+}
+
+export class TestS3Dto {
+  @ApiPropertyOptional() @IsOptional() @IsString() endpoint?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() region?: string;
+  @ApiProperty() @IsString() bucket!: string;
+  @ApiPropertyOptional({ description: 'Vide/masqué = utilise la valeur déjà enregistrée en settings.' })
+  @IsOptional()
+  @IsString()
+  accessKey?: string;
+  @ApiPropertyOptional({ description: 'Vide/masqué = utilise la valeur déjà enregistrée en settings.' })
+  @IsOptional()
+  @IsString()
+  secretKey?: string;
+}
+
 /** Settings secrets masqués (••••) en lecture — révélables via /settings/reveal après confirmation du mot de passe. */
 export const REVEALABLE_SECRETS = [
   'scraperProxy',
