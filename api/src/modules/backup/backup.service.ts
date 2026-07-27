@@ -53,32 +53,47 @@ export class BackupService implements OnModuleInit {
     }
 
     const cronExpr = this.settings.get('backupIntervalCron') || '0 0 * * *';
+    const storageType = this.settings.get('backupStorageType') || 'local';
     try {
       const job = new CronJob(cronExpr, async () => {
-        this.logger.log('Triggering scheduled database backup...');
+        const startedAt = Date.now();
+        this.logger.log(`Triggering scheduled database backup (storage: ${storageType})...`);
         try {
-          await this.runBackup();
+          const filename = await this.runBackup();
+          this.logger.log(`Scheduled backup finished in ${Date.now() - startedAt}ms: ${filename}`);
         } catch (err) {
-          this.logger.error(`Scheduled backup failed: ${err.message}`);
+          this.logger.error(`Scheduled backup failed after ${Date.now() - startedAt}ms: ${err.message}`);
         }
       });
 
       this.schedulerRegistry.addCronJob(this.jobName, job);
       job.start();
-      this.logger.log(`Scheduled database backup registered with cron: ${cronExpr}`);
+      const nextRun = job.nextDate?.()?.toJSDate?.() ?? null;
+      this.logger.log(
+        `Scheduled database backup registered with cron "${cronExpr}" (storage: ${storageType})${
+          nextRun ? `, next run at ${nextRun.toISOString()}` : ''
+        }.`,
+      );
     } catch (err) {
       this.logger.error(`Failed to register backup cron expression "${cronExpr}": ${err.message}`);
     }
   }
 
   /**
-   * Returns a configured S3Client instance.
+   * Returns a configured S3Client instance. `overrides` permet de tester des
+   * identifiants pas encore enregistrés (bouton "Tester la connexion") sans
+   * devoir d'abord les sauvegarder en settings.
    */
-  private getS3Client(): S3Client {
-    const endpoint = this.settings.get('backupS3Endpoint');
-    const region = this.settings.get('backupS3Region') || 'us-east-1';
-    const accessKeyId = this.settings.get('backupS3AccessKey');
-    const secretAccessKey = this.settings.get('backupS3SecretKey');
+  private getS3Client(overrides?: {
+    endpoint?: string;
+    region?: string;
+    accessKeyId?: string;
+    secretAccessKey?: string;
+  }): S3Client {
+    const endpoint = overrides?.endpoint ?? this.settings.get('backupS3Endpoint');
+    const region = overrides?.region || this.settings.get('backupS3Region') || 'us-east-1';
+    const accessKeyId = overrides?.accessKeyId ?? this.settings.get('backupS3AccessKey');
+    const secretAccessKey = overrides?.secretAccessKey ?? this.settings.get('backupS3SecretKey');
 
     if (!accessKeyId || !secretAccessKey) {
       throw new Error('S3 access key or secret key is missing in settings.');
@@ -96,11 +111,59 @@ export class BackupService implements OnModuleInit {
   }
 
   /**
-   * Run a database backup (save either locally or to S3 depending on settings).
+   * Teste des identifiants S3 (bouton "Tester la connexion" du panel) sans
+   * déclencher de sauvegarde. Un champ vide/masqué (••••) retombe sur la
+   * valeur déjà enregistrée en settings — pratique pour tester juste après
+   * avoir changé le bucket sans ressaisir la clé secrète.
    */
-  async runBackup(): Promise<string> {
+  async testS3Connection(params: {
+    endpoint?: string;
+    region?: string;
+    bucket: string;
+    accessKey?: string;
+    secretKey?: string;
+  }): Promise<{ ok: boolean; message: string }> {
+    const bucket = params.bucket?.trim();
+    if (!bucket) {
+      return { ok: false, message: 'Nom du bucket manquant.' };
+    }
+    const accessKeyId = params.accessKey && !/^•+$/.test(params.accessKey) ? params.accessKey : this.settings.get('backupS3AccessKey');
+    const secretAccessKey = params.secretKey && !/^•+$/.test(params.secretKey) ? params.secretKey : this.settings.get('backupS3SecretKey');
+    if (!accessKeyId || !secretAccessKey) {
+      this.logger.warn(`Test S3 échoué (bucket ${bucket}) : clé d'accès ou clé secrète manquante.`);
+      return { ok: false, message: "Clé d'accès ou clé secrète manquante." };
+    }
+
+    this.logger.log(`Test de connexion S3 en cours (bucket "${bucket}"${params.endpoint ? `, endpoint ${params.endpoint}` : ''})...`);
+    try {
+      const s3 = this.getS3Client({
+        endpoint: params.endpoint,
+        region: params.region,
+        accessKeyId,
+        secretAccessKey,
+      });
+      await s3.send(new ListObjectsV2Command({ Bucket: bucket, MaxKeys: 1 }));
+      this.logger.log(`Test S3 réussi : bucket "${bucket}" accessible.`);
+      return { ok: true, message: `Connexion réussie — le bucket "${bucket}" est accessible.` };
+    } catch (err: any) {
+      const message = err?.message ?? String(err);
+      this.logger.warn(`Test S3 échoué (bucket "${bucket}") : ${message}`);
+      return { ok: false, message: `Échec de connexion : ${message}` };
+    }
+  }
+
+  /**
+   * Run a database backup (save either locally or to S3 depending on
+   * settings). `overrideStorageType` force la destination pour CET appel
+   * uniquement (bouton "Lancer maintenant" du panel) — le cycle automatique
+   * planifié, lui, n'appelle jamais avec un override et suit toujours le
+   * réglage global `backupStorageType`.
+   */
+  async runBackup(overrideStorageType?: 'local' | 's3'): Promise<string> {
+    const startedAt = Date.now();
     const version = '2.0.0';
     const exportedAt = new Date().toISOString();
+    this.logger.log('Starting database backup export...');
 
     // Query all tables in the exact order for relational integrity
     const addons = await this.prisma.addon.findMany();
@@ -135,37 +198,50 @@ export class BackupService implements OnModuleInit {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const filename = `backup-db-${timestamp}.json`;
 
-    const storageType = this.settings.get('backupStorageType') || 'local';
+    const storageType = overrideStorageType ?? (this.settings.get('backupStorageType') || 'local');
+    this.logger.log(
+      `Backup payload built (${Object.keys(data).length} tables, ${(content.length / 1024).toFixed(1)} KB) — destination: ${storageType}${
+        overrideStorageType ? ' (manual override)' : ''
+      }.`,
+    );
 
-    if (storageType === 's3') {
-      const bucket = this.settings.get('backupS3Bucket');
-      if (!bucket) {
-        throw new Error('S3 bucket name is missing in settings.');
+    try {
+      if (storageType === 's3') {
+        const bucket = this.settings.get('backupS3Bucket');
+        if (!bucket) {
+          throw new Error('S3 bucket name is missing in settings.');
+        }
+        this.logger.log(`Uploading backup to S3 bucket ${bucket} as ${filename}...`);
+        const s3 = this.getS3Client();
+        await s3.send(
+          new PutObjectCommand({
+            Bucket: bucket,
+            Key: filename,
+            Body: content,
+            ContentType: 'application/json',
+          }),
+        );
+        this.logger.log(`Successfully uploaded backup to S3: ${filename}`);
+      } else {
+        // Local persistence (Coolify-compatible volume storage)
+        const localPath = this.settings.get('backupLocalPath') || './data/backups';
+        const targetDir = path.resolve(localPath);
+        if (!fs.existsSync(targetDir)) {
+          fs.mkdirSync(targetDir, { recursive: true });
+        }
+        const filePath = path.join(targetDir, filename);
+        this.logger.log(`Writing local database backup to ${filePath}...`);
+        fs.writeFileSync(filePath, content, 'utf8');
+        this.logger.log(`Successfully saved local backup: ${filePath}`);
       }
-      this.logger.log(`Uploading backup to S3 bucket ${bucket} as ${filename}...`);
-      const s3 = this.getS3Client();
-      await s3.send(
-        new PutObjectCommand({
-          Bucket: bucket,
-          Key: filename,
-          Body: content,
-          ContentType: 'application/json',
-        }),
+    } catch (err: any) {
+      this.logger.error(
+        `Backup write failed (destination: ${storageType}, ${filename}) after ${Date.now() - startedAt}ms: ${err?.message ?? err}`,
       );
-      this.logger.log(`Successfully uploaded backup to S3: ${filename}`);
-    } else {
-      // Local persistence (Coolify-compatible volume storage)
-      const localPath = this.settings.get('backupLocalPath') || './data/backups';
-      const targetDir = path.resolve(localPath);
-      if (!fs.existsSync(targetDir)) {
-        fs.mkdirSync(targetDir, { recursive: true });
-      }
-      const filePath = path.join(targetDir, filename);
-      this.logger.log(`Writing local database backup to ${filePath}...`);
-      fs.writeFileSync(filePath, content, 'utf8');
-      this.logger.log(`Successfully saved local backup: ${filePath}`);
+      throw err;
     }
 
+    this.logger.log(`Backup completed in ${Date.now() - startedAt}ms: ${filename} (${storageType}).`);
     return filename;
   }
 
