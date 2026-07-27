@@ -13,6 +13,32 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
   private connecting: Promise<void> | null = null;
   private connected = false;
 
+  constructor() {
+    super();
+    // La coupure "connected" ci-dessus ne redevient jamais false toute seule :
+    // seul onModuleDestroy (arrêt propre) la touchait. Si Postgres redémarre
+    // ou que le réseau saute en cours de route, ensureConnection() croyait
+    // rester connectée indéfiniment et ne retentait jamais $connect(). Ce
+    // middleware intercepte TOUTE requête (checker, moteur proxy, API) et,
+    // dès qu'une erreur signe une connexion perdue, force connected=false —
+    // le prochain ensureConnection() déclenche alors une vraie reconnexion.
+    this.$use(async (params, next) => {
+      try {
+        return await next(params);
+      } catch (err) {
+        const msg = String((err as Error)?.message ?? err).toLowerCase();
+        const lostConnection =
+          msg.includes('closed') ||
+          msg.includes("can't reach database") ||
+          msg.includes('connection') ||
+          msg.includes('econnrefused') ||
+          msg.includes('connectorerror');
+        if (lostConnection) this.connected = false;
+        throw err;
+      }
+    });
+  }
+
   async onModuleInit(): Promise<void> {
     // Connexion non-fatale : si la base n'est pas (encore) configurée,
     // l'app démarre quand même pour servir l'assistant de configuration.
