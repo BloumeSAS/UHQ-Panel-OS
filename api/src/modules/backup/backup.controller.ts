@@ -14,6 +14,7 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { BackupService } from './backup.service';
 import { Response } from 'express';
+import { RunBackupDto, TestS3Dto } from '../../common/dto/panel.dto';
 
 @ApiTags('panel-backup')
 @ApiBearerAuth()
@@ -70,16 +71,34 @@ export class BackupController {
   }
 
   /**
-   * Trigger an immediate manual database backup.
+   * Trigger an immediate manual database backup. `storageType` (optionnel)
+   * force la destination pour CETTE sauvegarde uniquement, sans changer le
+   * réglage global backupStorageType utilisé par le cycle automatique.
    */
   @Post('run')
-  async runBackup() {
+  async runBackup(@Body() body: RunBackupDto) {
     try {
-      const filename = await this.backupService.runBackup();
+      const filename = await this.backupService.runBackup(body?.storageType);
       return { status: 'success', message: 'Backup created successfully.', filename };
     } catch (err) {
       return { status: 'error', message: `Backup execution failed: ${err.message}` };
     }
+  }
+
+  /**
+   * Teste des identifiants S3 (sans lancer de sauvegarde) — bouton "Tester la
+   * connexion" du panel. Un champ vide/masqué retombe sur la valeur déjà
+   * enregistrée en settings.
+   */
+  @Post('test-s3')
+  async testS3(@Body() body: TestS3Dto) {
+    return this.backupService.testS3Connection({
+      endpoint: body.endpoint,
+      region: body.region,
+      bucket: body.bucket,
+      accessKey: body.accessKey,
+      secretKey: body.secretKey,
+    });
   }
 
   /**
