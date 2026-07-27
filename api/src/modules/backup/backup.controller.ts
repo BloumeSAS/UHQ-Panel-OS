@@ -71,18 +71,25 @@ export class BackupController {
   }
 
   /**
-   * Trigger an immediate manual database backup. `storageType` (optionnel)
-   * force la destination pour CETTE sauvegarde uniquement, sans changer le
-   * réglage global backupStorageType utilisé par le cycle automatique.
+   * Déclenche une sauvegarde manuelle immédiate SANS attendre sa fin (voir
+   * BackupService.triggerManualBackup) — évite qu'une base volumineuse fasse
+   * couper la requête par le reverse-proxy avant la fin de l'upload. Le panel
+   * poll GET /backup/run-status pour connaître le résultat réel.
+   * `storageType` (optionnel) force la destination pour CETTE sauvegarde
+   * uniquement, sans changer le réglage global backupStorageType utilisé par
+   * le cycle automatique.
    */
   @Post('run')
-  async runBackup(@Body() body: RunBackupDto) {
-    try {
-      const filename = await this.backupService.runBackup(body?.storageType);
-      return { status: 'success', message: 'Backup created successfully.', filename };
-    } catch (err) {
-      return { status: 'error', message: `Backup execution failed: ${err.message}` };
-    }
+  runBackup(@Body() body: RunBackupDto) {
+    const result = this.backupService.triggerManualBackup(body?.storageType);
+    if (!result.started) return { status: 'error', message: result.message };
+    return { status: 'success', message: 'Sauvegarde lancée en arrière-plan.' };
+  }
+
+  /** État de la dernière sauvegarde manuelle déclenchée — pour le polling du panel. */
+  @Get('run-status')
+  getRunStatus() {
+    return { status: 'success', data: this.backupService.getManualRunStatus() };
   }
 
   /**
