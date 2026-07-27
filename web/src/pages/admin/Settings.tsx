@@ -158,9 +158,9 @@ export default function Settings() {
     reader.onload = async (event) => {
       try {
         const settingsJson = event.target?.result as string;
-        await api.post('/backup/settings/import', { settingsJson });
-        toast.success(t('settings.imported'));
-        refetch();
+        const res = await api.post('/backup/settings/import', { settingsJson });
+        if (res.data?.status === 'success') { toast.success(t('settings.imported')); refetch(); }
+        else toast.error(res.data?.message || t('common.error'));
       } catch (err) { toast.error(apiError(err)); }
     };
     reader.readAsText(file);
@@ -169,9 +169,23 @@ export default function Settings() {
   const handleRunBackup = async () => {
     setBackupBusy(true);
     try {
-      await api.post('/backup/run', { storageType: manualBackupStorage });
-      toast.success(t('settings.backupCreated'));
-      refetchBackups();
+      const res = await api.post('/backup/run', { storageType: manualBackupStorage });
+      if (res.data?.status !== 'success') { toast.error(res.data?.message || t('common.error')); return; }
+      toast.info(t('settings.backupStarted'));
+      // Le déclenchement répond immédiatement (voir triggerManualBackup côté
+      // API) — on poll le statut réel, une base volumineuse pouvant prendre
+      // bien plus longtemps qu'un aller-retour HTTP classique.
+      for (let attempt = 0; attempt < 60; attempt++) {
+        await new Promise((r) => setTimeout(r, 5000));
+        const statusRes = await api.get('/backup/run-status');
+        const run = statusRes.data?.data;
+        if (!run?.running) {
+          if (run?.success) { toast.success(t('settings.backupCreated')); refetchBackups(); }
+          else toast.error(run?.error || t('common.error'));
+          return;
+        }
+      }
+      toast.info(t('settings.backupStillRunning'));
     } catch (err) { toast.error(apiError(err)); }
     finally { setBackupBusy(false); }
   };
@@ -196,9 +210,11 @@ export default function Settings() {
     if (!confirm(t('settings.confirmRestore').replace('{filename}', filename))) return;
     setBackupBusy(true);
     try {
-      await api.post('/backup/restore', { filename });
-      toast.success(t('settings.backupRestored'));
-      await Promise.all([refetch(), refresh(), refetchBackups()]);
+      const res = await api.post('/backup/restore', { filename });
+      if (res.data?.status === 'success') {
+        toast.success(t('settings.backupRestored'));
+        await Promise.all([refetch(), refresh(), refetchBackups()]);
+      } else toast.error(res.data?.message || t('common.error'));
     } catch (err) { toast.error(apiError(err)); }
     finally { setBackupBusy(false); }
   };
@@ -206,9 +222,9 @@ export default function Settings() {
   const handleDeleteBackup = async (filename: string) => {
     if (!confirm(t('settings.confirmDeleteBackup').replace('{filename}', filename))) return;
     try {
-      await api.delete(`/backup/${filename}`);
-      toast.success(t('settings.backupDeleted'));
-      refetchBackups();
+      const res = await api.delete(`/backup/${filename}`);
+      if (res.data?.status === 'success') { toast.success(t('settings.backupDeleted')); refetchBackups(); }
+      else toast.error(res.data?.message || t('common.error'));
     } catch (err) { toast.error(apiError(err)); }
   };
 
