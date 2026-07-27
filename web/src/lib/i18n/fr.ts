@@ -363,6 +363,8 @@ const fr: Language = {
     'settings.exported': 'Paramètres exportés.',
     'settings.imported': 'Paramètres importés avec succès !',
     'settings.backupCreated': 'Sauvegarde créée avec succès.',
+    'settings.backupStarted': 'Sauvegarde lancée en arrière-plan — le suivi peut prendre plusieurs minutes pour une grosse base.',
+    'settings.backupStillRunning': "Toujours en cours après 5 min — consultez Journaux pour suivre la progression, la liste se mettra à jour à la fin.",
     'settings.confirmRestore': 'Voulez-vous vraiment restaurer la sauvegarde "{filename}" ? Cela écrasera toutes vos données actuelles (proxies, utilisateurs, logs).',
     'settings.backupRestored': 'Sauvegarde restaurée avec succès.',
     'settings.confirmDeleteBackup': 'Supprimer la sauvegarde "{filename}" ?',
