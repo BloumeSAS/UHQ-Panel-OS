@@ -363,6 +363,8 @@ const en: Language = {
     'settings.exported': 'Settings exported.',
     'settings.imported': 'Settings imported successfully!',
     'settings.backupCreated': 'Backup created successfully.',
+    'settings.backupStarted': 'Backup started in the background — tracking may take several minutes for a large database.',
+    'settings.backupStillRunning': "Still running after 5 min — check Journal for progress, the list will refresh once it's done.",
     'settings.confirmRestore': 'Are you sure you want to restore the backup "{filename}"? This will overwrite all your current data (proxies, users, logs).',
     'settings.backupRestored': 'Backup restored successfully.',
     'settings.confirmDeleteBackup': 'Delete the backup "{filename}"?',
