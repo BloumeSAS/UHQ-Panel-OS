@@ -36,6 +36,7 @@ interface ProxyPool {
   port: number | null;
   domain: string | null;
   alwaysOnline: boolean;
+  checkerEnabled: boolean;
   fakeCountries: string | null;
   fakePriorityCountries: string | null;
   fakeIpCountMin: number | null;
@@ -120,6 +121,14 @@ export default function ProxyPools() {
                           {t('pools.alwaysOnline')}
                         </Badge>
                       )}
+                      {!pool.checkerEnabled && (
+                        <Badge
+                          variant="secondary"
+                          className="bg-slate-100 text-slate-700 dark:bg-slate-800/50 dark:text-slate-400 text-[10px]"
+                        >
+                          {t('pools.checkerDisabled')}
+                        </Badge>
+                      )}
                       {!!fakeIpTotal(pool) && (
                         <Badge
                           variant="secondary"
@@ -195,6 +204,7 @@ export default function ProxyPools() {
 const EMPTY_POOL_FORM = {
   name: '', description: '', color: '#6366f1', port: '', domain: '',
   alwaysOnline: false,
+  checkerEnabled: true,
   fakeCountries: '',
   fakePriorityCountries: '',
   fakeIpMode: 'fixed' as 'fixed' | 'random',
@@ -225,6 +235,7 @@ function CreateDialog({ onCreated }: { onCreated: () => void }) {
         port: form.port ? Number(form.port) : undefined,
         domain: form.domain || undefined,
         alwaysOnline: form.alwaysOnline,
+        checkerEnabled: form.checkerEnabled,
         fakeCountries: form.fakeCountries || undefined,
         fakePriorityCountries: form.fakePriorityCountries || undefined,
         fakeIpCountMin: fakeMin ? Number(fakeMin) : undefined,
@@ -266,6 +277,7 @@ function EditDialog({ pool, onClose, onSaved }: { pool: ProxyPool; onClose: () =
     port: pool.port != null ? String(pool.port) : '',
     domain: pool.domain ?? '',
     alwaysOnline: pool.alwaysOnline,
+    checkerEnabled: pool.checkerEnabled,
     fakeCountries: pool.fakeCountries ?? '',
     fakePriorityCountries: pool.fakePriorityCountries ?? '',
     fakeIpMode: (isRandom ? 'random' : 'fixed') as 'fixed' | 'random',
@@ -300,6 +312,7 @@ function EditDialog({ pool, onClose, onSaved }: { pool: ProxyPool; onClose: () =
         port: form.port ? Number(form.port) : null,
         domain: form.domain || null,
         alwaysOnline: form.alwaysOnline,
+        checkerEnabled: form.checkerEnabled,
         fakeCountries: form.fakeCountries || null,
         fakePriorityCountries: form.fakePriorityCountries || null,
         fakeIpCountMin: fakeMin ? Number(fakeMin) : null,
@@ -339,7 +352,7 @@ function PoolForm({
 }: {
   form: {
     name: string; description: string; color: string; port: string; domain: string;
-    alwaysOnline: boolean; fakeCountries: string; fakePriorityCountries: string; fakeIpMode: 'fixed' | 'random';
+    alwaysOnline: boolean; checkerEnabled: boolean; fakeCountries: string; fakePriorityCountries: string; fakeIpMode: 'fixed' | 'random';
     fakeIpFixed: string; fakeIpMin: string; fakeIpMax: string;
     fakeIpRotateEnabled: boolean; fakeIpRotateSeconds: string;
   };
@@ -419,6 +432,14 @@ function PoolForm({
           <p className="text-xs text-muted-foreground mt-0.5 leading-snug">{t('pools.alwaysOnlineHint')}</p>
         </div>
         <Switch checked={form.alwaysOnline} onCheckedChange={(v) => set('alwaysOnline', v)} />
+      </div>
+
+      <div className="flex items-center justify-between rounded-lg border bg-muted/20 px-4 py-3 gap-4">
+        <div className="min-w-0">
+          <p className="text-sm font-medium">{t('pools.checkerEnabled')}</p>
+          <p className="text-xs text-muted-foreground mt-0.5 leading-snug">{t('pools.checkerEnabledHint')}</p>
+        </div>
+        <Switch checked={form.checkerEnabled} onCheckedChange={(v) => set('checkerEnabled', v)} />
       </div>
 
       <div className="space-y-1.5">
