@@ -229,6 +229,12 @@ model ProxyPool {
   // à chaque cycle. Le scraper ne marque jamais rien mort de son côté (seul
   // le checker teste la connectivité réelle).
   alwaysOnline    Boolean @default(false)
+  // "Checker actif" : si false, le cycle automatique du checker ignore
+  // complètement les BackendProxy de cette pool (aucun test, statut figé tel
+  // quel — contrairement à alwaysOnline qui force isWorking=true, ici on ne
+  // touche à rien). Le bouton "Tester" manuel du panel continue de fonctionner
+  // dans tous les cas (checkOne n'en tient pas compte).
+  checkerEnabled  Boolean @default(true)
   // Pays simulés (codes ISO 2 lettres séparés par virgules, ex. "FR,DE,US")
   // AJOUTÉS aux vraies stats de /api/v1/common/category-stats — indépendant
   // de alwaysOnline (fonctionne même sans l'activer). Purement déclaratif
