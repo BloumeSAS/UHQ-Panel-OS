@@ -18,6 +18,11 @@ import {
 export class BackupService implements OnModuleInit {
   private readonly logger = new Logger(BackupService.name);
   private readonly jobName = 'database-backup-cron';
+  // Déclenchement manuel : suivi en mémoire pour le polling du panel (pas de
+  // persistance nécessaire, un redémarrage remet simplement running=false).
+  private manualRun: { running: boolean; startedAt?: number; finishedAt?: number; success?: boolean; filename?: string; error?: string } = {
+    running: false,
+  };
 
   constructor(
     private readonly prisma: PrismaService,
@@ -150,6 +155,42 @@ export class BackupService implements OnModuleInit {
       this.logger.warn(`Test S3 échoué (bucket "${bucket}") : ${message}`);
       return { ok: false, message: `Échec de connexion : ${message}` };
     }
+  }
+
+  /**
+   * Déclenche une sauvegarde manuelle en tâche de fond (bouton "Lancer une
+   * sauvegarde" du panel) SANS attendre sa fin. Pour une base volumineuse
+   * (des centaines de Mo), la requête + sérialisation + upload peut prendre
+   * largement plus longtemps que le timeout du reverse-proxy devant l'API en
+   * prod (Traefik/Coolify) — attendre la fin avant de répondre HTTP faisait
+   * couper la connexion en route : le navigateur ne recevait ni succès ni
+   * erreur. Le panel poll désormais getManualRunStatus() pour suivre la
+   * progression réelle.
+   */
+  triggerManualBackup(overrideStorageType?: 'local' | 's3'): { started: boolean; message?: string } {
+    if (this.manualRun.running) {
+      return { started: false, message: 'Une sauvegarde manuelle est déjà en cours.' };
+    }
+    this.manualRun = { running: true, startedAt: Date.now() };
+    this.runBackup(overrideStorageType)
+      .then((filename) => {
+        this.manualRun = { running: false, startedAt: this.manualRun.startedAt, finishedAt: Date.now(), success: true, filename };
+      })
+      .catch((err) => {
+        this.manualRun = {
+          running: false,
+          startedAt: this.manualRun.startedAt,
+          finishedAt: Date.now(),
+          success: false,
+          error: String(err?.message ?? err),
+        };
+      });
+    return { started: true };
+  }
+
+  /** État de la dernière sauvegarde manuelle déclenchée — pour le polling du panel. */
+  getManualRunStatus() {
+    return this.manualRun;
   }
 
   /**
@@ -480,7 +521,12 @@ export class BackupService implements OnModuleInit {
         }
       },
       {
-        timeout: 30000,
+        // 30s était insuffisant pour restaurer une base volumineuse (des
+        // centaines de milliers de BackendProxy/ProxyUsage) — la transaction
+        // expirait avant la fin des createMany, laissant la restauration
+        // partielle. Cf. runBackup/triggerManualBackup pour le même souci
+        // côté sauvegarde manuelle (timeout du reverse-proxy, pas de Prisma).
+        timeout: 300_000,
       },
     );
 
