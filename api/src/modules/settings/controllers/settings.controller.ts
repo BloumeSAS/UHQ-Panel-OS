@@ -16,6 +16,7 @@ import { MailService } from '../../mail/mail.service';
 import { NotificationService } from '../../notifications/notification.service';
 import { t } from '../../../common/utils/i18n';
 import { AuditService } from '../../audit/audit.service';
+import { BackupService } from '../../backup/backup.service';
 
 @ApiTags('panel-settings')
 @ApiBearerAuth()
@@ -29,6 +30,7 @@ export class PanelSettingsController {
     private readonly mail: MailService,
     private readonly notifications: NotificationService,
     private readonly auditService: AuditService,
+    private readonly backupService: BackupService,
   ) {}
 
   /** Toutes les clés résolues, secrets masqués. */
@@ -72,6 +74,15 @@ export class PanelSettingsController {
     void this.auditService
       .log({ userId: me.id, userEmail: me.email, action: 'settings.update', details: { keys: Object.keys(patch), changes } })
       .catch(() => undefined);
+
+    // Le cron de sauvegarde BDD est planifié une seule fois au boot — sans ce
+    // reschedule, activer "Sauvegarde auto BDD" (ou changer l'expression cron
+    // / le stockage) depuis le panel n'avait jamais d'effet avant un redémarrage
+    // complet du conteneur.
+    if (Object.keys(patch).some((k) => k.startsWith('backup'))) {
+      this.backupService.reschedule();
+    }
+
     return { status: 'success', data: this.settings.getAllMasked() };
   }
 
