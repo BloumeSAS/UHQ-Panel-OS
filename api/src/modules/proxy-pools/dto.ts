@@ -36,6 +36,11 @@ export class CreatePoolDto {
   @IsBoolean()
   alwaysOnline?: boolean;
 
+  @ApiPropertyOptional({ description: 'Si false, le cycle automatique du checker ignore complètement cette pool (aucun test, statut figé). Défaut true.' })
+  @IsOptional()
+  @IsBoolean()
+  checkerEnabled?: boolean;
+
   @ApiPropertyOptional({ example: 'FR,DE,US,GB', description: 'Pays simulés (codes ISO 2 lettres, virgules), ajoutés aux vraies stats de category-stats. Indépendant de alwaysOnline. Aucune limite sur le nombre de pays.' })
   @IsOptional()
   @IsString()
@@ -87,6 +92,11 @@ export class UpdatePoolDto {
   @IsOptional()
   @IsBoolean()
   alwaysOnline?: boolean;
+
+  @ApiPropertyOptional({ description: 'Si false, le cycle automatique du checker ignore complètement cette pool (aucun test, statut figé). Défaut true.' })
+  @IsOptional()
+  @IsBoolean()
+  checkerEnabled?: boolean;
 
   @ApiPropertyOptional({ example: 'FR,DE,US,GB', description: 'Pays simulés (codes ISO 2 lettres, virgules), ajoutés aux vraies stats de category-stats (null = retire). Indépendant de alwaysOnline. Aucune limite sur le nombre de pays.' })
   @IsOptional()
