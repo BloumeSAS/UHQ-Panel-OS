@@ -453,12 +453,28 @@ function GeneratorDialog({ proxy, onClose }: { proxy: MyProxy; onClose: () => vo
     { label: 'Sticky @ (user-session-session:pass@host:port)', value: '{username}-session-{session}:{password}@{host}:{port}' },
     { label: 'Sticky HTTP URI', value: 'http://{username}-session-{session}:{password}@{host}:{port}', overrideProto: true },
     { label: 'Sticky SOCKS5 URI', value: 'socks5://{username}-session-{session}:{password}@{host}:{port}', overrideProto: true },
+    { label: 'Session statique (host:port:user:pass, sans champ extra)', value: 'static' },
     { label: 'Host:Port seulement', value: '{host}:{port}' },
   ];
 
   const generate = async () => {
     setGenerating(true);
     try {
+      if (format === 'static') {
+        // Identifiants temporaires dédiés : chaque ligne est déjà un simple
+        // host:port:user:pass épinglé sur son propre upstream côté moteur —
+        // pas de template à appliquer.
+        const { data } = await api.get(`/me/proxies/${proxy.id}/static-session?count=${count}`);
+        const lines = data.proxies as string[];
+        const withProto = protocol !== 'none'
+          ? lines.map((line) => {
+              const [host, port, username, password] = line.split(':');
+              return `${protocol}${username}:${password}@${host}:${port}`;
+            })
+          : lines;
+        setProxies(withProto);
+        return;
+      }
       const isSticky = format.includes('{session}') || format.includes('session');
       const fetchCount = isSticky ? count : 1;
       const { data } = await api.get(`/me/proxies/${proxy.id}/sticky-list?count=${fetchCount}`);
@@ -574,7 +590,7 @@ function GeneratorDialog({ proxy, onClose }: { proxy: MyProxy; onClose: () => vo
             {/* Quantity */}
             <div className="space-y-1.5">
               <Label>Quantité</Label>
-              {format.includes('{session}') || format.includes('session') || format === 'custom' ? (
+              {format.includes('{session}') || format.includes('session') || format === 'custom' || format === 'static' ? (
                 <Input
                   type="number"
                   min={1}
