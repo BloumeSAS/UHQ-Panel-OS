@@ -44,10 +44,10 @@ Button.displayName = 'Button';
 
 /* ------------------------------------ Card ------------------------------------ */
 export const Card = ({ className, ...p }: React.HTMLAttributes<HTMLDivElement>) => (
-  <div className={cn('rounded-xl border bg-card text-card-foreground shadow-sm transition-shadow duration-200 hover:shadow-md', className)} {...p} />
+  <div data-slot="card" className={cn('rounded-xl border bg-card text-card-foreground shadow-sm transition-shadow duration-200 hover:shadow-md', className)} {...p} />
 );
 export const CardHeader = ({ className, ...p }: React.HTMLAttributes<HTMLDivElement>) => (
-  <div className={cn('flex flex-col space-y-1.5 p-6', className)} {...p} />
+  <div data-slot="card-header" className={cn('flex flex-col space-y-1.5 p-6', className)} {...p} />
 );
 export const CardTitle = ({ className, ...p }: React.HTMLAttributes<HTMLHeadingElement>) => (
   <h3 className={cn('font-semibold leading-none tracking-tight', className)} {...p} />
@@ -56,7 +56,7 @@ export const CardDescription = ({ className, ...p }: React.HTMLAttributes<HTMLPa
   <p className={cn('text-sm text-muted-foreground', className)} {...p} />
 );
 export const CardContent = ({ className, ...p }: React.HTMLAttributes<HTMLDivElement>) => (
-  <div className={cn('p-6 pt-0', className)} {...p} />
+  <div data-slot="card-content" className={cn('p-6 pt-0', className)} {...p} />
 );
 export const CardFooter = ({ className, ...p }: React.HTMLAttributes<HTMLDivElement>) => (
   <div className={cn('flex items-center p-6 pt-0', className)} {...p} />
