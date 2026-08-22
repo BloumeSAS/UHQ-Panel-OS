@@ -171,10 +171,27 @@ export class ProxyServerService implements OnModuleDestroy {
       poolNames.map((poolName) =>
         this.prisma.backendProxy.findMany({
           where: { isWorking: true, pool: poolName },
-          orderBy: [{ successCount: 'desc' }, { lastChecked: 'desc' }],
-          // Le bucket partagé (`pool: null`) est typiquement le plus gros —
-          // les pools nommées/dédiées restent généralement bien plus petites.
-          take: poolName === null ? 3000 : 500,
+          // PAS de `take`/tri par successCount ici : une pool déjà bien
+          // fournie en proxies performants (successCount élevé) tronquerait
+          // sinon systématiquement les entrées neuves (successCount=0, ex.
+          // ajout manuel) hors du cache — elles n'auraient alors JAMAIS
+          // l'occasion d'accumuler du succès, quel que soit le nombre de
+          // requêtes traitées depuis. Le cache doit contenir TOUT le stock
+          // actif de la pool ; c'est le trust score + tirage pondéré
+          // (`weightedPick`) qui arbitre la qualité au moment du choix, pas
+          // un ORDER BY + LIMIT qui exclurait déjà les nouveaux venus en amont.
+          select: {
+            id: true,
+            url: true,
+            protocol: true,
+            ip: true,
+            port: true,
+            country: true,
+            pool: true,
+            successCount: true,
+            failureCount: true,
+            averageLatency: true,
+          },
         }),
       ),
     );
@@ -458,6 +475,13 @@ export class ProxyServerService implements OnModuleDestroy {
       // épingle donc son upstream via un anchor dédié plutôt qu'un sessionId
       // parsé, tout en gardant `username` = tempUsername (isolation propre).
       if (!sessionId && user.__tempSessionAnchor) sessionId = user.__tempSessionAnchor;
+      // Convention "user-session-XXXX" (4 champs) : le re-parsing colon
+      // ci-dessus a pris le username BRUT (avec suffixe) faute de ':', on
+      // retombe donc sur le vrai compte + la session extraite par `authenticate`.
+      if (!sessionId && user.__usernameSessionId) {
+        sessionId = user.__usernameSessionId;
+        username = user.username;
+      }
 
       // --- Port dédié exclusif : si CE port est réservé à un AUTRE compte, rejeter ---
       const dedicatedOwner = this.portUserMap.get(boundPort);
@@ -936,7 +960,22 @@ export class ProxyServerService implements OnModuleDestroy {
       if (sepIdx === -1) return null;
       const rawUser = decoded.substring(0, sepIdx);
       const password = decoded.substring(sepIdx + 1);
-      const username = rawUser.includes(':') ? rawUser.split(':')[0] : rawUser;
+      let username = rawUser.includes(':') ? rawUser.split(':')[0] : rawUser;
+
+      // Formes supportées pour le "username" côté client :
+      //   - "user"                    → compte simple
+      //   - "user:session[:country]"  → format historique (colon), toujours accepté
+      //   - "user-session-XXXX"       → convention standard 4-champs (host:port:user-session-id:pass),
+      //     compatible avec n'importe quel logiciel qui n'accepte que 4 champs.
+      //     Uniquement si pas de ':' — le format colon reste prioritaire (rétrocompat).
+      let usernameSessionId: string | null = null;
+      if (!rawUser.includes(':')) {
+        const suffixIdx = username.lastIndexOf('-session-');
+        if (suffixIdx !== -1) {
+          usernameSessionId = username.slice(suffixIdx + '-session-'.length);
+          username = username.slice(0, suffixIdx);
+        }
+      }
 
       // Identifiant "session statique" temporaire (host:port:user:pass sans
       // rien d'autre) : pointe vers le vrai compte mais épingle son propre
@@ -960,7 +999,7 @@ export class ProxyServerService implements OnModuleDestroy {
       }
       if (!user || !safeEqual(user.password, password)) return null;
       if (!this.checkUserEligible(user, clientIp, username)) return null;
-      return user;
+      return usernameSessionId ? { ...user, __usernameSessionId: usernameSessionId } : user;
     } catch {
       return null;
     }
@@ -1086,12 +1125,15 @@ export class ProxyServerService implements OnModuleDestroy {
       }
       if (excludeIds.length > 0) pool = pool.filter((p) => !excludeIds.includes(p.id));
       if (pool.length > 0) {
-        // On élargit la fenêtre de candidats (au lieu d'un simple top-100 puis
-        // random uniforme) et on tire au sort pondéré par trust score, avec
-        // pénalité de cooldown — les meilleurs proxies restent favorisés mais
-        // ne sont plus systématiquement les mêmes.
-        const candidates = pool.length > 200 ? pool.slice(0, 200) : pool;
-        const picked = this.weightedPick(candidates);
+        // Tirage pondéré par trust score sur TOUT le sous-ensemble filtré
+        // (pool/pays/exclusions) — pas de fenêtre "top-N" arbitraire : depuis
+        // que `loadProxyPoolCache` ne trie plus par successCount, un
+        // sous-ensemble tronqué ne serait plus "les meilleurs" mais une
+        // coupe arbitraire, qui recréerait le même problème d'exclusion
+        // qu'on vient de corriger. `weightedPick` est un simple passage
+        // linéaire — même sur plusieurs milliers de candidats, le coût reste
+        // négligeable face au round-trip réseau qui suit.
+        const picked = this.weightedPick(pool);
         if (picked) this.markPicked(picked.id);
         return picked;
       }
@@ -1112,16 +1154,18 @@ export class ProxyServerService implements OnModuleDestroy {
         ? { in: country.split(',').map((c) => c.trim().toUpperCase()) }
         : country.toUpperCase();
     }
+    // Pas de tri par `successCount` ici non plus (même raison que dans
+    // `loadProxyPoolCache` : ça exclurait à jamais les proxies neufs de ce
+    // fallback DB, pourtant censé être le filet de sécurité qui les
+    // retrouve). `take` reste borné pour ne pas ramener des millions de
+    // lignes sur une requête live, mais sans biaiser QUI rentre dans ce lot.
     const proxies = await this.prisma.backendProxy.findMany({
       where,
-      orderBy: [{ successCount: 'desc' }, { lastChecked: 'desc' }],
-      take: 500,
+      take: 2000,
     });
     if (proxies.length === 0) return null;
 
-    proxies.sort((a, b) => this.trustScore(b as any) - this.trustScore(a as any));
-    const top = proxies.slice(0, 100);
-    const picked = this.weightedPick(top as any);
+    const picked = this.weightedPick(proxies as any);
     if (!picked) return null;
     this.markPicked(picked.id);
     return this.mapDbProxy(picked);
