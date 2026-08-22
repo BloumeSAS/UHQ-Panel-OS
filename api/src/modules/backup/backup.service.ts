@@ -5,14 +5,21 @@ import { SchedulerRegistry } from '@nestjs/schedule';
 import { CronJob } from 'cron';
 import * as fs from 'fs';
 import * as path from 'path';
+import { PassThrough } from 'stream';
+import { pipeline } from 'stream/promises';
 import { fetch } from 'undici';
 import {
   S3Client,
-  PutObjectCommand,
   GetObjectCommand,
   ListObjectsV2Command,
   DeleteObjectCommand,
 } from '@aws-sdk/client-s3';
+import { Upload } from '@aws-sdk/lib-storage';
+
+/** Nombre de lignes lues par page pour les grosses tables (pagination cursor). */
+const BACKUP_PAGE_SIZE = 5000;
+
+const bigIntSafe = (v: unknown): unknown => (typeof v === 'bigint' ? v.toString() : v);
 
 @Injectable()
 export class BackupService implements OnModuleInit {
@@ -200,51 +207,42 @@ export class BackupService implements OnModuleInit {
    * planifié, lui, n'appelle jamais avec un override et suit toujours le
    * réglage global `backupStorageType`.
    */
+  /**
+   * Sauvegarde en STREAMING plutôt qu'en un unique gros buffer JSON en RAM.
+   *
+   * Avant (v2.4.4 et antérieur) : tout le contenu était construit avec
+   * `JSON.stringify` sur un objet chargeant CHAQUE table entière via
+   * `findMany()` sans pagination, puis uploadé en un seul `PutObjectCommand`.
+   * Sur une base de plusieurs Go (`ProxyUsage`/`BackendProxy` à fort volume),
+   * ça dépassait la limite de taille de string V8 et/ou faisait OOM le
+   * process avant même d'atteindre l'upload — et `PutObjectCommand` (upload
+   * S3 non multipart) a de toute façon une limite dure de 5 Go par objet.
+   *
+   * Désormais : le JSON est écrit incrémentalement dans un flux, les grosses
+   * tables sont lues par pages (curseur sur `id`, jamais toute la table en
+   * mémoire à la fois), et l'upload S3 passe par `@aws-sdk/lib-storage`
+   * (multipart automatique, sans limite de 5 Go, streaming direct).
+   */
   async runBackup(overrideStorageType?: 'local' | 's3'): Promise<string> {
     const startedAt = Date.now();
     const version = '2.0.0';
     const exportedAt = new Date().toISOString();
-    this.logger.log('Starting database backup export...');
-
-    // Query all tables in the exact order for relational integrity
-    const addons = await this.prisma.addon.findMany();
-    const data: Record<string, any> = {
-      appMeta:            await this.prisma.appMeta.findMany(),
-      setting:            await this.prisma.setting.findMany(),
-      scraperSource:      await this.prisma.scraperSource.findMany(),
-      panelUser:          await this.prisma.panelUser.findMany(),
-      userProxy:          await this.prisma.userProxy.findMany(),
-      passwordResetToken: await this.prisma.passwordResetToken.findMany(),
-      proxyUsage:         await this.prisma.proxyUsage.findMany(),
-      backendProxy:       await this.prisma.backendProxy.findMany(),
-      targetBlock:        await this.prisma.targetBlock.findMany(),
-      // ─── Addons : configs + données externes ──────────────────────────────
-      addon:              addons,
-      addonData:          await this.exportAddonData(addons),
-    };
-
-    const payload = {
-      version,
-      exportedAt,
-      data,
-    };
-
-    // Serialize BigInts safely
-    const content = JSON.stringify(
-      payload,
-      (key, value) => (typeof value === 'bigint' ? value.toString() : value),
-      2,
-    );
+    this.logger.log('Starting database backup export (streaming)...');
 
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const filename = `backup-db-${timestamp}.json`;
-
     const storageType = overrideStorageType ?? (this.settings.get('backupStorageType') || 'local');
     this.logger.log(
-      `Backup payload built (${Object.keys(data).length} tables, ${(content.length / 1024).toFixed(1)} KB) — destination: ${storageType}${
-        overrideStorageType ? ' (manual override)' : ''
-      }.`,
+      `Backup starting — destination: ${storageType}${overrideStorageType ? ' (manual override)' : ''}.`,
     );
+
+    const stream = new PassThrough();
+    const producer = this.writeBackupContent(stream, version, exportedAt).catch((err) => {
+      // Propager l'erreur au flux : sinon le consumer (fichier/S3) reste
+      // bloqué à attendre des données qui ne viendront jamais.
+      stream.destroy(err);
+      throw err;
+    });
 
     try {
       if (storageType === 's3') {
@@ -252,16 +250,17 @@ export class BackupService implements OnModuleInit {
         if (!bucket) {
           throw new Error('S3 bucket name is missing in settings.');
         }
-        this.logger.log(`Uploading backup to S3 bucket ${bucket} as ${filename}...`);
+        this.logger.log(`Uploading backup to S3 bucket ${bucket} as ${filename} (multipart)...`);
         const s3 = this.getS3Client();
-        await s3.send(
-          new PutObjectCommand({
-            Bucket: bucket,
-            Key: filename,
-            Body: content,
-            ContentType: 'application/json',
-          }),
-        );
+        const upload = new Upload({
+          client: s3,
+          params: { Bucket: bucket, Key: filename, Body: stream, ContentType: 'application/json' },
+          // Parts de 16 Mo : couvre confortablement une base de plusieurs Go
+          // sans multiplier le nombre de parts (limite S3 = 10 000 parts/objet).
+          partSize: 16 * 1024 * 1024,
+          queueSize: 4,
+        });
+        await Promise.all([upload.done(), producer]);
         this.logger.log(`Successfully uploaded backup to S3: ${filename}`);
       } else {
         // Local persistence (Coolify-compatible volume storage)
@@ -272,7 +271,8 @@ export class BackupService implements OnModuleInit {
         }
         const filePath = path.join(targetDir, filename);
         this.logger.log(`Writing local database backup to ${filePath}...`);
-        fs.writeFileSync(filePath, content, 'utf8');
+        const fileStream = fs.createWriteStream(filePath);
+        await Promise.all([pipeline(stream, fileStream), producer]);
         this.logger.log(`Successfully saved local backup: ${filePath}`);
       }
     } catch (err: any) {
@@ -284,6 +284,113 @@ export class BackupService implements OnModuleInit {
 
     this.logger.log(`Backup completed in ${Date.now() - startedAt}ms: ${filename} (${storageType}).`);
     return filename;
+  }
+
+  /** Écrit un chunk dans le flux, en respectant le backpressure (`drain`). */
+  private writeChunk(stream: PassThrough, chunk: string): Promise<void> {
+    if (stream.write(chunk)) return Promise.resolve();
+    return new Promise((resolve) => stream.once('drain', () => resolve()));
+  }
+
+  /**
+   * Écrit une table entière comme tableau JSON dans le flux, par pages
+   * (curseur sur `id`) — jamais plus de `BACKUP_PAGE_SIZE` lignes en mémoire
+   * à la fois, quelle que soit la taille réelle de la table.
+   */
+  private async writeTableArray(
+    stream: PassThrough,
+    fetchPage: (cursorId: string | null) => Promise<any[]>,
+  ): Promise<void> {
+    await this.writeChunk(stream, '[');
+    let cursorId: string | null = null;
+    let first = true;
+    for (;;) {
+      const rows = await fetchPage(cursorId);
+      if (rows.length === 0) break;
+      for (const row of rows) {
+        if (!first) await this.writeChunk(stream, ',');
+        first = false;
+        await this.writeChunk(stream, JSON.stringify(row, (_k, v) => bigIntSafe(v)));
+      }
+      cursorId = rows[rows.length - 1].id;
+      if (rows.length < BACKUP_PAGE_SIZE) break;
+    }
+    await this.writeChunk(stream, ']');
+  }
+
+  /** Écrit une table chargée entière (petites tables, taille bornée sans risque). */
+  private async writeTableArrayFull(stream: PassThrough, rows: any[]): Promise<void> {
+    await this.writeChunk(stream, JSON.stringify(rows, (_k, v) => bigIntSafe(v)));
+  }
+
+  /** Construit le JSON du backup et le pousse dans `stream` au fil de l'eau. */
+  private async writeBackupContent(stream: PassThrough, version: string, exportedAt: string): Promise<void> {
+    try {
+      await this.writeChunk(
+        stream,
+        `{"version":${JSON.stringify(version)},"exportedAt":${JSON.stringify(exportedAt)},"data":{`,
+      );
+
+      const addons = await this.prisma.addon.findMany();
+
+      await this.writeChunk(stream, '"appMeta":');
+      await this.writeTableArrayFull(stream, await this.prisma.appMeta.findMany());
+
+      await this.writeChunk(stream, ',"setting":');
+      await this.writeTableArrayFull(stream, await this.prisma.setting.findMany());
+
+      await this.writeChunk(stream, ',"scraperSource":');
+      await this.writeTableArrayFull(stream, await this.prisma.scraperSource.findMany());
+
+      await this.writeChunk(stream, ',"panelUser":');
+      await this.writeTableArrayFull(stream, await this.prisma.panelUser.findMany());
+
+      // Grosses tables : paginées par curseur, jamais chargées en une fois.
+      await this.writeChunk(stream, ',"userProxy":');
+      await this.writeTableArray(stream, (cursorId) =>
+        this.prisma.userProxy.findMany({
+          take: BACKUP_PAGE_SIZE,
+          orderBy: { id: 'asc' },
+          ...(cursorId ? { cursor: { id: cursorId }, skip: 1 } : {}),
+        }),
+      );
+
+      await this.writeChunk(stream, ',"passwordResetToken":');
+      await this.writeTableArrayFull(stream, await this.prisma.passwordResetToken.findMany());
+
+      await this.writeChunk(stream, ',"proxyUsage":');
+      await this.writeTableArray(stream, (cursorId) =>
+        this.prisma.proxyUsage.findMany({
+          take: BACKUP_PAGE_SIZE,
+          orderBy: { id: 'asc' },
+          ...(cursorId ? { cursor: { id: cursorId }, skip: 1 } : {}),
+        }),
+      );
+
+      await this.writeChunk(stream, ',"backendProxy":');
+      await this.writeTableArray(stream, (cursorId) =>
+        this.prisma.backendProxy.findMany({
+          take: BACKUP_PAGE_SIZE,
+          orderBy: { id: 'asc' },
+          ...(cursorId ? { cursor: { id: cursorId }, skip: 1 } : {}),
+        }),
+      );
+
+      await this.writeChunk(stream, ',"targetBlock":');
+      await this.writeTableArrayFull(stream, await this.prisma.targetBlock.findMany());
+
+      await this.writeChunk(stream, ',"addon":');
+      await this.writeTableArrayFull(stream, addons);
+
+      const addonData = await this.exportAddonData(addons);
+      await this.writeChunk(stream, `,"addonData":${JSON.stringify(addonData)}`);
+
+      await this.writeChunk(stream, '}}');
+      stream.end();
+    } catch (err) {
+      stream.destroy(err as Error);
+      throw err;
+    }
   }
 
   // ─── Addon backup helpers ──────────────────────────────────────────────────
