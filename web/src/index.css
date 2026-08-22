@@ -80,7 +80,12 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* Mode compact (densité tableaux) — bascule via useDensity()/lib/density.tsx. */
+/* Mode compact (densité tableaux + layout) — bascule via useDensity()/lib/density.tsx.
+   Les sélecteurs d'attribut (`data-slot`) ciblent les composants ui.tsx (Card,
+   CardHeader, CardContent) plutôt que des classes Tailwind arbitraires : ça
+   couvre TOUTES les pages qui utilisent ces composants sans devoir toucher
+   chaque page individuellement. `!important` nécessaire pour l'emporter sur
+   l'utilitaire Tailwind (même spécificité, ordre du cascade non garanti). */
 .density-compact table th {
   height: 1.75rem;
   padding: 0 0.5rem;
@@ -90,6 +95,20 @@ body {
   padding: 0.25rem 0.5rem;
   font-size: 0.75rem;
   line-height: 1.1rem;
+}
+.density-compact main {
+  padding: 0.75rem !important;
+}
+.density-compact [data-slot='card-header'] {
+  padding: 0.75rem !important;
+  gap: 0.25rem !important;
+}
+.density-compact [data-slot='card-content'] {
+  padding: 0.75rem !important;
+  padding-top: 0 !important;
+}
+.density-compact main .grid {
+  gap: 0.75rem !important;
 }
 
 /* Export PDF (window.print()) : ne garder que le contenu de la page, sans chrome du panel. */
