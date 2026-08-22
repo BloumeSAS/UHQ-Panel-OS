@@ -1,13 +1,17 @@
 import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Activity, Boxes, Globe2, Network, TrendingUp, Cpu, MemoryStick, Database, Timer } from 'lucide-react';
+import { Activity, Boxes, Globe2, Network, TrendingUp, Cpu, MemoryStick, Database, Timer, Users, LayoutGrid } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui';
+import { cn } from '@/lib/utils';
 import { AddonPageBar } from '@/components/AddonPageBar';
+
+type DashboardTab = 'overview' | 'active-accounts';
 
 export default function Dashboard() {
   const t = useT();
+  const [tab, setTab] = useState<DashboardTab>('overview');
   const [wsData, setWsData] = useState<any>(null);
 
   useEffect(() => {
@@ -94,6 +98,35 @@ export default function Dashboard() {
     <div className="space-y-6">
       <h1 className="text-2xl font-bold">{t('nav.dashboard')}</h1>
 
+      <div className="flex gap-1 border-b border-border">
+        <button
+          type="button"
+          onClick={() => setTab('overview')}
+          className={cn(
+            'flex items-center gap-1.5 px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors',
+            tab === 'overview' ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground',
+          )}
+        >
+          <LayoutGrid className="h-3.5 w-3.5" />
+          {t('dash.tabOverview')}
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab('active-accounts')}
+          className={cn(
+            'flex items-center gap-1.5 px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors',
+            tab === 'active-accounts' ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground',
+          )}
+        >
+          <Users className="h-3.5 w-3.5" />
+          {t('dash.tabActiveAccounts')}
+        </button>
+      </div>
+
+      {tab === 'active-accounts' && <ActiveAccountsTab />}
+
+      {tab === 'overview' && (
+      <>
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Stat icon={Activity} label={t('dash.activeThreads')} value={l?.active_threads ?? '—'} />
         <Stat icon={Network} label={t('dash.activeSessions')} value={l?.active_sessions ?? '—'} />
@@ -169,6 +202,8 @@ export default function Dashboard() {
           </CardContent>
         </Card>
       </div>
+      </>
+      )}
 
       <AddonPageBar />
     </div>
@@ -258,6 +293,109 @@ function DistList({ data }: { data: [string, any][] }) {
         </div>
       ))}
     </div>
+  );
+}
+
+type ActiveAccount = {
+  username: string;
+  label: string;
+  pool: string | null;
+  threads: number;
+  threadsLimit: number | null;
+  sentBps: number;
+  receivedBps: number;
+  totalBytesSent: number | null;
+  totalBytesReceived: number | null;
+  totalGb: number | null;
+  usedGb: number | null;
+};
+
+function formatBps(bps: number): string {
+  if (bps < 1024) return `${bps} o/s`;
+  if (bps < 1024 * 1024) return `${(bps / 1024).toFixed(1)} Ko/s`;
+  return `${(bps / 1024 / 1024).toFixed(2)} Mo/s`;
+}
+
+function formatBytes(bytes: number | null): string {
+  if (bytes == null) return '—';
+  if (bytes < 1024 ** 3) return `${(bytes / 1024 / 1024).toFixed(1)} Mo`;
+  return `${(bytes / 1024 ** 3).toFixed(2)} Go`;
+}
+
+function ActiveAccountsTab() {
+  const t = useT();
+  const [query, setQuery] = useState('');
+  const { data, isLoading } = useQuery({
+    queryKey: ['monitoring', 'active-accounts'],
+    queryFn: async () => (await api.get('/monitoring/active-accounts')).data.data as ActiveAccount[],
+    refetchInterval: 5000,
+  });
+
+  const accounts = data ?? [];
+  const q = query.trim().toLowerCase();
+  const filtered = q
+    ? accounts.filter((a) => a.username.toLowerCase().includes(q) || a.label.toLowerCase().includes(q) || (a.pool ?? '').toLowerCase().includes(q))
+    : accounts;
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between gap-3">
+          <CardTitle className="flex items-center gap-2">
+            <Users className="h-4 w-4" />
+            {t('dash.tabActiveAccounts')}
+          </CardTitle>
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder={t('dash.filterPlaceholder')}
+            className="h-7 w-56 rounded-md border border-input bg-background px-2 text-xs"
+          />
+        </div>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <p className="text-sm text-muted-foreground">…</p>
+        ) : filtered.length === 0 ? (
+          <p className="text-sm text-muted-foreground">{t('dash.noActiveAccounts')}</p>
+        ) : (
+          <div className="max-h-[32rem] overflow-y-auto">
+            <table className="w-full text-sm">
+              <thead className="sticky top-0 bg-card text-xs text-muted-foreground">
+                <tr>
+                  <th className="text-left font-medium py-1.5">{t('dash.account')}</th>
+                  <th className="text-left font-medium py-1.5">{t('dash.pool')}</th>
+                  <th className="text-right font-medium py-1.5">{t('dash.threads')}</th>
+                  <th className="text-right font-medium py-1.5">{t('dash.bandwidth')}</th>
+                  <th className="text-right font-medium py-1.5">{t('dash.quota')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((a) => (
+                  <tr key={a.username} className="border-t border-border/60">
+                    <td className="py-1.5">
+                      <div className="font-medium">{a.label}</div>
+                      <div className="text-xs text-muted-foreground font-mono">{a.username}</div>
+                    </td>
+                    <td className="py-1.5 text-xs text-muted-foreground">{a.pool ?? '—'}</td>
+                    <td className="py-1.5 text-right font-semibold">
+                      {a.threads}{a.threadsLimit ? <span className="text-muted-foreground font-normal"> / {a.threadsLimit}</span> : null}
+                    </td>
+                    <td className="py-1.5 text-right text-xs">
+                      <span className="text-emerald-600 dark:text-emerald-400">↓{formatBps(a.receivedBps)}</span>{' '}
+                      <span className="text-sky-600 dark:text-sky-400">↑{formatBps(a.sentBps)}</span>
+                    </td>
+                    <td className="py-1.5 text-right text-xs text-muted-foreground">
+                      {a.totalGb ? `${(a.usedGb ?? 0).toFixed(2)} / ${a.totalGb} Go` : formatBytes((a.totalBytesSent ?? 0) + (a.totalBytesReceived ?? 0))}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
