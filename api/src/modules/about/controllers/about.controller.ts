@@ -85,8 +85,13 @@ export class AboutController {
       const token = tokenBody?.token;
       if (!token) throw new Error('GHCR token unavailable');
 
-      // 2. Lister les tags de l'image
-      const tagsRes = await request(`${GHCR}/v2/${IMAGE}/tags/list`, {
+      // 2. Lister les tags de l'image — GHCR pagine sans `n` explicite (~100
+      // entrées par défaut, PAS forcément triées par version) : sans ce
+      // paramètre, un repo avec beaucoup de tags anciens/sha-* peut couper la
+      // page juste avant les tags semver les plus récents, et check-update
+      // rapporte alors une "latest" périmée. `n=1000` couvre largement la
+      // volumétrie réelle de ce repo (~100 tags).
+      const tagsRes = await request(`${GHCR}/v2/${IMAGE}/tags/list?n=1000`, {
         method: 'GET',
         headersTimeout: 8000,
         bodyTimeout: 8000,
