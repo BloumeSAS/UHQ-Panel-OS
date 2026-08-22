@@ -131,6 +131,18 @@ export default function Dashboard() {
         </Card>
       )}
 
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Network className="h-4 w-4" />
+            {t('dash.activeProxies')}
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ActiveProxiesList data={live.data?.active_proxies ?? []} />
+        </CardContent>
+      </Card>
+
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
           <CardHeader><CardTitle>{t('dash.topDomains')}</CardTitle></CardHeader>
@@ -245,6 +257,49 @@ function DistList({ data }: { data: [string, any][] }) {
           </div>
         </div>
       ))}
+    </div>
+  );
+}
+
+type ActiveProxy = {
+  id: string;
+  url: string;
+  ip: string;
+  port: number;
+  protocol: string;
+  connections: number;
+  users: string[];
+};
+
+function ActiveProxiesList({ data }: { data: ActiveProxy[] }) {
+  const t = useT();
+  if (!data.length) return <p className="text-sm text-muted-foreground">{t('dash.noActiveProxies')}</p>;
+  const sorted = [...data].sort((a, b) => b.connections - a.connections).slice(0, 25);
+  return (
+    <div className="max-h-80 overflow-y-auto">
+      <table className="w-full text-sm">
+        <thead className="sticky top-0 bg-card text-xs text-muted-foreground">
+          <tr>
+            <th className="text-left font-medium py-1.5">{t('dash.proxy')}</th>
+            <th className="text-left font-medium py-1.5">{t('dash.protocol')}</th>
+            <th className="text-right font-medium py-1.5">{t('dash.connections')}</th>
+            <th className="text-right font-medium py-1.5">{t('dash.users')}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {sorted.map((p) => (
+            <tr key={p.id} className="border-t border-border/60">
+              <td className="py-1.5 font-mono text-xs">{p.ip}:{p.port}</td>
+              <td className="py-1.5 uppercase text-xs text-muted-foreground">{p.protocol}</td>
+              <td className="py-1.5 text-right font-semibold">{p.connections}</td>
+              <td className="py-1.5 text-right text-xs text-muted-foreground truncate max-w-[10rem]">{p.users.join(', ')}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {data.length > sorted.length && (
+        <p className="text-xs text-muted-foreground pt-2">+{data.length - sorted.length} autres</p>
+      )}
     </div>
   );
 }
