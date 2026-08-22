@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import {
   Copy, Eye, EyeOff, RefreshCw, Send,
   Globe, Server, Radio, Shield, Mail, Key,
-  Bell, Database, Trash2, Download, Upload, Palette, RotateCcw,
+  Bell, Database, Trash2, Download, Upload, Palette, RotateCcw, BarChart3,
 } from 'lucide-react';
 import { api, apiError } from '@/lib/api';
 import { useT, useI18n } from '@/lib/i18n';
@@ -16,6 +16,7 @@ import { toast } from '@/lib/toast';
 
 // ── Tabs definition ──────────────────────────────────────────────────────────
 const TABS = [
+  { key: 'dashboard', icon: BarChart3, labelKey: 'settings.dashboard' },
   { key: 'general',  icon: Globe,   labelKey: 'settings.general' },
   { key: 'theme',    icon: Palette, labelKey: 'settings.theme' },
   { key: 'proxy',    icon: Server,  labelKey: 'settings.proxy' },
@@ -269,6 +270,9 @@ export default function Settings() {
 
       {/* ── Panels ── */}
       <div className="space-y-5">
+
+        {/* ────── TABLEAU DE BORD (STATS) ────── */}
+        {tab === 'dashboard' && <DbStatsCard />}
 
         {/* ────── GÉNÉRAL ────── */}
         {tab === 'general' && (
@@ -845,6 +849,58 @@ function Separator({ label }: { label: string }) {
     <div className="flex items-center gap-3 pt-2">
       <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground whitespace-nowrap">{label}</span>
       <hr className="flex-1 border-border" />
+    </div>
+  );
+}
+
+// ── Tableau de bord stats (taille BDD + compteurs de lignes) ─────────────────
+
+function DbStatsCard() {
+  const t = useT();
+  const { data, isLoading, refetch, isRefetching } = useQuery({
+    queryKey: ['monitoring', 'db-stats'],
+    queryFn: async () => (await api.get('/monitoring/db-stats')).data.data as {
+      size_bytes: number | null;
+      size_mb: number | null;
+      rows: Record<string, number>;
+    },
+  });
+
+  const rowLabels: Record<string, string> = {
+    backend_proxies: 'Proxies (pool)',
+    user_proxies: 'Comptes proxy',
+    proxy_usage: "Lignes d'usage (trafic)",
+    audit_logs: "Journaux d'audit",
+    scraper_sources: 'Sources scraper',
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-sm font-semibold">Base de données</h3>
+          <p className="text-xs text-muted-foreground">Taille sur disque et volumétrie des principales tables.</p>
+        </div>
+        <Button type="button" variant="outline" size="sm" onClick={() => refetch()} disabled={isRefetching}>
+          <RefreshCw className={cn('h-3.5 w-3.5 mr-1.5', isRefetching && 'animate-spin')} />
+          Actualiser
+        </Button>
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="rounded-lg border border-border p-4">
+          <div className="text-xs text-muted-foreground">Taille de la base</div>
+          <div className="text-2xl font-bold mt-1">
+            {isLoading ? '…' : data?.size_mb != null ? `${data.size_mb} MB` : 'N/A'}
+          </div>
+        </div>
+        {data && Object.entries(rowLabels).map(([key, label]) => (
+          <div key={key} className="rounded-lg border border-border p-4">
+            <div className="text-xs text-muted-foreground">{label}</div>
+            <div className="text-2xl font-bold mt-1">{(data.rows?.[key] ?? 0).toLocaleString()}</div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
