@@ -6,6 +6,7 @@ import { PrismaService } from '../../database/prisma.service';
 import { TrafficService } from '../traffic/traffic.service';
 import { SettingsService } from '../../config/settings.service';
 import { parseProxyList, buildProxyUrl } from '../../common/utils/proxy-parse';
+import { randomString } from '../../common/utils/proxy-format';
 import { allowedPortRange } from '../../common/utils/port-validation';
 import { NotificationService } from '../notifications/notification.service';
 import {
@@ -80,6 +81,17 @@ export class ProxyServerService implements OnModuleDestroy {
   private readonly activeThreads = new Map<string, number>();
   /** Sticky sessions: key = "user:sessionId" */
   private readonly sessions = new Map<string, SessionRecord>();
+  /**
+   * Identifiants temporaires "session statique" — générés via
+   * `GET /me/proxies/:id/static-session`. Chaque entrée pointe vers le VRAI
+   * compte (`parentUsername`) mais épingle son propre upstream (comme une
+   * session sticky) sans exposer ni le username réel ni un champ "session"
+   * séparé au client : la ligne fournie est un simple `host:port:user:pass`.
+   */
+  private readonly tempCredentials = new Map<
+    string,
+    { parentUsername: string; password: string; expiresAt: number }
+  >();
   /** Memory-only auth: every UserProxy keyed by username */
   private userListCache = new Map<string, any>();
   /** Cache des listes privées d'upstreams parsées, clé = texte brut `customProxies`. */
@@ -87,6 +99,14 @@ export class ProxyServerService implements OnModuleDestroy {
   /** Top-N best-performing working proxies (refreshed every 30s) */
   private proxyPoolCache: UpstreamProxy[] = [];
   private proxyMapCache = new Map<string, UpstreamProxy>();
+  /**
+   * Dernière sélection d'un upstream (par id) — sert à pénaliser temporairement
+   * un proxy qui vient d'être choisi pour éviter qu'un même "meilleur" proxy
+   * ne soit réutilisé en boucle H24 même s'il reste en tête du classement.
+   */
+  private readonly lastPickedAt = new Map<string, number>();
+  /** Fenêtre de refroidissement après sélection (ms) avant qu'un proxy ne redevienne pleinement éligible. */
+  private static readonly PICK_COOLDOWN_MS = 60_000;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -218,6 +238,9 @@ export class ProxyServerService implements OnModuleDestroy {
       for (const [k, v] of this.sessions) {
         if (now > v.expiresAt) this.sessions.delete(k);
       }
+      for (const [k, v] of this.tempCredentials) {
+        if (now > v.expiresAt) this.tempCredentials.delete(k);
+      }
     }, 60_000);
 
     // _background_pool_refresher — top 2000 proxies every 30s
@@ -287,6 +310,47 @@ export class ProxyServerService implements OnModuleDestroy {
     return out;
   }
 
+  /** Tunnels actuellement ouverts, clé = id du BackendProxy upstream. */
+  private readonly activeUpstreamConnections = new Map<
+    string,
+    { url: string; ip: string; port: number; protocol: string; count: number; users: Set<string> }
+  >();
+
+  /** Snapshot pour le dashboard : proxies backend actuellement utilisés en direct. */
+  getActiveUpstreamProxies(): Array<{ id: string; url: string; ip: string; port: number; protocol: string; connections: number; users: string[] }> {
+    return Array.from(this.activeUpstreamConnections.entries()).map(([id, v]) => ({
+      id,
+      url: v.url,
+      ip: v.ip,
+      port: v.port,
+      protocol: v.protocol,
+      connections: v.count,
+      users: Array.from(v.users),
+    }));
+  }
+
+  private trackUpstreamOpen(upstream: UpstreamProxy, username: string): void {
+    let entry = this.activeUpstreamConnections.get(upstream.id);
+    if (!entry) {
+      entry = { url: upstream.url, ip: upstream.ip, port: upstream.port, protocol: upstream.protocol, count: 0, users: new Set() };
+      this.activeUpstreamConnections.set(upstream.id, entry);
+    }
+    entry.count += 1;
+    entry.users.add(username);
+  }
+
+  private trackUpstreamClose(upstreamId: string | null, username: string): void {
+    if (!upstreamId) return;
+    const entry = this.activeUpstreamConnections.get(upstreamId);
+    if (!entry) return;
+    entry.count = Math.max(0, entry.count - 1);
+    if (entry.count === 0) {
+      this.activeUpstreamConnections.delete(upstreamId);
+    } else {
+      entry.users.delete(username);
+    }
+  }
+
   // ===== Per-connection main loop =====================================
 
   private async handleClient(client: Socket, boundPort: number): Promise<void> {
@@ -296,6 +360,9 @@ export class ProxyServerService implements OnModuleDestroy {
     // when we never counted this connection (auth failure, 429 rejection),
     // so the finally block won't wrongly decrement a slot we never took.
     let threadKey: string | null = null;
+    // Upstream id sur lequel un tunnel a réellement été ouvert (pour le
+    // dashboard "proxies utilisés en direct") — libéré dans le `finally`.
+    let openUpstreamId: string | null = null;
 
     try {
       // Quick 3s timeout on the initial line read to flush hanging connections
@@ -356,10 +423,15 @@ export class ProxyServerService implements OnModuleDestroy {
           /* ignore */
         }
       }
+      // Identifiant "session statique" temporaire : le username envoyé par le
+      // client n'a pas de sous-champ session (juste user:pass classique) — on
+      // épingle donc son upstream via un anchor dédié plutôt qu'un sessionId
+      // parsé, tout en gardant `username` = tempUsername (isolation propre).
+      if (!sessionId && user.__tempSessionAnchor) sessionId = user.__tempSessionAnchor;
 
       // --- Port dédié exclusif : si CE port est réservé à un AUTRE compte, rejeter ---
       const dedicatedOwner = this.portUserMap.get(boundPort);
-      if (dedicatedOwner && dedicatedOwner !== username) {
+      if (dedicatedOwner && dedicatedOwner !== user.username) {
         this.logger.warn(`Port ${boundPort} is dedicated to another account, rejecting ${username}`);
         client.write(
           'HTTP/1.1 407 Proxy Authentication Required\r\nProxy-Authenticate: Basic realm="Proxy"\r\n\r\n',
@@ -534,6 +606,8 @@ export class ProxyServerService implements OnModuleDestroy {
       // --- Pipe data ---
       this.logger.log(`Race won by ${winner.upstream.url}`);
       const targetHost = this.extractHost(path, headers);
+      this.trackUpstreamOpen(winner.upstream, user.username);
+      openUpstreamId = winner.upstream.id;
 
       if (method === 'CONNECT') {
         client.write('HTTP/1.1 200 Connection established\r\n\r\n');
@@ -579,6 +653,7 @@ export class ProxyServerService implements OnModuleDestroy {
         if (next === 0) this.activeThreads.delete(threadKey);
         else this.activeThreads.set(threadKey, next);
       }
+      if (openUpstreamId) this.trackUpstreamClose(openUpstreamId, user?.username ?? '');
       try {
         if (!client.destroyed) client.destroy();
       } catch {
@@ -803,6 +878,26 @@ export class ProxyServerService implements OnModuleDestroy {
 
   // ===== Auth ==========================================================
 
+  private checkUserEligible(user: any, clientIp: string, username: string): boolean {
+    if (user.isBlocked) {
+      this.logger.warn(`Blocked user ${username} attempted connection.`);
+      return false;
+    }
+    if (user.expiresAt && new Date(user.expiresAt) < new Date()) {
+      this.logger.warn(`Expired sub-user ${username} attempted connection.`);
+      return false;
+    }
+    if (user.totalGb > 0 && user.usedGb >= user.totalGb) {
+      this.logger.warn(`User ${username} blocked: data limit (${user.usedGb}/${user.totalGb} GB)`);
+      return false;
+    }
+    if (user.ipWhitelist && user.ipWhitelist !== '*') {
+      const whitelist = user.ipWhitelist.split(',').map((s: string) => s.trim());
+      if (!whitelist.includes(clientIp)) return false;
+    }
+    return true;
+  }
+
   private async authenticate(clientIp: string, authHeader: string | null): Promise<any | null> {
     if (!authHeader || !authHeader.startsWith('Basic ')) return null;
     try {
@@ -813,34 +908,54 @@ export class ProxyServerService implements OnModuleDestroy {
       const password = decoded.substring(sepIdx + 1);
       const username = rawUser.includes(':') ? rawUser.split(':')[0] : rawUser;
 
+      // Identifiant "session statique" temporaire (host:port:user:pass sans
+      // rien d'autre) : pointe vers le vrai compte mais épingle son propre
+      // upstream, cf. `generateStaticSessionProxies`.
+      const temp = this.tempCredentials.get(username);
+      if (temp) {
+        if (temp.expiresAt < Date.now() || !safeEqual(temp.password, password)) return null;
+        let parent = this.userListCache.get(temp.parentUsername);
+        if (!parent) {
+          parent = await this.prisma.userProxy.findUnique({ where: { username: temp.parentUsername } });
+          if (parent) this.userListCache.set(temp.parentUsername, parent);
+        }
+        if (!parent || !this.checkUserEligible(parent, clientIp, username)) return null;
+        return { ...parent, __tempSessionAnchor: username };
+      }
+
       let user = this.userListCache.get(username);
       if (!user) {
         user = await this.prisma.userProxy.findUnique({ where: { username } });
         if (user) this.userListCache.set(username, user);
       }
       if (!user || !safeEqual(user.password, password)) return null;
-      if (user.isBlocked) {
-        this.logger.warn(`Blocked user ${username} attempted connection.`);
-        return null;
-      }
-      if (user.expiresAt && new Date(user.expiresAt) < new Date()) {
-        this.logger.warn(`Expired sub-user ${username} attempted connection.`);
-        return null;
-      }
-      if (user.totalGb > 0 && user.usedGb >= user.totalGb) {
-        this.logger.warn(
-          `User ${username} blocked: data limit (${user.usedGb}/${user.totalGb} GB)`,
-        );
-        return null;
-      }
-      if (user.ipWhitelist && user.ipWhitelist !== '*') {
-        const whitelist = user.ipWhitelist.split(',').map((s: string) => s.trim());
-        if (!whitelist.includes(clientIp)) return null;
-      }
+      if (!this.checkUserEligible(user, clientIp, username)) return null;
       return user;
     } catch {
       return null;
     }
+  }
+
+  /**
+   * Génère `count` identifiants proxy temporaires ("session statique") liés
+   * au compte `parentUsername`. Chaque credential épingle son propre upstream
+   * (comme une session sticky) pendant `ttlSec`, et est exposé au client sous
+   * forme d'un simple couple user/pass — jamais de champ "session" visible.
+   */
+  generateStaticSessionProxies(
+    parentUsername: string,
+    count: number,
+    ttlSec: number,
+  ): Array<{ username: string; password: string; expiresAt: number }> {
+    const expiresAt = Date.now() + ttlSec * 1000;
+    const out: Array<{ username: string; password: string; expiresAt: number }> = [];
+    for (let i = 0; i < count; i++) {
+      const tempUsername = `${parentUsername}_${randomString(6)}`;
+      const tempPassword = randomString(12);
+      this.tempCredentials.set(tempUsername, { parentUsername, password: tempPassword, expiresAt });
+      out.push({ username: tempUsername, password: tempPassword, expiresAt });
+    }
+    return out;
   }
 
   // ===== Upstream selection ===========================================
@@ -878,6 +993,55 @@ export class ProxyServerService implements OnModuleDestroy {
     return list;
   }
 
+  /**
+   * Trust score d'un proxy : combine le taux de succès et la latence (plus
+   * bas = mieux), puis applique une pénalité de "cooldown" si ce proxy vient
+   * d'être choisi récemment — pour éviter qu'un même top-proxy monopolise le
+   * trafic H24 juste parce qu'il reste en tête du classement.
+   */
+  private trustScore(p: { id: string; successCount?: number; failureCount?: number; averageLatency?: number | null }): number {
+    const success = p.successCount ?? 0;
+    const failure = p.failureCount ?? 0;
+    const total = success + failure;
+    const rate = (success + 10) / (total + 10);
+    const lat = p.averageLatency ?? 2.0;
+    let score = rate * (1 / (lat * lat));
+    const lastPick = this.lastPickedAt.get(p.id);
+    if (lastPick) {
+      const age = Date.now() - lastPick;
+      if (age < ProxyServerService.PICK_COOLDOWN_MS) {
+        // Réduit fortement le poids juste après sélection, remonte linéairement
+        // jusqu'au poids plein une fois le cooldown écoulé.
+        const factor = 0.15 + 0.85 * (age / ProxyServerService.PICK_COOLDOWN_MS);
+        score *= factor;
+      }
+    }
+    return score;
+  }
+
+  /** Tirage pondéré (roulette wheel) parmi une liste selon leur trust score. */
+  private weightedPick<T extends { id: string }>(items: T[]): T | null {
+    if (items.length === 0) return null;
+    if (items.length === 1) return items[0];
+    const weights = items.map((p) => Math.max(this.trustScore(p as any), 0.0001));
+    const totalWeight = weights.reduce((a, b) => a + b, 0);
+    let r = Math.random() * totalWeight;
+    for (let i = 0; i < items.length; i++) {
+      r -= weights[i];
+      if (r <= 0) return items[i];
+    }
+    return items[items.length - 1];
+  }
+
+  private markPicked(id: string) {
+    this.lastPickedAt.set(id, Date.now());
+    // Évite une fuite mémoire lente : purge occasionnelle des entrées expirées.
+    if (this.lastPickedAt.size > 5000) {
+      const cutoff = Date.now() - ProxyServerService.PICK_COOLDOWN_MS * 5;
+      for (const [k, v] of this.lastPickedAt) if (v < cutoff) this.lastPickedAt.delete(k);
+    }
+  }
+
   private async getUpstreamProxy(
     country: string | null,
     excludeIds: string[],
@@ -892,8 +1056,14 @@ export class ProxyServerService implements OnModuleDestroy {
       }
       if (excludeIds.length > 0) pool = pool.filter((p) => !excludeIds.includes(p.id));
       if (pool.length > 0) {
-        const selection = pool.length > 100 ? pool.slice(0, 100) : pool;
-        return selection[Math.floor(Math.random() * selection.length)];
+        // On élargit la fenêtre de candidats (au lieu d'un simple top-100 puis
+        // random uniforme) et on tire au sort pondéré par trust score, avec
+        // pénalité de cooldown — les meilleurs proxies restent favorisés mais
+        // ne sont plus systématiquement les mêmes.
+        const candidates = pool.length > 200 ? pool.slice(0, 200) : pool;
+        const picked = this.weightedPick(candidates);
+        if (picked) this.markPicked(picked.id);
+        return picked;
       }
       // Rien dans le cache pour cette pool/pays : le cache ne garde que le top
       // 2000 (successCount desc) TOUTES pools confondues, donc une petite pool
@@ -919,15 +1089,12 @@ export class ProxyServerService implements OnModuleDestroy {
     });
     if (proxies.length === 0) return null;
 
-    const score = (p: BackendProxy) => {
-      const total = p.successCount + p.failureCount;
-      const rate = (p.successCount + 10) / (total + 10);
-      const lat = p.averageLatency ?? 2.0;
-      return rate * (1 / (lat * lat));
-    };
-    proxies.sort((a, b) => score(b) - score(a));
-    const top = proxies.slice(0, 50);
-    return this.mapDbProxy(top[Math.floor(Math.random() * top.length)]);
+    proxies.sort((a, b) => this.trustScore(b as any) - this.trustScore(a as any));
+    const top = proxies.slice(0, 100);
+    const picked = this.weightedPick(top as any);
+    if (!picked) return null;
+    this.markPicked(picked.id);
+    return this.mapDbProxy(picked);
   }
 
   /** Build a synthetic UpstreamProxy from SCRAPER_PROXY env var. */
