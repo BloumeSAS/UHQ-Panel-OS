@@ -134,4 +134,18 @@ export class TrafficService implements OnModuleInit {
     }
     this.flushing = false;
   }
+
+  /**
+   * Débit "live" par compte : octets accumulés dans le buffer courant (pas
+   * encore flush) divisés par la fenêtre de flush (5s) — une estimation du
+   * débit instantané, pas une moyenne glissante précise, mais suffisante pour
+   * un affichage dashboard rafraîchi au même rythme.
+   */
+  getLiveBandwidth(): Map<string, { sentBps: number; receivedBps: number }> {
+    const out = new Map<string, { sentBps: number; receivedBps: number }>();
+    for (const [username, data] of this.buffer) {
+      out.set(username, { sentBps: data.sent / 5, receivedBps: data.received / 5 });
+    }
+    return out;
+  }
 }
