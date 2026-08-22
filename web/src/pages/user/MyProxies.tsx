@@ -449,7 +449,7 @@ function GeneratorDialog({ proxy, onClose }: { proxy: MyProxy; onClose: () => vo
     { label: 'Rotatif @ (user:pass@host:port)', value: '{username}:{password}@{host}:{port}' },
     { label: 'Rotatif HTTP URI', value: 'http://{username}:{password}@{host}:{port}', overrideProto: true },
     { label: 'Rotatif SOCKS5 URI', value: 'socks5://{username}:{password}@{host}:{port}', overrideProto: true },
-    { label: 'Sticky Standard (host:port:user:session:pass)', value: '{host}:{port}:{username}:{session}:{password}' },
+    { label: 'Sticky Standard (host:port:user-session-id:pass, 4 champs)', value: '{host}:{port}:{username}-session-{session}:{password}' },
     { label: 'Sticky @ (user-session-session:pass@host:port)', value: '{username}-session-{session}:{password}@{host}:{port}' },
     { label: 'Sticky HTTP URI', value: 'http://{username}-session-{session}:{password}@{host}:{port}', overrideProto: true },
     { label: 'Sticky SOCKS5 URI', value: 'socks5://{username}-session-{session}:{password}@{host}:{port}', overrideProto: true },
@@ -480,9 +480,16 @@ function GeneratorDialog({ proxy, onClose }: { proxy: MyProxy; onClose: () => vo
       const { data } = await api.get(`/me/proxies/${proxy.id}/sticky-list?count=${fetchCount}`);
       const rawLines = data.proxies as string[];
       const formatted = rawLines.map((line) => {
+        // Format brut API (depuis v2.4.5) : host:port:user-session-XXXX:pass
+        // (4 champs, compatible avec tout logiciel qui n'accepte pas le
+        // format à 5 champs host:port:user:session:pass).
         const parts = line.split(':');
-        if (parts.length < 5) return line;
-        const [host, port, username, session, password] = parts;
+        if (parts.length < 4) return line;
+        const [host, port, userWithSession, password] = parts;
+        const sessionMarker = '-session-';
+        const sessionIdx = userWithSession.indexOf(sessionMarker);
+        const username = sessionIdx !== -1 ? userWithSession.slice(0, sessionIdx) : userWithSession;
+        const session = sessionIdx !== -1 ? userWithSession.slice(sessionIdx + sessionMarker.length) : '';
 
         let out = format;
         out = out.replace(/{host}/g, host);
