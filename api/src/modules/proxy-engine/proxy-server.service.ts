@@ -133,19 +133,52 @@ export class ProxyServerService implements OnModuleDestroy {
       await this.prisma.ensureConnection();
       const users = await this.prisma.userProxy.findMany();
       this.userListCache = new Map(users.map((u) => [u.username, u]));
-      const proxies = await this.prisma.backendProxy.findMany({
-        where: { isWorking: true },
-        orderBy: [{ successCount: 'desc' }, { lastChecked: 'desc' }],
-        take: 500,
-      });
+      const proxies = await this.loadProxyPoolCache();
       if (proxies.length > 0) {
-        this.proxyPoolCache = proxies.map((p) => this.mapDbProxy(p)).filter(Boolean) as UpstreamProxy[];
+        this.proxyPoolCache = proxies;
         this.proxyMapCache = new Map(this.proxyPoolCache.map((p) => [p.id, p]));
       }
       this.logger.log('Caches pre-warmed (users & proxies).');
     } catch (e) {
       this.logger.error(`Failed to pre-warm caches: ${e}`);
     }
+  }
+
+  /**
+   * Charge le cache mémoire du pool **par pool** (une requête par pool
+   * distincte + le "bucket" partagé `pool: null`), plutôt qu'un seul top-N
+   * global toutes pools confondues trié par `successCount`.
+   *
+   * Bug corrigé (v2.4.4) : avec un seul top-N global, une pool dédiée qui
+   * contient déjà des proxies scrapés à bon historique remplissait sa
+   * tranche du cache — `getUpstreamProxy` prenait alors TOUJOURS la branche
+   * cache (jamais vide) et ne retombait donc jamais sur le fallback DB
+   * scopé par pool. Un proxy fraîchement ajouté manuellement dans cette même
+   * pool (successCount=0, jamais entré dans le top global) restait alors
+   * invisible indéfiniment, même après des milliers de requêtes. Chaque pool
+   * a maintenant sa propre tranche garantie dans le cache, indépendamment de
+   * la taille des autres pools.
+   */
+  private async loadProxyPoolCache(): Promise<UpstreamProxy[]> {
+    const distinctPools = await this.prisma.backendProxy.findMany({
+      where: { isWorking: true },
+      distinct: ['pool'],
+      select: { pool: true },
+    });
+    const poolNames = distinctPools.map((p) => p.pool);
+    if (poolNames.length === 0) return [];
+    const chunks = await Promise.all(
+      poolNames.map((poolName) =>
+        this.prisma.backendProxy.findMany({
+          where: { isWorking: true, pool: poolName },
+          orderBy: [{ successCount: 'desc' }, { lastChecked: 'desc' }],
+          // Le bucket partagé (`pool: null`) est typiquement le plus gros —
+          // les pools nommées/dédiées restent généralement bien plus petites.
+          take: poolName === null ? 3000 : 500,
+        }),
+      ),
+    );
+    return chunks.flat().map((p) => this.mapDbProxy(p)).filter(Boolean) as UpstreamProxy[];
   }
 
   /**
@@ -243,17 +276,13 @@ export class ProxyServerService implements OnModuleDestroy {
       }
     }, 60_000);
 
-    // _background_pool_refresher — top 2000 proxies every 30s
+    // _background_pool_refresher — cache par pool, toutes les 30s
     setInterval(async () => {
       try {
         await this.prisma.ensureConnection();
-        const proxies = await this.prisma.backendProxy.findMany({
-          where: { isWorking: true },
-          orderBy: [{ successCount: 'desc' }, { lastChecked: 'desc' }],
-          take: 2000,
-        });
+        const proxies = await this.loadProxyPoolCache();
         if (proxies.length > 0) {
-          this.proxyPoolCache = proxies.map((p) => this.mapDbProxy(p)).filter(Boolean) as UpstreamProxy[];
+          this.proxyPoolCache = proxies;
           this.proxyMapCache = new Map(this.proxyPoolCache.map((p) => [p.id, p]));
         }
       } catch (e) {
@@ -313,17 +342,18 @@ export class ProxyServerService implements OnModuleDestroy {
   /** Tunnels actuellement ouverts, clé = id du BackendProxy upstream. */
   private readonly activeUpstreamConnections = new Map<
     string,
-    { url: string; ip: string; port: number; protocol: string; count: number; users: Set<string> }
+    { url: string; ip: string; port: number; protocol: string; pool: string | null; count: number; users: Set<string> }
   >();
 
   /** Snapshot pour le dashboard : proxies backend actuellement utilisés en direct. */
-  getActiveUpstreamProxies(): Array<{ id: string; url: string; ip: string; port: number; protocol: string; connections: number; users: string[] }> {
+  getActiveUpstreamProxies(): Array<{ id: string; url: string; ip: string; port: number; protocol: string; pool: string | null; connections: number; users: string[] }> {
     return Array.from(this.activeUpstreamConnections.entries()).map(([id, v]) => ({
       id,
       url: v.url,
       ip: v.ip,
       port: v.port,
       protocol: v.protocol,
+      pool: v.pool,
       connections: v.count,
       users: Array.from(v.users),
     }));
@@ -332,7 +362,7 @@ export class ProxyServerService implements OnModuleDestroy {
   private trackUpstreamOpen(upstream: UpstreamProxy, username: string): void {
     let entry = this.activeUpstreamConnections.get(upstream.id);
     if (!entry) {
-      entry = { url: upstream.url, ip: upstream.ip, port: upstream.port, protocol: upstream.protocol, count: 0, users: new Set() };
+      entry = { url: upstream.url, ip: upstream.ip, port: upstream.port, protocol: upstream.protocol, pool: upstream.pool ?? null, count: 0, users: new Set() };
       this.activeUpstreamConnections.set(upstream.id, entry);
     }
     entry.count += 1;
@@ -1065,13 +1095,13 @@ export class ProxyServerService implements OnModuleDestroy {
         if (picked) this.markPicked(picked.id);
         return picked;
       }
-      // Rien dans le cache pour cette pool/pays : le cache ne garde que le top
-      // 2000 (successCount desc) TOUTES pools confondues, donc une petite pool
-      // dédiée (peu de trafic → successCount bas) peut s'y faire évincer par un
-      // pool partagé bien plus gros sans jamais être "vide" en base. On retombe
-      // sur une requête DB ciblée (indexée sur `pool`) plutôt que de déclarer
-      // forfait — sinon ces utilisateurs basculent en permanence sur le
-      // fallback résidentiel alors que leurs proxies sont fonctionnels.
+      // Rien dans le cache pour cette pool/pays (cache pas encore rafraîchi
+      // depuis l'ajout de cette pool, filtre pays trop restrictif, etc.). Le
+      // cache garde désormais une tranche PAR pool (voir `loadProxyPoolCache`),
+      // mais on retombe quand même sur une requête DB ciblée (indexée sur
+      // `pool`) par sécurité plutôt que de déclarer forfait — sinon ces
+      // utilisateurs basculent en permanence sur le fallback résidentiel alors
+      // que leurs proxies sont fonctionnels.
     }
 
     const where: any = { isWorking: true };
