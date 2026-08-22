@@ -267,39 +267,68 @@ type ActiveProxy = {
   ip: string;
   port: number;
   protocol: string;
+  pool: string | null;
   connections: number;
   users: string[];
 };
 
 function ActiveProxiesList({ data }: { data: ActiveProxy[] }) {
   const t = useT();
+  const [query, setQuery] = useState('');
   if (!data.length) return <p className="text-sm text-muted-foreground">{t('dash.noActiveProxies')}</p>;
-  const sorted = [...data].sort((a, b) => b.connections - a.connections).slice(0, 25);
+
+  const q = query.trim().toLowerCase();
+  const filtered = q
+    ? data.filter(
+        (p) =>
+          p.users.some((u) => u.toLowerCase().includes(q)) ||
+          `${p.ip}:${p.port}`.includes(q) ||
+          (p.pool ?? '').toLowerCase().includes(q),
+      )
+    : data;
+  const sorted = [...filtered].sort((a, b) => b.connections - a.connections).slice(0, 25);
+  const totalConnections = data.reduce((a, p) => a + p.connections, 0);
+
   return (
-    <div className="max-h-80 overflow-y-auto">
-      <table className="w-full text-sm">
-        <thead className="sticky top-0 bg-card text-xs text-muted-foreground">
-          <tr>
-            <th className="text-left font-medium py-1.5">{t('dash.proxy')}</th>
-            <th className="text-left font-medium py-1.5">{t('dash.protocol')}</th>
-            <th className="text-right font-medium py-1.5">{t('dash.connections')}</th>
-            <th className="text-right font-medium py-1.5">{t('dash.users')}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {sorted.map((p) => (
-            <tr key={p.id} className="border-t border-border/60">
-              <td className="py-1.5 font-mono text-xs">{p.ip}:{p.port}</td>
-              <td className="py-1.5 uppercase text-xs text-muted-foreground">{p.protocol}</td>
-              <td className="py-1.5 text-right font-semibold">{p.connections}</td>
-              <td className="py-1.5 text-right text-xs text-muted-foreground truncate max-w-[10rem]">{p.users.join(', ')}</td>
+    <div>
+      <div className="flex items-center justify-between gap-3 pb-2">
+        <p className="text-xs text-muted-foreground">
+          {data.length} {t('dash.proxy').toLowerCase()}(s) · {totalConnections} {t('dash.connections').toLowerCase()}
+        </p>
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder={t('dash.filterPlaceholder')}
+          className="h-7 w-48 rounded-md border border-input bg-background px-2 text-xs"
+        />
+      </div>
+      <div className="max-h-80 overflow-y-auto">
+        <table className="w-full text-sm">
+          <thead className="sticky top-0 bg-card text-xs text-muted-foreground">
+            <tr>
+              <th className="text-left font-medium py-1.5">{t('dash.proxy')}</th>
+              <th className="text-left font-medium py-1.5">{t('dash.protocol')}</th>
+              <th className="text-left font-medium py-1.5">{t('dash.pool')}</th>
+              <th className="text-right font-medium py-1.5">{t('dash.connections')}</th>
+              <th className="text-right font-medium py-1.5">{t('dash.users')}</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
-      {data.length > sorted.length && (
-        <p className="text-xs text-muted-foreground pt-2">+{data.length - sorted.length} autres</p>
-      )}
+          </thead>
+          <tbody>
+            {sorted.map((p) => (
+              <tr key={p.id} className="border-t border-border/60">
+                <td className="py-1.5 font-mono text-xs">{p.ip}:{p.port}</td>
+                <td className="py-1.5 uppercase text-xs text-muted-foreground">{p.protocol}</td>
+                <td className="py-1.5 text-xs text-muted-foreground truncate max-w-[8rem]">{p.pool ?? '—'}</td>
+                <td className="py-1.5 text-right font-semibold">{p.connections}</td>
+                <td className="py-1.5 text-right text-xs text-muted-foreground truncate max-w-[10rem]">{p.users.join(', ')}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {filtered.length > sorted.length && (
+          <p className="text-xs text-muted-foreground pt-2">+{filtered.length - sorted.length} {t('dash.others')}</p>
+        )}
+      </div>
     </div>
   );
 }
