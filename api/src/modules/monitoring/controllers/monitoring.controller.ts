@@ -19,6 +19,7 @@ import { CurrentUser } from '../../../common/decorators/current-user.decorator';
 import type { JwtUser } from '../../../common/guards/jwt-auth.guard';
 import { PrismaService } from '../../../database/prisma.service';
 import { ProxyServerService } from '../../proxy-engine/proxy-server.service';
+import { TrafficService } from '../../traffic/traffic.service';
 import { parseProxyList, parseProxyLine } from '../../../common/utils/proxy-parse';
 import { ImportProxiesDto } from '../../../common/dto/panel.dto';
 import { PoolHealthSnapshotService } from '../pool-health-snapshot.service';
@@ -39,7 +40,58 @@ export class PanelMonitoringController {
     private readonly engine: ProxyServerService,
     private readonly poolHealth: PoolHealthSnapshotService,
     private readonly auditService: AuditService,
+    private readonly traffic: TrafficService,
   ) {}
+
+  /**
+   * Comptes proxy actuellement actifs (au moins un thread ouvert) : threads
+   * en cours, limite, bande passante "live" (estimée sur la fenêtre de flush
+   * de 5s), pool et usage cumulé. Onglet "Comptes actifs" du dashboard.
+   */
+  @Roles('ADMIN', 'SUPPORT')
+  @Get('active-accounts')
+  async activeAccounts() {
+    const threadsMap = this.engine.getActiveThreads();
+    const usernames = Array.from(threadsMap.keys()).filter((u) => (threadsMap.get(u) ?? 0) > 0);
+    if (usernames.length === 0) return { status: 'success', data: [] };
+
+    const bandwidth = this.traffic.getLiveBandwidth();
+    const users = await this.prisma.userProxy.findMany({
+      where: { username: { in: usernames } },
+      select: {
+        username: true,
+        name: true,
+        pool: true,
+        threadsLimit: true,
+        totalBytesSent: true,
+        totalBytesReceived: true,
+        totalGb: true,
+        usedGb: true,
+      },
+    });
+    const byUsername = new Map(users.map((u) => [u.username, u]));
+
+    const data = usernames.map((username) => {
+      const u = byUsername.get(username);
+      const bw = bandwidth.get(username);
+      return {
+        username,
+        label: u?.name ?? username,
+        pool: u?.pool ?? null,
+        threads: threadsMap.get(username) ?? 0,
+        threadsLimit: u?.threadsLimit ?? null,
+        sentBps: Math.round(bw?.sentBps ?? 0),
+        receivedBps: Math.round(bw?.receivedBps ?? 0),
+        totalBytesSent: u ? Number(u.totalBytesSent) : null,
+        totalBytesReceived: u ? Number(u.totalBytesReceived) : null,
+        totalGb: u?.totalGb ?? null,
+        usedGb: u?.usedGb ?? null,
+      };
+    });
+    data.sort((a, b) => b.threads - a.threads);
+
+    return { status: 'success', data };
+  }
 
   /** Historique de la santé du pool (time series). */
   @Roles('ADMIN', 'SUPPORT')
