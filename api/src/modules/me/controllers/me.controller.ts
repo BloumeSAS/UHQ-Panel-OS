@@ -125,12 +125,14 @@ export class PanelMeController {
     const { host, port } = await resolveConnectionEndpoint(this.prisma, this.settings, proxy);
     return {
       status: 'success',
-      format: 'host:port:username:session:password',
+      // 4 champs (host:port:user-session-XXXX:pass) — compatible avec tout
+      // logiciel n'acceptant que le format classique host:port:user:pass.
+      format: 'host:port:username-session-XXXX:password',
       count: c,
       proxies: buildStickyList(proxy, host, port, c),
       // Format rotatif (pas de session : chaque nouvelle connexion sur cette
       // même ligne peut tomber sur un upstream différent) — pratique pour les
-      // clients qui ne gèrent pas le host:port:user:session:pass.
+      // clients qui ne gèrent pas le host:port:username-session-XXXX:password.
       rotating_format: 'username:password@host:port',
       rotating: `${proxy.username}:${proxy.password}@${host}:${port}`,
     };
