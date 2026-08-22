@@ -137,6 +137,31 @@ export class PanelMeController {
   }
 
   @ApiParam({ name: 'id', description: 'ID du sous-utilisateur proxy' })
+  @ApiQuery({ name: 'count', required: false, type: Number, description: 'Nombre de proxies temporaires' })
+  @ApiQuery({ name: 'ttl', required: false, type: Number, description: "Durée de vie en secondes (défaut = TTL sticky du compte)" })
+  @Get('proxies/:id/static-session')
+  async staticSession(
+    @CurrentUser() me: JwtUser,
+    @Param('id') id: string,
+    @Query('count') count = '10',
+    @Query('ttl') ttl?: string,
+  ) {
+    const proxy = await this.ownedProxy(me, id);
+    const c = Math.max(1, Math.min(1000, parseInt(count, 10) || 10));
+    const ttlSec = Math.max(30, Math.min(86_400, parseInt(ttl ?? '', 10) || proxy.stickySessionTtl || 1800));
+    const { host, port } = await resolveConnectionEndpoint(this.prisma, this.settings, proxy);
+    const creds = this.engine.generateStaticSessionProxies(proxy.username, c, ttlSec);
+    return {
+      status: 'success',
+      format: 'host:port:username:password',
+      count: c,
+      ttl: ttlSec,
+      proxies: creds.map((cr) => `${host}:${port}:${cr.username}:${cr.password}`),
+      expires_at: creds[0]?.expiresAt ?? null,
+    };
+  }
+
+  @ApiParam({ name: 'id', description: 'ID du sous-utilisateur proxy' })
   @Patch('proxies/:id')
   async updateProxy(
     @CurrentUser() me: JwtUser,
