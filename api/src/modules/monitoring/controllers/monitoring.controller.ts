@@ -93,6 +93,7 @@ export class PanelMonitoringController {
         active_sessions: sessions,
         pool: { total, working, banned },
       },
+      active_proxies: this.engine.getActiveUpstreamProxies(),
       today_summary: {
         total_gb: Math.round(totalGb * 10000) / 10000,
         total_requests: totals._sum.requests ?? 0,
@@ -142,6 +143,45 @@ export class PanelMonitoringController {
         engine: {
           activeThreads: Array.from(this.engine.getActiveThreads().values()).reduce((a, b) => a + b, 0),
           activeSessions: this.engine.getSessions().size,
+        },
+      },
+    };
+  }
+
+  /**
+   * Stats base de données pour le tableau de bord des Settings : taille sur
+   * disque (Postgres) + nombre de lignes des tables volumineuses. Requêtes
+   * légères (`pg_database_size`, `count()` indexés) — appelé à la demande,
+   * pas en polling.
+   */
+  @Roles('ADMIN', 'SUPPORT')
+  @Get('db-stats')
+  async dbStats() {
+    let sizeBytes: number | null = null;
+    try {
+      const rows = await this.prisma.$queryRaw<Array<{ size: bigint }>>`SELECT pg_database_size(current_database()) AS size`;
+      sizeBytes = rows[0] ? Number(rows[0].size) : null;
+    } catch {
+      sizeBytes = null;
+    }
+    const [backendProxies, userProxies, proxyUsageRows, auditLogs, scraperSources] = await Promise.all([
+      this.prisma.backendProxy.count(),
+      this.prisma.userProxy.count(),
+      this.prisma.proxyUsage.count(),
+      this.prisma.auditLog.count().catch(() => 0),
+      this.prisma.scraperSource.count().catch(() => 0),
+    ]);
+    return {
+      status: 'success',
+      data: {
+        size_bytes: sizeBytes,
+        size_mb: sizeBytes != null ? Math.round((sizeBytes / 1024 ** 2) * 10) / 10 : null,
+        rows: {
+          backend_proxies: backendProxies,
+          user_proxies: userProxies,
+          proxy_usage: proxyUsageRows,
+          audit_logs: auditLogs,
+          scraper_sources: scraperSources,
         },
       },
     };
