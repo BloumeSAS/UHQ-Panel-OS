@@ -4,6 +4,7 @@ import { Logger, ValidationPipe } from '@nestjs/common';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { WsAdapter } from '@nestjs/platform-ws';
+import { json, urlencoded } from 'express';
 import { join } from 'path';
 import { AppModule } from './app.module';
 import { ProxyServerService } from './modules/proxy-engine/proxy-server.service';
@@ -29,7 +30,13 @@ async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     // Logger custom : conserve les logs en mémoire pour le flux SSE du panel.
     logger: new RingBufferLogger(),
+    bodyParser: false,
   });
+
+  // Body-parser par défaut de Nest = 100kb → "entity too large" dès qu'on
+  // importe une grosse liste de proxies manuellement depuis le panel.
+  app.use(json({ limit: '25mb' }));
+  app.use(urlencoded({ extended: true, limit: '25mb' }));
 
   app.useWebSocketAdapter(new WsAdapter(app));
   app.useGlobalPipes(
