@@ -48,7 +48,19 @@ export function normalizeDomain(raw: string): string {
     .replace(/:\d+$/, '');
 }
 
-/** Génère `count` lignes sticky `host:port:user:session:pass`. */
+/**
+ * Génère `count` lignes sticky au format `host:port:user-session-XXXX:pass`
+ * (4 champs) — la session est intégrée au nom d'utilisateur via le suffixe
+ * `-session-`, convention standard reconnue par la plupart des logiciels
+ * proxy (Bright Data/Oxylabs et consorts) et par le moteur (voir
+ * `ProxyServerService.authenticate`). Chaque ligne a une session unique,
+ * donc un upstream potentiellement différent.
+ *
+ * Avant v2.4.5 : `host:port:user:session:pass` (5 champs) — rejeté par
+ * beaucoup de logiciels qui n'acceptent que le format classique à 4 champs.
+ * Le moteur accepte toujours l'ancien format (rétrocompatibilité des listes
+ * déjà générées/partagées).
+ */
 export function buildStickyList(
   user: { username: string; password: string },
   host: string,
@@ -57,7 +69,7 @@ export function buildStickyList(
 ): string[] {
   const lines: string[] = [];
   for (let i = 0; i < count; i++) {
-    lines.push(`${host}:${port}:${user.username}:${randomString(8)}:${user.password}`);
+    lines.push(`${host}:${port}:${user.username}-session-${randomString(8)}:${user.password}`);
   }
   return lines;
 }
