@@ -286,12 +286,37 @@ export class CheckerService implements OnModuleInit {
     return { alive: true, country, latencyMs: attempt.latencyMs };
   }
 
-  /** HTTPS CONNECT to google.com:443 — proxy is "working" if the handshake passes. */
+  /**
+   * Liveness check. SOCKS4/5 : négociation SOCKS puis tunnel vers
+   * google.com:443. HTTP : beaucoup de proxies bas de gamme n'implémentent
+   * QUE le relais GET en forme absolue et rejettent la méthode CONNECT
+   * (réservée en pratique au tunneling HTTPS) — les tester via CONNECT les
+   * marquait morts à tort alors qu'ils fonctionnent parfaitement en usage
+   * réel. On teste donc les proxies HTTP avec un GET absolu, comme le fait
+   * déjà `probeExitCountry` pour la géolocalisation.
+   */
   private async connectCheck(proxy: UpstreamProxy): Promise<{ alive: boolean; latencyMs: number | null }> {
     const startedAt = Date.now();
     let socket: Socket | null = null;
     try {
       socket = await tcpConnect(proxy.ip, proxy.port, this.timeoutMs);
+      const protocol = (proxy.protocol || 'http').toLowerCase();
+      if (protocol === 'http') {
+        let authHeader = '';
+        if (proxy.auth) {
+          const b64 = Buffer.from(proxy.auth, 'utf8').toString('base64');
+          authHeader = `Proxy-Authorization: Basic ${b64}\r\n`;
+        }
+        const req =
+          'GET http://www.gstatic.com/generate_204 HTTP/1.1\r\n' +
+          'Host: www.gstatic.com\r\n' +
+          authHeader +
+          'User-Agent: uhq-checker\r\nConnection: close\r\n\r\n';
+        socket.write(Buffer.from(req, 'latin1'));
+        const resp = await this.collectResponse(socket, this.timeoutMs);
+        if (!/^HTTP\/\d\.\d\s+(200|204|301|302)\b/.test(resp)) throw new Error('bad response');
+        return { alive: true, latencyMs: Date.now() - startedAt };
+      }
       await performHandshake(socket, proxy, 'google.com:443', this.timeoutMs);
       return { alive: true, latencyMs: Date.now() - startedAt };
     } catch {
