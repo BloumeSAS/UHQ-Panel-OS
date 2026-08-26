@@ -363,6 +363,12 @@ export async function performHandshake(
  * with chunk length per direction so the engine can update TrafficService.
  * Resolves when either side closes.
  * Support for optional bandwidthLimit (in KB/s).
+ *
+ * `idleTimeoutMs` : ferme le tunnel si AUCUNE donnée n'a circulé dans ce
+ * délai, dans un sens ou l'autre. Sans ça, un pair qui disparaît sans
+ * FIN/RST propre (poste client éteint brutalement, coupure réseau) ne
+ * déclenche jamais 'end'/'error'/'close' côté Node — le socket reste ouvert
+ * indéfiniment (observé en prod : threads "actifs" restés plus d'un jour).
  */
 export function bidirectionalPipe(
   a: Socket,
@@ -370,6 +376,7 @@ export function bidirectionalPipe(
   onAtoB: (chunk: Buffer) => void,
   onBtoA: (chunk: Buffer) => void,
   bandwidthLimit?: number,
+  idleTimeoutMs?: number,
 ): Promise<void> {
   return new Promise((resolve) => {
     let closed = false;
@@ -388,6 +395,13 @@ export function bidirectionalPipe(
       }
       resolve();
     };
+
+    if (idleTimeoutMs && idleTimeoutMs > 0) {
+      a.setTimeout(idleTimeoutMs);
+      b.setTimeout(idleTimeoutMs);
+      a.once('timeout', finish);
+      b.once('timeout', finish);
+    }
 
     if (bandwidthLimit && bandwidthLimit > 0) {
       const limitBytes = bandwidthLimit * 1024;
