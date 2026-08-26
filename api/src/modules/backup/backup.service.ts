@@ -1,6 +1,8 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { SettingsService } from '../../config/settings.service';
+import { JobCoordinatorService } from '../../common/job-coordinator.service';
+import { ProxyServerService } from '../proxy-engine/proxy-server.service';
 import { SchedulerRegistry } from '@nestjs/schedule';
 import { CronJob } from 'cron';
 import * as fs from 'fs';
@@ -19,6 +21,15 @@ import { Upload } from '@aws-sdk/lib-storage';
 /** Nombre de lignes lues par page pour les grosses tables (pagination cursor). */
 const BACKUP_PAGE_SIZE = 5000;
 
+// Fenêtre "calme" attendue avant une sauvegarde AUTOMATIQUE (planifiée) —
+// pas appliqué au déclenchement manuel, qui reste immédiat (intention
+// explicite de l'admin). Seuil volontairement conservateur : mieux vaut
+// retarder un peu une sauvegarde planifiée que la faire tourner en même
+// temps qu'un pic de trafic + scraper/checker (cause des crashes en prod).
+const BACKUP_MAX_ACTIVE_THREADS = 100;
+const BACKUP_QUIET_WINDOW_MAX_WAIT_MS = 20 * 60_000;
+const BACKUP_QUIET_WINDOW_POLL_MS = 15_000;
+
 const bigIntSafe = (v: unknown): unknown => (typeof v === 'bigint' ? v.toString() : v);
 
 @Injectable()
@@ -35,7 +46,40 @@ export class BackupService implements OnModuleInit {
     private readonly prisma: PrismaService,
     private readonly settings: SettingsService,
     private readonly schedulerRegistry: SchedulerRegistry,
+    private readonly jobs: JobCoordinatorService,
+    private readonly engine: ProxyServerService,
   ) {}
+
+  /**
+   * Attend une fenêtre "calme" avant une sauvegarde AUTOMATIQUE : scraper et
+   * checker à l'arrêt, et charge proxy raisonnablement basse. Abandonne après
+   * `BACKUP_QUIET_WINDOW_MAX_WAIT_MS` et lance quand même (mieux vaut une
+   * sauvegarde en retard/sous charge qu'une sauvegarde qui saute).
+   */
+  private async waitForQuietWindow(): Promise<void> {
+    const deadline = Date.now() + BACKUP_QUIET_WINDOW_MAX_WAIT_MS;
+    let waited = false;
+    for (;;) {
+      const busyWithJobs = this.jobs.isAnyRunning();
+      const activeThreads = Array.from(this.engine.getActiveThreads().values()).reduce((a, b) => a + b, 0);
+      const busyWithTraffic = activeThreads > BACKUP_MAX_ACTIVE_THREADS;
+      if (!busyWithJobs && !busyWithTraffic) break;
+      if (Date.now() >= deadline) {
+        this.logger.warn(
+          `Fenêtre calme non trouvée après ${Math.round(BACKUP_QUIET_WINDOW_MAX_WAIT_MS / 60_000)}min — sauvegarde planifiée lancée quand même (jobs actifs: ${busyWithJobs}, threads actifs: ${activeThreads}).`,
+        );
+        return;
+      }
+      if (!waited) {
+        this.logger.log(
+          `Sauvegarde planifiée en attente d'une fenêtre calme (jobs actifs: ${busyWithJobs}, threads actifs: ${activeThreads}/${BACKUP_MAX_ACTIVE_THREADS})...`,
+        );
+        waited = true;
+      }
+      await new Promise((r) => setTimeout(r, BACKUP_QUIET_WINDOW_POLL_MS));
+    }
+    if (waited) this.logger.log('Fenêtre calme trouvée — sauvegarde planifiée démarre.');
+  }
 
   async onModuleInit() {
     // Schedule cron job on startup
@@ -71,6 +115,7 @@ export class BackupService implements OnModuleInit {
         const startedAt = Date.now();
         this.logger.log(`Triggering scheduled database backup (storage: ${storageType})...`);
         try {
+          await this.waitForQuietWindow();
           const filename = await this.runBackup();
           this.logger.log(`Scheduled backup finished in ${Date.now() - startedAt}ms: ${filename}`);
         } catch (err) {
