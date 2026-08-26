@@ -2,6 +2,7 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../../database/prisma.service';
 import { SettingsService } from '../../config/settings.service';
+import { JobCoordinatorService } from '../../common/job-coordinator.service';
 import { CountryMapper, GeoResolver } from './geo/geo.service';
 import { BaseProxyProvider } from './providers/base.provider';
 import { GroqAIProvider } from './providers/groq-ai.provider';
@@ -34,6 +35,7 @@ export class ScraperService implements OnModuleInit {
     private readonly prisma: PrismaService,
     private readonly geo: GeoResolver,
     private readonly settings: SettingsService,
+    private readonly jobs: JobCoordinatorService,
   ) {}
 
   /**
@@ -63,6 +65,12 @@ export class ScraperService implements OnModuleInit {
       this.logger.warn('Scrape already running; skipping.');
       return;
     }
+    // Ne jamais tourner en même temps que le checker : les deux peuvent
+    // charger/traiter jusqu'à ~150k proxies chacun, et le cumul a déjà causé
+    // des crashes process (RAM/CPU) en prod. On attend que le checker se
+    // libère plutôt que de risquer le chevauchement.
+    const acquired = await this.jobs.acquireExclusive('scraper', ['checker']);
+    if (!acquired) return;
     this.running = true;
     try {
       this.logger.log('Starting proxy scraping cycle...');
@@ -165,6 +173,7 @@ export class ScraperService implements OnModuleInit {
       this.backgroundGeo().catch((e) => this.logger.error(`Background geo failed: ${e}`));
     } finally {
       this.running = false;
+      this.jobs.release('scraper');
     }
   }
 
