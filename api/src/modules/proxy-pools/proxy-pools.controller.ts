@@ -65,4 +65,14 @@ export class ProxyPoolsController {
       .catch(() => undefined);
     return { status: 'success' };
   }
+
+  @Delete(':id/proxies')
+  @ApiOperation({ summary: 'Supprime TOUS les proxies de cette catégorie (la pool elle-même est conservée)' })
+  async removeAllProxies(@Param('id') id: string, @CurrentUser() me: JwtUser) {
+    const result = await this.service.removeAllProxies(id);
+    void this.auditService
+      .log({ userId: me.id, userEmail: me.email, action: 'pool.clear_proxies', target: id, details: { count: result.count } })
+      .catch(() => undefined);
+    return { status: 'success', ...result };
+  }
 }

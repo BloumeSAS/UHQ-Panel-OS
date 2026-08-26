@@ -153,4 +153,18 @@ export class ProxyPoolsService {
       throw new NotFoundException('Pool introuvable');
     }
   }
+
+  /**
+   * Supprime TOUS les `BackendProxy` de cette pool (bouton "Vider la
+   * catégorie" du panel) — ne touche pas la pool elle-même (config, port,
+   * domaine, stats simulées conservés). `pool` est dénormalisé (simple
+   * string, pas de FK) sur `BackendProxy` : la suppression de la pool ne
+   * nettoie jamais ses proxies, il fallait une action dédiée pour ça.
+   */
+  async removeAllProxies(id: string): Promise<{ count: number }> {
+    const pool = await this.prisma.proxyPool.findUnique({ where: { id } });
+    if (!pool) throw new NotFoundException('Pool introuvable');
+    const result = await this.prisma.backendProxy.deleteMany({ where: { pool: pool.name } });
+    return { count: result.count };
+  }
 }
