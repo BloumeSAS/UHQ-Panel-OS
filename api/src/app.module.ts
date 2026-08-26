@@ -13,6 +13,7 @@ import { PrismaModule } from './database/prisma.module';
 import { DatabaseModule } from './database/database.module';
 import { SettingsModule } from './config/settings.module';
 import { SecurityModule } from './common/security.module';
+import { JobCoordinatorModule } from './common/job-coordinator.module';
 import { HealthController } from './common/health.controller';
 
 // --- Modules métier (feature-based) -----------------------------------------
@@ -60,6 +61,7 @@ function resolveWebDist(): string {
     DatabaseModule,
     SettingsModule,
     SecurityModule,
+    JobCoordinatorModule,
     MailModule,
     BackupModule,
     NotificationsModule,
