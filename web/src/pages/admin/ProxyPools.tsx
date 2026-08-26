@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2, Pencil, Layers, RefreshCw } from 'lucide-react';
+import { Plus, Trash2, Pencil, Layers, RefreshCw, Eraser } from 'lucide-react';
 import { api, apiError } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import {
@@ -75,6 +75,15 @@ export default function ProxyPools() {
   const del = useMutation({
     mutationFn: (id: string) => api.delete(`/proxy-pools/${id}`),
     onSuccess: () => { invalidate(); toast.success(t('pools.deleted')); },
+    onError: (e: any) => toast.error(e.response?.data?.message || t('common.error')),
+  });
+
+  const clearProxies = useMutation({
+    mutationFn: (id: string) => api.delete(`/proxy-pools/${id}/proxies`),
+    onSuccess: (res: any) => {
+      invalidate();
+      toast.success(t('pools.proxiesCleared').replace('{n}', String(res.data?.count ?? 0)));
+    },
     onError: (e: any) => toast.error(e.response?.data?.message || t('common.error')),
   });
 
@@ -164,6 +173,14 @@ export default function ProxyPools() {
                   <TD className="flex justify-end gap-1">
                     <Button variant="ghost" size="icon" onClick={() => setEditing(pool)}>
                       <Pencil className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      title={t('pools.clearProxies')}
+                      onClick={() => confirm(t('pools.confirmClearProxies').replace('{name}', pool.name)) && clearProxies.mutate(pool.id)}
+                    >
+                      <Eraser className="h-4 w-4 text-orange-500" />
                     </Button>
                     <Button
                       variant="ghost"
