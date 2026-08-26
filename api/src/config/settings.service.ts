@@ -22,6 +22,12 @@ export const SETTING_DEFS = {
   publicProxyPort: { def: '990', env: 'PUBLIC_PROXY_PORT', secret: false },
   proxyTimeout: { def: '3', env: 'PROXY_TIMEOUT', secret: false },
   proxyRacingTimeout: { def: '1.5', env: 'PROXY_RACING_TIMEOUT', secret: false },
+  // Ferme un tunnel client↔upstream sans AUCUNE donnée échangée dans ce délai
+  // (s). Sans ça, un client qui disparaît sans FIN/RST propre (PC éteint
+  // brutalement, réseau qui tombe) laisse le socket ouvert côté Node
+  // indéfiniment — observé en prod : des threads restés "actifs" plus d'un
+  // jour après extinction du poste client.
+  connectionIdleTimeout: { def: '600', env: 'CONNECTION_IDLE_TIMEOUT', secret: false },
   scrapeInterval: { def: '3600', env: 'SCRAPE_INTERVAL', secret: false },
   // Adaptive scaling : si le pool de proxies fonctionnels tombe sous ce seuil,
   // un rescrape anticipé est déclenché (toutes les 60s) au lieu d'attendre
