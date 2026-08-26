@@ -351,6 +351,9 @@ export default function Settings() {
               <F label={t('settings.proxyRacingTimeout')} hint={t('settings.proxyRacingTimeoutHint')}>
                 <Input value={form.proxyRacingTimeout ?? ''} onChange={(e) => set('proxyRacingTimeout', e.target.value)} placeholder="1.5" />
               </F>
+              <F label={t('settings.connectionIdleTimeout')} hint={t('settings.connectionIdleTimeoutHint')}>
+                <Input value={form.connectionIdleTimeout ?? ''} onChange={(e) => set('connectionIdleTimeout', e.target.value)} placeholder="600" />
+              </F>
             </Grid>
 
             <ProxyOverridesSummary />
