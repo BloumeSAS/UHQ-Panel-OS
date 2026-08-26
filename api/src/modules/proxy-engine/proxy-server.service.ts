@@ -58,6 +58,12 @@ export class ProxyServerService implements OnModuleDestroy {
   private get racingTimeoutMs(): number {
     return this.settings.getNumber('proxyRacingTimeout') * 1000 || RACE_TIMEOUT_DEFAULT_MS;
   }
+  // Ferme un tunnel sans aucune donnée échangée depuis ce délai — récupère les
+  // connexions "mortes" (client disparu sans FIN/RST, ex. PC éteint) qui,
+  // sans ça, restaient comptées comme actives indéfiniment.
+  private get idleTimeoutMs(): number {
+    return this.settings.getNumber('connectionIdleTimeout') * 1000 || 600_000;
+  }
   // Proxy résidentiel de secours (fallback) : config DB (fallback env).
   private get fallbackProxyUrl(): string | null {
     return this.settings.get('scraperProxy') || null;
@@ -672,6 +678,7 @@ export class ProxyServerService implements OnModuleDestroy {
           (chunk) => this.onChunk('sent', user.username, targetHost, chunk, firstReq && (firstReq = false, true)),
           (chunk) => this.onChunk('received', user.username, targetHost, chunk, false),
           user?.bandwidthLimit ?? undefined,
+          this.idleTimeoutMs,
         );
       } else {
         // Reconstruct & forward the buffered HTTP request, then pipe
@@ -1292,6 +1299,7 @@ export class ProxyServerService implements OnModuleDestroy {
       (chunk) => this.onChunk('sent', username, targetHost, chunk, false),
       (chunk) => this.onChunk('received', username, targetHost, chunk, false),
       user?.bandwidthLimit ?? undefined,
+      this.idleTimeoutMs,
     );
   }
 
