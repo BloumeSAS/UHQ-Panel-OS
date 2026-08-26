@@ -6,6 +6,7 @@ import { performHandshake, tcpConnect } from '../proxy-engine/handshake';
 import { UpstreamProxy } from '../proxy-engine/types';
 import { NotificationService } from '../notifications/notification.service';
 import { extractCleanIpPort, isValidIPv4 } from '../../common/utils/proxy-parse';
+import { JobCoordinatorService } from '../../common/job-coordinator.service';
 
 /**
  * Port of `app/proxy_engine/checker.py::ProxyChecker`. Pulls a large slice of
@@ -48,6 +49,7 @@ export class CheckerService implements OnModuleInit {
     private readonly prisma: PrismaService,
     private readonly settings: SettingsService,
     private readonly notificationService: NotificationService,
+    private readonly jobs: JobCoordinatorService,
   ) {}
 
   onModuleInit(): void {
@@ -56,6 +58,10 @@ export class CheckerService implements OnModuleInit {
 
   async runOnce(): Promise<void> {
     if (this.running) return;
+    // Ne jamais tourner en même temps que le scraper (cf. JobCoordinatorService) —
+    // les deux traitent jusqu'à ~150k proxies chacun, le cumul a déjà crashé le process.
+    const acquired = await this.jobs.acquireExclusive('checker', ['scraper']);
+    if (!acquired) return;
     this.running = true;
     this.totalCount = 0;
     this.processedCount = 0;
@@ -220,6 +226,7 @@ export class CheckerService implements OnModuleInit {
       this.lastRunProcessed = processed;
     } finally {
       this.running = false;
+      this.jobs.release('checker');
     }
   }
 
