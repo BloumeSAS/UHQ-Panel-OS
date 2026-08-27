@@ -67,12 +67,20 @@ export class ProxyPoolsController {
   }
 
   @Delete(':id/proxies')
-  @ApiOperation({ summary: 'Supprime TOUS les proxies de cette catégorie (la pool elle-même est conservée)' })
+  @ApiOperation({ summary: 'Déclenche la suppression de TOUS les proxies de cette catégorie EN TÂCHE DE FOND (la pool elle-même est conservée)' })
   async removeAllProxies(@Param('id') id: string, @CurrentUser() me: JwtUser) {
-    const result = await this.service.removeAllProxies(id);
-    void this.auditService
-      .log({ userId: me.id, userEmail: me.email, action: 'pool.clear_proxies', target: id, details: { count: result.count } })
-      .catch(() => undefined);
+    const result = this.service.triggerClearProxies(id);
+    if (result.started) {
+      void this.auditService
+        .log({ userId: me.id, userEmail: me.email, action: 'pool.clear_proxies', target: id })
+        .catch(() => undefined);
+    }
     return { status: 'success', ...result };
+  }
+
+  @Get(':id/proxies/clear-status')
+  @ApiOperation({ summary: 'État du vidage de catégorie en cours (polling panel)' })
+  async clearProxiesStatus(@Param('id') id: string) {
+    return { status: 'success', data: this.service.getClearStatus(id) };
   }
 }

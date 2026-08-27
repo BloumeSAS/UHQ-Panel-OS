@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { ProxyServerService } from '../proxy-engine/proxy-server.service';
 import { assertPortAvailable } from '../../common/utils/port-validation';
@@ -18,6 +18,8 @@ function rollAllCountries(countries: string[], min: number, max: number, priorit
 
 @Injectable()
 export class ProxyPoolsService {
+  private readonly logger = new Logger(ProxyPoolsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly engine: ProxyServerService,
@@ -154,17 +156,73 @@ export class ProxyPoolsService {
     }
   }
 
+  // Suivi en mémoire du "vidage" en cours par pool (pas de persistance
+  // nécessaire — un redémarrage remet simplement l'état à zéro, comme le
+  // suivi de sauvegarde manuelle dans BackupService).
+  private clearRuns = new Map<
+    string,
+    { running: boolean; deleted: number; startedAt: number; finishedAt?: number; error?: string }
+  >();
+
   /**
-   * Supprime TOUS les `BackendProxy` de cette pool (bouton "Vider la
-   * catégorie" du panel) — ne touche pas la pool elle-même (config, port,
-   * domaine, stats simulées conservés). `pool` est dénormalisé (simple
-   * string, pas de FK) sur `BackendProxy` : la suppression de la pool ne
-   * nettoie jamais ses proxies, il fallait une action dédiée pour ça.
+   * Déclenche la suppression de TOUS les `BackendProxy` de cette pool
+   * (bouton "Vider la catégorie" du panel) EN TÂCHE DE FOND, sans attendre
+   * la fin — même raison que `BackupService.triggerManualBackup` : sur une
+   * catégorie très fournie (scraper actif depuis longtemps, potentiellement
+   * des dizaines/centaines de milliers de lignes), attendre la fin avant de
+   * répondre HTTP peut dépasser le timeout du reverse-proxy devant l'API en
+   * prod (Traefik/Coolify) — observé : 500 générique sans diagnostic. Le
+   * panel poll désormais `getClearStatus()` pour suivre la progression réelle.
+   *
+   * La suppression elle-même se fait par lots de 5000 ids (pas un unique
+   * `deleteMany` géant) : chaque lot reste rapide même si la pool entière
+   * est énorme, et une erreur en cours de route n'annule pas ce qui a déjà
+   * été supprimé.
    */
-  async removeAllProxies(id: string): Promise<{ count: number }> {
-    const pool = await this.prisma.proxyPool.findUnique({ where: { id } });
-    if (!pool) throw new NotFoundException('Pool introuvable');
-    const result = await this.prisma.backendProxy.deleteMany({ where: { pool: pool.name } });
-    return { count: result.count };
+  triggerClearProxies(id: string): { started: boolean; message?: string } {
+    const existing = this.clearRuns.get(id);
+    if (existing?.running) {
+      return { started: false, message: 'Un vidage de cette catégorie est déjà en cours.' };
+    }
+    this.clearRuns.set(id, { running: true, deleted: 0, startedAt: Date.now() });
+    this.runClearProxies(id).catch(() => undefined);
+    return { started: true };
+  }
+
+  getClearStatus(id: string) {
+    return this.clearRuns.get(id) ?? { running: false, deleted: 0, startedAt: 0 };
+  }
+
+  private async runClearProxies(id: string): Promise<void> {
+    const state = this.clearRuns.get(id)!;
+    const BATCH_SIZE = 5000;
+    try {
+      const pool = await this.prisma.proxyPool.findUnique({ where: { id } });
+      if (!pool) throw new Error('Pool introuvable');
+
+      for (;;) {
+        const batch = await this.prisma.backendProxy.findMany({
+          where: { pool: pool.name },
+          select: { id: true },
+          take: BATCH_SIZE,
+        });
+        if (batch.length === 0) break;
+        const result = await this.prisma.backendProxy.deleteMany({
+          where: { id: { in: batch.map((p) => p.id) } },
+        });
+        state.deleted += result.count;
+        if (batch.length < BATCH_SIZE) break;
+      }
+      state.running = false;
+      state.finishedAt = Date.now();
+      this.logger.log(`Pool "${pool.name}" vidée : ${state.deleted} proxy(s) supprimé(s).`);
+    } catch (err: any) {
+      state.running = false;
+      state.finishedAt = Date.now();
+      state.error = String(err?.message ?? err);
+      this.logger.error(
+        `Échec du vidage de la pool ${id} (${state.deleted} déjà supprimés avant l'erreur) : ${state.error}`,
+      );
+    }
   }
 }
