@@ -140,7 +140,15 @@ export class ScraperSourcesController {
 
     for (const model of MODELS) {
       try {
-        const payload = {
+        // Les modèles `openai/gpt-oss-*` de Groq consomment des tokens de
+        // "raisonnement" caché AVANT de produire la réponse visible — avec un
+        // budget trop juste, tout `max_tokens` peut être englouti par ce
+        // raisonnement et ne rien laisser pour le contenu réel (`content`
+        // vide, mais réponse HTTP 200 normale). `reasoning_effort: 'low'`
+        // réduit ce raisonnement au minimum ; les modèles llama l'ignorent
+        // silencieusement (paramètre non reconnu par leur implémentation).
+        const isReasoningModel = model.startsWith('openai/gpt-oss');
+        const payload: Record<string, unknown> = {
           model,
           messages: [
             {
@@ -154,8 +162,10 @@ export class ScraperSourcesController {
             },
           ],
           temperature: 0,
-          max_tokens: 150,
+          max_tokens: 300,
         };
+        if (isReasoningModel) payload.reasoning_effort = 'low';
+
         const res = await request('https://api.groq.com/openai/v1/chat/completions', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
@@ -167,12 +177,13 @@ export class ScraperSourcesController {
         if (res.statusCode >= 400) {
           let detail = '';
           try { detail = JSON.stringify((await res.body.json() as any)?.error ?? ''); } catch {}
-          lastError = `HTTP ${res.statusCode}${detail ? ` — ${detail.slice(0, 200)}` : ''}`;
+          lastError = `[${model}] HTTP ${res.statusCode}${detail ? ` — ${detail.slice(0, 200)}` : ''}`;
           continue; // essaie le prochain modèle
         }
 
         const json = (await res.body.json()) as any;
-        const raw = (json?.choices?.[0]?.message?.content ?? '').trim();
+        const choice = json?.choices?.[0];
+        const raw = (choice?.message?.content ?? '').trim();
         const pattern = raw
           .replace(/^```[\w]*\n?/, '').replace(/\n?```$/, '')
           .replace(/^["'`]|["'`]$/g, '')
@@ -183,7 +194,7 @@ export class ScraperSourcesController {
         // passait le check try/catch et renvoyait un faux succès avec un
         // pattern vide, silencieusement inutilisable.
         if (!pattern) {
-          lastError = 'Réponse vide du modèle';
+          lastError = `[${model}] réponse vide (finish_reason: ${choice?.finish_reason ?? 'inconnu'})`;
           continue;
         }
 
@@ -194,16 +205,16 @@ export class ScraperSourcesController {
           // groupe (undefined si non capturé) — évite d'avoir à parser la regex à la main.
           groupCount = new RegExp(`${pattern}|`).exec('')!.length - 1;
         } catch {
-          lastError = `Pattern retourné invalide : ${pattern.slice(0, 100)}`;
+          lastError = `[${model}] pattern retourné invalide : ${pattern.slice(0, 100)}`;
           continue;
         }
         if (groupCount < 2) {
-          lastError = `Pattern retourné sans les 2 groupes de capture requis (IP/host + port) : ${pattern.slice(0, 100)}`;
+          lastError = `[${model}] pattern sans les 2 groupes de capture requis (IP/host + port) : ${pattern.slice(0, 100)}`;
           continue;
         }
         return { status: 'success', pattern };
       } catch (e) {
-        lastError = String((e as Error).message ?? e);
+        lastError = `[${model}] ${String((e as Error).message ?? e)}`;
       }
     }
 
