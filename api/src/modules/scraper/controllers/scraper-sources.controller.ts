@@ -178,8 +178,27 @@ export class ScraperSourcesController {
           .replace(/^["'`]|["'`]$/g, '')
           .trim();
 
-        try { new RegExp(pattern); } catch {
+        // Une chaîne vide est un regex JS VALIDE (`new RegExp('')` ne lève
+        // jamais) — sans ce garde-fou, une réponse vide/mal formée du modèle
+        // passait le check try/catch et renvoyait un faux succès avec un
+        // pattern vide, silencieusement inutilisable.
+        if (!pattern) {
+          lastError = 'Réponse vide du modèle';
+          continue;
+        }
+
+        let groupCount: number;
+        try {
+          // Astuce pour compter les groupes de capture réels : l'alternative
+          // vide "|" matche toujours, et le résultat contient une entrée par
+          // groupe (undefined si non capturé) — évite d'avoir à parser la regex à la main.
+          groupCount = new RegExp(`${pattern}|`).exec('')!.length - 1;
+        } catch {
           lastError = `Pattern retourné invalide : ${pattern.slice(0, 100)}`;
+          continue;
+        }
+        if (groupCount < 2) {
+          lastError = `Pattern retourné sans les 2 groupes de capture requis (IP/host + port) : ${pattern.slice(0, 100)}`;
           continue;
         }
         return { status: 'success', pattern };
