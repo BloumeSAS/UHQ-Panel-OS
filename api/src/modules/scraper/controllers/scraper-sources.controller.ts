@@ -130,8 +130,12 @@ export class ScraperSourcesController {
     }
 
     // ── Groq ──────────────────────────────────────────────────────────────────
-    // Modèles Groq actifs en 2026 (du plus capable au plus rapide)
-    const MODELS = ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'gemma2-9b-it'];
+    // Modèles Groq actifs (du plus capable au plus rapide) — `gemma2-9b-it`
+    // a été décommissionné par Groq (HTTP 400 "no longer supported"), retiré
+    // au profit de `openai/gpt-oss-20b`. Vérifier
+    // https://console.groq.com/docs/deprecations en cas de nouvelle panne
+    // similaire — Groq retire des modèles sans préavis long.
+    const MODELS = ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'openai/gpt-oss-20b'];
     let lastError = '';
 
     for (const model of MODELS) {
