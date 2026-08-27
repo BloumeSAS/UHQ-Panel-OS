@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, Pencil, Layers, RefreshCw, Eraser } from 'lucide-react';
 import { api, apiError } from '@/lib/api';
 import { useT } from '@/lib/i18n';
+import { cn } from '@/lib/utils';
 import {
   Badge,
   Button,
@@ -78,11 +79,42 @@ export default function ProxyPools() {
     onError: (e: any) => toast.error(e.response?.data?.message || t('common.error')),
   });
 
+  const [clearingIds, setClearingIds] = useState<Set<string>>(new Set());
+
+  const pollClearStatus = (id: string) => {
+    const poll = async () => {
+      try {
+        const { data } = await api.get(`/proxy-pools/${id}/proxies/clear-status`);
+        const st = data.data;
+        if (st.running) {
+          setTimeout(poll, 2000);
+          return;
+        }
+        setClearingIds((prev) => { const next = new Set(prev); next.delete(id); return next; });
+        if (st.error) {
+          toast.error(`${t('common.error')}: ${st.error}`);
+        } else {
+          toast.success(t('pools.proxiesCleared').replace('{n}', String(st.deleted ?? 0)));
+        }
+        invalidate();
+      } catch {
+        setClearingIds((prev) => { const next = new Set(prev); next.delete(id); return next; });
+        toast.error(t('common.error'));
+      }
+    };
+    setTimeout(poll, 2000);
+  };
+
   const clearProxies = useMutation({
     mutationFn: (id: string) => api.delete(`/proxy-pools/${id}/proxies`),
-    onSuccess: (res: any) => {
-      invalidate();
-      toast.success(t('pools.proxiesCleared').replace('{n}', String(res.data?.count ?? 0)));
+    onSuccess: (res: any, id: string) => {
+      if (res.data?.started) {
+        setClearingIds((prev) => new Set(prev).add(id));
+        toast.success(t('pools.clearStarted'));
+        pollClearStatus(id);
+      } else {
+        toast.error(res.data?.message || t('common.error'));
+      }
     },
     onError: (e: any) => toast.error(e.response?.data?.message || t('common.error')),
   });
@@ -178,9 +210,10 @@ export default function ProxyPools() {
                       variant="ghost"
                       size="icon"
                       title={t('pools.clearProxies')}
+                      disabled={clearingIds.has(pool.id)}
                       onClick={() => confirm(t('pools.confirmClearProxies').replace('{name}', pool.name)) && clearProxies.mutate(pool.id)}
                     >
-                      <Eraser className="h-4 w-4 text-orange-500" />
+                      <Eraser className={cn('h-4 w-4 text-orange-500', clearingIds.has(pool.id) && 'animate-pulse')} />
                     </Button>
                     <Button
                       variant="ghost"
