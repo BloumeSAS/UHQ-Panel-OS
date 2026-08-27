@@ -726,6 +726,7 @@ const en: Language = {
     'pools.clearProxies': 'Clear category (delete all its proxies)',
     'pools.confirmClearProxies': 'Delete ALL proxies in category "{name}"? The category itself will be kept. This cannot be undone.',
     'pools.proxiesCleared': '{n} proxy(ies) deleted from the category.',
+    'pools.clearStarted': 'Clearing started in the background — you\'ll be notified when it\'s done.',
     'pools.editTitle': 'Edit category',
     'pool.filterByPool': 'Category',
   },
