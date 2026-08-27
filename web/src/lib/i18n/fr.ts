@@ -726,6 +726,7 @@ const fr: Language = {
     'pools.clearProxies': 'Vider la catégorie (supprimer tous ses proxies)',
     'pools.confirmClearProxies': 'Supprimer TOUS les proxies de la catégorie "{name}" ? La catégorie elle-même sera conservée. Action irréversible.',
     'pools.proxiesCleared': '{n} proxy(s) supprimé(s) de la catégorie.',
+    'pools.clearStarted': 'Vidage lancé en arrière-plan — vous serez notifié à la fin.',
     'pools.editTitle': 'Modifier la catégorie',
     'pool.filterByPool': 'Catégorie',
   },
