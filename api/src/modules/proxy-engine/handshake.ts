@@ -9,6 +9,16 @@ import { UpstreamProxy } from './types';
 export function tcpConnect(host: string, port: number, timeoutMs: number): Promise<Socket> {
   return new Promise((resolve, reject) => {
     const socket = netConnect({ host, port });
+    // Filet de sécurité PERMANENT : le `.once('error', ...)` ci-dessous ne
+    // couvre que la phase de connexion et s'auto-retire après son premier
+    // déclenchement (même une fois `settled`, où il ne fait rien). Une erreur
+    // socket ultérieure (ex. ECONNRESET pendant le relais réel) se retrouve
+    // alors sans AUCUN listener 'error' — Node la relance en exception non
+    // interceptée, qui remonte jusqu'au process (observé en prod : crashs
+    // `read ECONNRESET` répétés). Un listener permanent garantit qu'il y en a
+    // toujours au moins un, quels que soient les listeners ponctuels ajoutés
+    // ensuite (readUntil, handshake, bidirectionalPipe).
+    socket.on('error', () => {});
     let settled = false;
     const t = setTimeout(() => {
       if (settled) return;
