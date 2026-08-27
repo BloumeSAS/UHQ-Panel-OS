@@ -408,6 +408,12 @@ export class ProxyServerService implements OnModuleDestroy {
 
   private async handleClient(client: Socket, boundPort: number): Promise<void> {
     client.setNoDelay(true);
+    // Filet de sécurité PERMANENT contre les erreurs socket (ECONNRESET,
+    // etc.) — sans listener 'error' toujours présent, Node relance l'erreur
+    // comme exception non interceptée dès qu'aucun listener ponctuel
+    // (readUntil, handshake, bidirectionalPipe) n'est attaché à ce moment
+    // précis. Voir le même correctif sur les sockets upstream (tcpConnect).
+    client.on('error', () => {});
     let user: any | null = null;
     // Username under which we actually incremented activeThreads. Stays null
     // when we never counted this connection (auth failure, 429 rejection),
