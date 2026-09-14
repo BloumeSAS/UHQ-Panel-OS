@@ -58,6 +58,7 @@ interface Proxy {
   latency: number | null;
   url?: string;
   pool?: string | null;
+  country_format: string | null;
 }
 
 type StatusFilter = 'all' | 'working' | 'dead' | 'permanent';
@@ -138,6 +139,37 @@ export default function Pool() {
   const blacklist = async (id: string, value: boolean) => {
     await api.patch(`/monitoring/proxies/${id}/blacklist`, { blacklisted: value });
     invalidate();
+  };
+
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [applyingFormat, setApplyingFormat] = useState(false);
+  const toggleSelected = (id: string) => {
+    setSelectedIds((s) => {
+      const next = new Set(s);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+  const applyCountryFormat = async (countryFormat: string | null) => {
+    if (selectedIds.size === 0) return;
+    setApplyingFormat(true);
+    try {
+      const { data: res } = await api.patch('/monitoring/proxies/country-format', {
+        ids: Array.from(selectedIds),
+        countryFormat,
+      });
+      if (res.status === 'error') {
+        toast.error(res.message);
+        return;
+      }
+      toast.success(t('pool.countryFormatApplied').replace('{n}', String(res.updated ?? selectedIds.size)));
+      setSelectedIds(new Set());
+      invalidate();
+    } catch (err) {
+      toast.error(apiError(err));
+    } finally {
+      setApplyingFormat(false);
+    }
   };
 
   const [testingIds, setTestingIds] = useState<Set<string>>(new Set());
@@ -440,6 +472,15 @@ export default function Pool() {
         </div>
       </div>
 
+      {selectedIds.size > 0 && (
+        <BulkCountryFormatBar
+          count={selectedIds.size}
+          busy={applyingFormat}
+          onApply={applyCountryFormat}
+          onCancel={() => setSelectedIds(new Set())}
+        />
+      )}
+
       {/* Main Table */}
       <Card className="border border-border/80 bg-background/30 backdrop-blur-sm">
         <CardContent className="p-0">
@@ -447,6 +488,13 @@ export default function Pool() {
             <Table>
               <THead>
                 <TR>
+                  <TH className="w-8">
+                    <input
+                      type="checkbox"
+                      checked={!!filteredData?.length && selectedIds.size === filteredData.length}
+                      onChange={(e) => setSelectedIds(e.target.checked ? new Set(filteredData?.map((p) => p.id)) : new Set())}
+                    />
+                  </TH>
                   <TH className="w-10"></TH>
                   <TH>Hôte (Host/IP)</TH>
                   <TH>Port</TH>
@@ -467,6 +515,9 @@ export default function Pool() {
                   const permDead = isPermanentDead(p);
                   return (
                     <TR key={p.id} className={`hover:bg-muted/30 transition-colors ${permDead ? 'opacity-60' : ''}`}>
+                      <TD>
+                        <input type="checkbox" checked={selectedIds.has(p.id)} onChange={() => toggleSelected(p.id)} />
+                      </TD>
                       <TD>
                         <Button
                           variant="ghost"
@@ -499,10 +550,22 @@ export default function Pool() {
                         </Badge>
                       </TD>
                       <TD className="text-sm">
-                        <span className="mr-1.5" title={p.country || 'Unknown'}>
-                          {getFlagEmoji(p.country)}
-                        </span>
-                        <span className="font-mono text-xs font-semibold">{p.country || '—'}</span>
+                        {p.country_format ? (
+                          <Badge
+                            variant="outline"
+                            className="font-mono text-[10px] bg-primary/5 text-primary border-primary/20"
+                            title={`${t('pool.countrySelectable')}: ${p.country_format}`}
+                          >
+                            {p.country_format}
+                          </Badge>
+                        ) : (
+                          <>
+                            <span className="mr-1.5" title={p.country || 'Unknown'}>
+                              {getFlagEmoji(p.country)}
+                            </span>
+                            <span className="font-mono text-xs font-semibold">{p.country || '—'}</span>
+                          </>
+                        )}
                       </TD>
                       <TD className="text-xs">
                         {p.provider === 'Manual' ? (
@@ -592,7 +655,7 @@ export default function Pool() {
                 })}
                 {!filteredData?.length && (
                   <TR>
-                    <TD colSpan={11} className="py-12 text-center text-muted-foreground">
+                    <TD colSpan={12} className="py-12 text-center text-muted-foreground">
                       {t('common.none')}
                     </TD>
                   </TR>
@@ -632,6 +695,62 @@ export default function Pool() {
   );
 }
 
+const COUNTRY_FORMAT_EXAMPLES = [
+  { format: '{user}__country__{country}', desc: 'Défaut du fallback résidentiel — double underscore, pays en minuscule' },
+  { format: '{user}-country-{country}', desc: 'Tiret au lieu de underscore' },
+  { format: 'dc-{country}', desc: "Ignore le username d'origine, reconstruit entièrement (ex. \"dc-any\" → \"dc-us\")" },
+  { format: '{user}-{COUNTRY}', desc: 'Pays en MAJUSCULE, simple suffixe (ex. "rotating" → "rotating-FR")' },
+];
+
+/** Barre flottante : applique/retire un gabarit "pays sélectionnable" sur la sélection courante de proxies. */
+function BulkCountryFormatBar({
+  count, busy, onApply, onCancel,
+}: {
+  count: number;
+  busy: boolean;
+  onApply: (format: string | null) => void;
+  onCancel: () => void;
+}) {
+  const t = useT();
+  const [format, setFormat] = useState('');
+
+  return (
+    <div className="sticky top-2 z-10 rounded-lg border border-primary/30 bg-primary/5 backdrop-blur-sm p-3 space-y-2 shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm font-medium">{t('pool.bulkFormatSelected').replace('{n}', String(count))}</p>
+        <Button variant="ghost" size="sm" onClick={onCancel} className="h-7 text-xs">{t('common.cancel')}</Button>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <Input
+          value={format}
+          onChange={(e) => setFormat(e.target.value)}
+          placeholder="{user}-country-{country}"
+          className="font-mono text-xs h-8 max-w-xs"
+        />
+        <Button size="sm" className="h-8" disabled={busy || !format} onClick={() => onApply(format)}>
+          {t('pool.bulkFormatApply')}
+        </Button>
+        <Button size="sm" variant="outline" className="h-8" disabled={busy} onClick={() => onApply(null)}>
+          {t('pool.bulkFormatRemove')}
+        </Button>
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {COUNTRY_FORMAT_EXAMPLES.map((ex) => (
+          <button
+            key={ex.format}
+            type="button"
+            title={ex.desc}
+            onClick={() => setFormat(ex.format)}
+            className="rounded-full border border-dashed px-2 py-0.5 text-[11px] font-mono hover:bg-muted transition-colors"
+          >
+            {ex.format}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function ImportDialog({ onDone }: { onDone: () => void }) {
   const t = useT();
   const [open, setOpen] = useState(false);
@@ -642,13 +761,6 @@ function ImportDialog({ onDone }: { onDone: () => void }) {
   const [countryFormat, setCountryFormat] = useState('');
   const [result, setResult] = useState('');
   const [busy, setBusy] = useState(false);
-
-  const COUNTRY_FORMAT_EXAMPLES = [
-    { format: '{user}__country__{country}', desc: 'Défaut du fallback résidentiel — double underscore, pays en minuscule' },
-    { format: '{user}-country-{country}', desc: 'Tiret au lieu de underscore' },
-    { format: 'dc-{country}', desc: "Ignore le username d'origine, reconstruit entièrement (ex. \"dc-any\" → \"dc-us\")" },
-    { format: '{user}-{COUNTRY}', desc: 'Pays en MAJUSCULE, simple suffixe (ex. "rotating" → "rotating-FR")' },
-  ];
 
   const { data: pools } = useQuery({
     queryKey: ['proxy-pools'],
