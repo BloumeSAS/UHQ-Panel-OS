@@ -1120,13 +1120,16 @@ export class ProxyServerService implements OnModuleDestroy {
   /**
    * Applique un gabarit d'injection de pays dans un username : {user} → le
    * username d'origine, {country}/{COUNTRY} → le pays cible (en/minuscule
-   * ou MAJUSCULE), premier code si plusieurs pays séparés par virgule.
+   * ou MAJUSCULE) — tiré AU HASARD parmi les codes séparés par virgule s'il
+   * y en a plusieurs (ex. "IT,FR,US"). Avant, seul le premier code de la
+   * liste était jamais utilisé, quel que soit le nombre de requêtes.
    * Utilisé par le fallback résidentiel (pool.fallbackCountryFormat) ET par
    * les proxies "pays sélectionnable" du pool (BackendProxy.countryFormat) —
    * même syntaxe de gabarit partout.
    */
   private static renderCountryFormat(format: string, originalUser: string, country: string): string {
-    const target = country.split(',')[0].trim();
+    const codes = country.split(',').map((c) => c.trim()).filter(Boolean);
+    const target = codes[Math.floor(Math.random() * codes.length)] ?? country.trim();
     return format
       .replace(/\{user\}/g, originalUser)
       .replace(/\{COUNTRY\}/g, target.toUpperCase())
