@@ -200,6 +200,7 @@ export class ProxyServerService implements OnModuleDestroy {
             port: true,
             country: true,
             pool: true,
+            countryFormat: true,
             successCount: true,
             failureCount: true,
             averageLatency: true,
@@ -602,7 +603,7 @@ export class ProxyServerService implements OnModuleDestroy {
       for (let attempt = 0; attempt < 2 && !winner; attempt++) {
         const proxiesToTry: UpstreamProxy[] = [];
         if (attempt === 0 && stickyProxyObj && stickyProxyObj.isWorking !== false) {
-          proxiesToTry.push(stickyProxyObj);
+          proxiesToTry.push(this.applyCountrySelector(stickyProxyObj, requestedCountry));
         } else if (customUpstreams) {
           // Liste privée : on essaie les variantes DANS L'ORDRE (HTTP d'abord),
           // de façon SÉQUENTIELLE (cf. trySequential plus bas) — pas en race
@@ -620,7 +621,7 @@ export class ProxyServerService implements OnModuleDestroy {
           for (let i = 0; i < NUM_RACERS; i++) {
             const p = await this.getUpstreamProxy(requestedCountry, excluded, effectivePool);
             if (p) {
-              proxiesToTry.push(p as UpstreamProxy);
+              proxiesToTry.push(this.applyCountrySelector(p as UpstreamProxy, requestedCountry));
               excluded.push(p.id);
             }
           }
@@ -1116,6 +1117,40 @@ export class ProxyServerService implements OnModuleDestroy {
     return score;
   }
 
+  /**
+   * Applique un gabarit d'injection de pays dans un username : {user} → le
+   * username d'origine, {country}/{COUNTRY} → le pays cible (en/minuscule
+   * ou MAJUSCULE), premier code si plusieurs pays séparés par virgule.
+   * Utilisé par le fallback résidentiel (pool.fallbackCountryFormat) ET par
+   * les proxies "pays sélectionnable" du pool (BackendProxy.countryFormat) —
+   * même syntaxe de gabarit partout.
+   */
+  private static renderCountryFormat(format: string, originalUser: string, country: string): string {
+    const target = country.split(',')[0].trim();
+    return format
+      .replace(/\{user\}/g, originalUser)
+      .replace(/\{COUNTRY\}/g, target.toUpperCase())
+      .replace(/\{country\}/g, target.toLowerCase());
+  }
+
+  /**
+   * Réécrit à la volée le username d'un proxy "pays sélectionnable"
+   * (`countryFormat` renseigné) pour matcher le pays demandé — no-op si le
+   * proxy n'a pas de gabarit, si aucun pays n'est demandé, ou si le proxy
+   * n'a pas d'identifiants embarqués. Le proxy retourné par `getUpstreamProxy`
+   * / résolu depuis une session sticky garde son username "générique" tel
+   * quel tant qu'on ne passe pas par ici.
+   */
+  private applyCountrySelector(upstream: UpstreamProxy, requestedCountry: string | null): UpstreamProxy {
+    if (!upstream.countryFormat || !requestedCountry || !upstream.auth) return upstream;
+    const sepIdx = upstream.auth.indexOf(':');
+    if (sepIdx === -1) return upstream;
+    const origUser = upstream.auth.slice(0, sepIdx);
+    const pass = upstream.auth.slice(sepIdx + 1);
+    const newUser = ProxyServerService.renderCountryFormat(upstream.countryFormat, origUser, requestedCountry);
+    return { ...upstream, auth: `${newUser}:${pass}` };
+  }
+
   /** Tirage pondéré (roulette wheel) parmi une liste selon leur trust score. */
   private weightedPick<T extends { id: string }>(items: T[]): T | null {
     if (items.length === 0) return null;
@@ -1149,7 +1184,11 @@ export class ProxyServerService implements OnModuleDestroy {
       if (poolName) pool = pool.filter((p) => p.pool === poolName);
       if (country) {
         const countries = country.split(',').map((c) => c.trim().toUpperCase());
-        pool = pool.filter((p) => p.country && countries.includes(p.country));
+        // Un proxy "pays sélectionnable" (countryFormat renseigné) matche
+        // n'importe quel pays demandé — son username est réécrit à la volée
+        // plus bas (cf. applyCountrySelector), son `country` stocké n'a pas
+        // à correspondre (souvent null/générique pour ce genre de proxy).
+        pool = pool.filter((p) => (p.country && countries.includes(p.country)) || !!p.countryFormat);
       }
       if (excludeIds.length > 0) pool = pool.filter((p) => !excludeIds.includes(p.id));
       if (pool.length > 0) {
@@ -1178,9 +1217,12 @@ export class ProxyServerService implements OnModuleDestroy {
     if (poolName) where.pool = poolName;
     if (excludeIds.length > 0) where.id = { notIn: excludeIds };
     if (country) {
-      where.country = country.includes(',')
+      const countryClause = country.includes(',')
         ? { in: country.split(',').map((c) => c.trim().toUpperCase()) }
         : country.toUpperCase();
+      // Même règle que le cache mémoire ci-dessus : un proxy "pays
+      // sélectionnable" matche n'importe quel filtre pays.
+      where.OR = [{ country: countryClause }, { countryFormat: { not: null } }];
     }
     // Pas de tri par `successCount` ici non plus (même raison que dans
     // `loadProxyPoolCache` : ça exclurait à jamais les proxies neufs de ce
@@ -1216,10 +1258,9 @@ export class ProxyServerService implements OnModuleDestroy {
       // Residential fallback: inject country in username -> "user__country__xx:pass@host"
       // (ou le format custom de la pool, cf. doc ci-dessus).
       if (country && u.username) {
-        const target = country.split(',')[0].trim().toLowerCase();
         const decodedUser = decodeURIComponent(u.username);
         const format = (poolName && this.poolFallbackFormatMap.get(poolName)) || '{user}__country__{country}';
-        u.username = format.replace('{user}', decodedUser).replace('{country}', target);
+        u.username = ProxyServerService.renderCountryFormat(format, decodedUser, country);
         urlStr = u.toString();
       }
       const parsed = new URL(urlStr);
