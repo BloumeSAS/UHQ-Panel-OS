@@ -512,7 +512,14 @@ export class BackupService implements OnModuleInit {
   /**
    * Restore database from a specific file.
    */
-  async restoreBackup(filename: string): Promise<void> {
+  async restoreBackup(rawFilename: string): Promise<void> {
+    // `filename` vient directement du body de la requête admin
+    // (POST /backup/restore) et était concaténé tel quel dans un
+    // `path.join` — un nom comme `../../../../etc/passwd` sort du
+    // répertoire de backups. `path.basename` neutralise tout séparateur
+    // de chemin (y compris `..`), donc le fichier lu reste toujours
+    // dans `backupLocalPath` quel que soit ce qu'envoie le client.
+    const filename = path.basename(rawFilename);
     let content = '';
     const storageType = this.settings.get('backupStorageType') || 'local';
 
@@ -750,7 +757,10 @@ export class BackupService implements OnModuleInit {
   /**
    * Delete a backup.
    */
-  async deleteBackup(filename: string): Promise<void> {
+  async deleteBackup(rawFilename: string): Promise<void> {
+    // Même raison que dans restoreBackup : neutralise toute traversée de
+    // chemin dans le nom de fichier fourni par la requête admin.
+    const filename = path.basename(rawFilename);
     const storageType = this.settings.get('backupStorageType') || 'local';
 
     if (storageType === 's3') {
