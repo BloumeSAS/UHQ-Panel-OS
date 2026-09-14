@@ -375,10 +375,10 @@ export class PanelMonitoringController {
       return { status: 'success', imported: 0, message: 'Aucun proxy valide détecté' };
     }
     const countryFormat = body.countryFormat?.trim() || null;
-    if (countryFormat && (!countryFormat.includes('{user}') || !countryFormat.includes('{country}'))) {
+    if (countryFormat && !countryFormat.includes('{country}') && !countryFormat.includes('{COUNTRY}')) {
       return {
         status: 'error',
-        message: 'Le format "pays sélectionnable" doit contenir exactement {user} et {country}.',
+        message: 'Le format "pays sélectionnable" doit contenir {country} (ou {COUNTRY}). {user} est optionnel.',
       };
     }
     const forceProto = body?.protocol?.toLowerCase();
@@ -514,10 +514,10 @@ export class PanelMonitoringController {
   ) {
     if (!body.ids?.length) throw new BadRequestException('Aucun proxy sélectionné');
     const format = body.countryFormat?.trim() || null;
-    if (format && (!format.includes('{user}') || !format.includes('{country}'))) {
+    if (format && !format.includes('{country}') && !format.includes('{COUNTRY}')) {
       return {
         status: 'error',
-        message: 'Le format "pays sélectionnable" doit contenir exactement {user} et {country}.',
+        message: 'Le format "pays sélectionnable" doit contenir {country} (ou {COUNTRY}). {user} est optionnel.',
       };
     }
     const res = await this.prisma.backendProxy.updateMany({

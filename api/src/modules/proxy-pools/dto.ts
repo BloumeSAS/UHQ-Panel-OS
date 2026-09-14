@@ -71,7 +71,7 @@ export class CreatePoolDto {
 
   @ApiPropertyOptional({
     example: '{user}-country-{country}',
-    description: 'Gabarit du username injecté dans le fallback résidentiel quand un pays est demandé — doit contenir {user} et {country}. Absent/vide = format par défaut du moteur ({user}__country__{country}).',
+    description: 'Gabarit du username injecté dans le fallback résidentiel quand un pays est demandé — doit contenir {country} ou {COUNTRY} ({user} optionnel). Absent/vide = format par défaut du moteur ({user}__country__{country}).',
   })
   @IsOptional()
   @IsString()
@@ -137,7 +137,7 @@ export class UpdatePoolDto {
 
   @ApiPropertyOptional({
     example: '{user}-country-{country}',
-    description: 'Gabarit du username injecté dans le fallback résidentiel quand un pays est demandé — doit contenir {user} et {country}. Null/vide = retire (format par défaut du moteur).',
+    description: 'Gabarit du username injecté dans le fallback résidentiel quand un pays est demandé — doit contenir {country} ou {COUNTRY} ({user} optionnel). Null/vide = retire (format par défaut du moteur).',
   })
   @IsOptional()
   @IsString()

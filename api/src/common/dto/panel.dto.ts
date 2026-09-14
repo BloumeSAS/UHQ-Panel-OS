@@ -297,7 +297,7 @@ export class ImportProxiesDto {
 
   @ApiPropertyOptional({
     example: '{user}-country-{country}',
-    description: 'Gabarit "pays sélectionnable" appliqué à TOUS les proxies de ce lot (doit contenir {user} et {country}) — pour les fournisseurs où une seule passerelle sert plusieurs pays selon le username. Absent = proxies classiques (pays fixe, déterminé par le checker).',
+    description: 'Gabarit "pays sélectionnable" appliqué à TOUS les proxies de ce lot (doit contenir {country} ou {COUNTRY} ; {user} optionnel) — pour les fournisseurs où une seule passerelle sert plusieurs pays selon le username. Absent = proxies classiques (pays fixe, déterminé par le checker).',
   })
   @IsOptional()
   @IsString()

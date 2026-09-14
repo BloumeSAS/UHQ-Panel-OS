@@ -8,19 +8,20 @@ import { CreatePoolDto, UpdatePoolDto } from './dto';
 
 /**
  * Valide le gabarit de username du fallback résidentiel avant sauvegarde —
- * doit contenir {user} ET {country}, sinon le moteur ne peut jamais
- * reconstruire un username exploitable (compte non trouvé côté fournisseur,
- * ou pays jamais injecté). `undefined` = champ non touché par ce PATCH,
- * chaîne vide/whitespace = retire le format custom (retombe sur le défaut
- * moteur "{user}__country__{country}").
+ * doit contenir {country} ou {COUNTRY}, sinon le pays n'est jamais injecté.
+ * `{user}` est OPTIONNEL : certains fournisseurs veulent un username
+ * entièrement reconstruit ignorant l'original (ex. "dc-{country}"), c'est un
+ * usage légitime, pas une erreur. `undefined` = champ non touché par ce
+ * PATCH, chaîne vide/whitespace = retire le format custom (retombe sur le
+ * défaut moteur "{user}__country__{country}").
  */
 function validateFallbackFormat(raw: string | null | undefined): string | null {
   if (raw === undefined) return null;
   const trimmed = raw?.trim();
   if (!trimmed) return null;
-  if (!trimmed.includes('{user}') || !trimmed.includes('{country}')) {
+  if (!trimmed.includes('{country}') && !trimmed.includes('{COUNTRY}')) {
     throw new BadRequestException(
-      'Le format du fallback résidentiel doit contenir exactement {user} et {country}.',
+      'Le format du fallback résidentiel doit contenir {country} (ou {COUNTRY}).',
     );
   }
   return trimmed;
