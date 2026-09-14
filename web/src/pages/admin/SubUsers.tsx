@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2, List, Copy, Check, Pencil, Tag, Calendar, Zap, CheckSquare, Square, RotateCcw, ChevronLeft, ChevronRight, Upload, Link2, Ban, Eye } from 'lucide-react';
+import { Plus, Trash2, List, Copy, Check, Pencil, Tag, Calendar, Zap, CheckSquare, Square, RotateCcw, ChevronLeft, ChevronRight, Upload, Link2, Ban, Eye, BarChart3, Globe2 } from 'lucide-react';
 import { SlideOver } from '@/components/SlideOver';
 import { AddonPageBar } from '@/components/AddonPageBar';
 import { api, apiError } from '@/lib/api';
@@ -88,6 +88,7 @@ export default function SubUsers() {
   const [editing, setEditing] = useState<SubUser | null>(null);
   const [sharingFor, setSharingFor] = useState<SubUser | null>(null);
   const [quickViewFor, setQuickViewFor] = useState<SubUser | null>(null);
+  const [statsFor, setStatsFor] = useState<SubUser | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [page, setPage] = useState(0);
@@ -362,6 +363,9 @@ export default function SubUsers() {
                       <Button variant="ghost" size="icon" onClick={() => showSticky(u.id)} title={t('sub.stickyList')}>
                         <List className="h-4 w-4" />
                       </Button>
+                      <Button variant="ghost" size="icon" onClick={() => setStatsFor(u)} title={t('sub.stats')}>
+                        <BarChart3 className="h-4 w-4" />
+                      </Button>
                       <Button variant="ghost" size="icon" onClick={() => setSharingFor(u)} title="Lien de partage">
                         <Link2 className="h-4 w-4" />
                       </Button>
@@ -459,6 +463,11 @@ export default function SubUsers() {
       {/* Share link dialog */}
       {sharingFor && (
         <ShareLinkDialog subUser={sharingFor} onClose={() => setSharingFor(null)} />
+      )}
+
+      {/* Stats dialog */}
+      {statsFor && (
+        <StatsDialog subUser={statsFor} onClose={() => setStatsFor(null)} />
       )}
 
       {/* Quick view slide-over */}
@@ -564,6 +573,119 @@ const EXPIRY_PRESETS = [
   { label: '30 jours', hours: 24 * 30 },
   { label: 'Illimité (révocation manuelle)', hours: null as number | null },
 ];
+
+// ── Stats (requêtes / bande passante / top sites) ───────────────────────────
+
+type Period = 'week' | 'month' | 'year' | 'all';
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} o`;
+  if (bytes < 1024 ** 2) return `${(bytes / 1024).toFixed(1)} Ko`;
+  if (bytes < 1024 ** 3) return `${(bytes / 1024 ** 2).toFixed(1)} Mo`;
+  return `${(bytes / 1024 ** 3).toFixed(2)} Go`;
+}
+
+function StatsDialog({ subUser, onClose }: { subUser: SubUser; onClose: () => void }) {
+  const t = useT();
+  const [period, setPeriod] = useState<Period>('week');
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['subuser-usage', subUser.id, period],
+    queryFn: async () => (await api.get(`/subusers/${subUser.id}/usage?period=${period}`)).data as {
+      total_stats: { bytesSent: number; bytesReceived: number; totalGb: number; requests: number; active_threads: number; threads_limit: number };
+      top_domains: { hostname: string; requests: number; bytesSent: number; bytesReceived: number }[];
+    },
+  });
+
+  const stats = data?.total_stats;
+  const domains = data?.top_domains ?? [];
+  const maxRequests = Math.max(...domains.map((d) => d.requests), 1);
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <BarChart3 className="h-4 w-4" /> {t('sub.stats')} — {subUser.label}
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-4 pt-2">
+          <div className="flex gap-1">
+            {([
+              ['week', t('reports.periodWeek')],
+              ['month', t('reports.periodMonth')],
+              ['year', t('reports.periodYear')],
+              ['all', t('reports.periodAll')],
+            ] as [Period, string][]).map(([p, label]) => (
+              <button
+                key={p}
+                onClick={() => setPeriod(p)}
+                className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${period === p ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:bg-muted/70'}`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {isLoading ? (
+            <p className="text-sm text-muted-foreground">…</p>
+          ) : (
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="rounded-lg border p-3">
+                  <p className="text-xs text-muted-foreground">{t('sub.statsRequests')}</p>
+                  <p className="text-xl font-bold mt-0.5">{(stats?.requests ?? 0).toLocaleString()}</p>
+                </div>
+                <div className="rounded-lg border p-3">
+                  <p className="text-xs text-muted-foreground">{t('sub.statsData')}</p>
+                  <p className="text-xl font-bold mt-0.5">{stats?.totalGb ?? 0} Go</p>
+                </div>
+                <div className="rounded-lg border p-3">
+                  <p className="text-xs text-muted-foreground">↓ {t('sub.statsReceived')}</p>
+                  <p className="text-sm font-semibold mt-0.5">{formatBytes(stats?.bytesReceived ?? 0)}</p>
+                </div>
+                <div className="rounded-lg border p-3">
+                  <p className="text-xs text-muted-foreground">↑ {t('sub.statsSent')}</p>
+                  <p className="text-sm font-semibold mt-0.5">{formatBytes(stats?.bytesSent ?? 0)}</p>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <span>{t('sub.statsActiveThreads')}</span>
+                <span className="font-mono font-semibold text-foreground">
+                  {stats?.active_threads ?? 0}
+                  {stats?.threads_limit ? ` / ${stats.threads_limit}` : ''}
+                </span>
+              </div>
+
+              <div className="space-y-1.5">
+                <p className="text-xs font-semibold flex items-center gap-1.5"><Globe2 className="h-3.5 w-3.5" /> {t('sub.statsTopSites')}</p>
+                {domains.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">{t('common.none')}</p>
+                ) : (
+                  <div className="space-y-1.5 max-h-64 overflow-y-auto">
+                    {domains.map((d) => (
+                      <div key={d.hostname} className="space-y-0.5">
+                        <div className="flex justify-between text-xs">
+                          <span className="truncate font-mono">{d.hostname}</span>
+                          <span className="text-muted-foreground shrink-0 ml-2">{d.requests.toLocaleString()} req · {formatBytes(d.bytesSent + d.bytesReceived)}</span>
+                        </div>
+                        <div className="h-1.5 w-full rounded-full bg-muted">
+                          <div className="h-1.5 rounded-full bg-primary" style={{ width: `${(d.requests / maxRequests) * 100}%` }} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 function ShareLinkDialog({ subUser, onClose }: { subUser: SubUser; onClose: () => void }) {
   const [expiresInHours, setExpiresInHours] = useState<number | null>(24);
