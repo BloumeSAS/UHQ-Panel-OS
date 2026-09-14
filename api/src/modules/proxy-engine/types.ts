@@ -16,6 +16,16 @@ export interface UpstreamProxy {
   country?: string | null;
   isWorking?: boolean;
   pool?: string | null;
+  /**
+   * Gabarit de username pour un proxy "pays sélectionnable" (une seule
+   * passerelle sert plusieurs pays selon le username envoyé — courant chez
+   * certains fournisseurs résidentiels/datacenter). Si renseigné, ce proxy
+   * matche n'importe quel filtre pays (peu importe `country` stocké), et son
+   * username est réécrit à la volée avec le pays demandé avant connexion —
+   * voir `applyCountrySelector`. Placeholders : {user}, {country} (minuscule),
+   * {COUNTRY} (majuscule).
+   */
+  countryFormat?: string | null;
 }
 
 export type DbProxy = DbBackendProxy;

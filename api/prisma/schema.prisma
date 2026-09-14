@@ -294,6 +294,15 @@ model BackendProxy {
   tags           String?
   // Pool de catégorie (null = pool par défaut, tous les utilisateurs y ont accès)
   pool           String?
+  // Proxy "pays sélectionnable" : une seule passerelle sert plusieurs pays
+  // selon le username envoyé (courant chez certains fournisseurs
+  // résidentiels/datacenter). Si renseigné (ex. "{user}-country-{country}"
+  // ou "dc-{country}"), ce proxy matche n'importe quel filtre pays — peu
+  // importe `country` ci-dessus — et son username est réécrit à la volée
+  // avec le pays demandé avant connexion. Placeholders : {user}, {country}
+  // (minuscule), {COUNTRY} (majuscule). Différents proxies d'une même pool
+  // peuvent avoir des gabarits différents (fournisseurs différents).
+  countryFormat  String?
   targetBlocks   TargetBlock[]
 
   @@index([pool])
