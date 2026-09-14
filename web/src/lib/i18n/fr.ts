@@ -727,6 +727,8 @@ const fr: Language = {
     'pools.confirmClearProxies': 'Supprimer TOUS les proxies de la catégorie "{name}" ? La catégorie elle-même sera conservée. Action irréversible.',
     'pools.proxiesCleared': '{n} proxy(s) supprimé(s) de la catégorie.',
     'pools.clearStarted': 'Vidage lancé en arrière-plan — vous serez notifié à la fin.',
+    'pools.fallbackCountryFormat': 'Format username du fallback résidentiel',
+    'pools.fallbackCountryFormatHint': 'Gabarit utilisé pour injecter le pays dans le username du proxy résidentiel de secours (doit contenir {user} et {country}). Vide = format par défaut {user}__country__{country}.',
     'pools.editTitle': 'Modifier la catégorie',
     'pool.filterByPool': 'Catégorie',
   },
