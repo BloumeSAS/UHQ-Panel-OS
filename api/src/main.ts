@@ -33,6 +33,15 @@ async function bootstrap() {
     bodyParser: false,
   });
 
+  // Un seul hop de confiance : Traefik/Coolify devant l'API (cf. CLAUDE.md,
+  // seul le port 8000 est exposé). Sans ce réglage, `X-Forwarded-For` est un
+  // simple header client — n'importe qui peut l'envoyer pour usurper une IP
+  // (contournement du rate-limit login/forgot-password par ex.). Avec
+  // `trust proxy` à 1, Express calcule `req.ip` en ne faisant confiance qu'au
+  // DERNIER hop ajouté par le reverse proxy réel, en ignorant toute valeur
+  // que le client aurait tenté d'injecter en amont dans la chaîne.
+  app.set('trust proxy', 1);
+
   // Body-parser par défaut de Nest = 100kb → "entity too large" dès qu'on
   // importe une grosse liste de proxies manuellement depuis le panel.
   app.use(json({ limit: '25mb' }));
