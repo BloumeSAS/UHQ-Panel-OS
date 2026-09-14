@@ -28,6 +28,7 @@ import {
   CardContent,
   Input,
   Label,
+  Switch,
   Table,
   TBody,
   TD,
@@ -637,8 +638,17 @@ function ImportDialog({ onDone }: { onDone: () => void }) {
   const [text, setText] = useState('');
   const [protocol, setProtocol] = useState('');
   const [pool, setPool] = useState('');
+  const [countrySelectable, setCountrySelectable] = useState(false);
+  const [countryFormat, setCountryFormat] = useState('');
   const [result, setResult] = useState('');
   const [busy, setBusy] = useState(false);
+
+  const COUNTRY_FORMAT_EXAMPLES = [
+    { format: '{user}__country__{country}', desc: 'Défaut du fallback résidentiel — double underscore, pays en minuscule' },
+    { format: '{user}-country-{country}', desc: 'Tiret au lieu de underscore' },
+    { format: 'dc-{country}', desc: "Ignore le username d'origine, reconstruit entièrement (ex. \"dc-any\" → \"dc-us\")" },
+    { format: '{user}-{COUNTRY}', desc: 'Pays en MAJUSCULE, simple suffixe (ex. "rotating" → "rotating-FR")' },
+  ];
 
   const { data: pools } = useQuery({
     queryKey: ['proxy-pools'],
@@ -655,6 +665,7 @@ function ImportDialog({ onDone }: { onDone: () => void }) {
         text,
         protocol: protocol || undefined,
         pool: pool || undefined,
+        countryFormat: countrySelectable && countryFormat ? countryFormat : undefined,
       });
       setResult(data.message);
       setText('');
@@ -718,6 +729,41 @@ function ImportDialog({ onDone }: { onDone: () => void }) {
               ))}
             </select>
           </div>
+
+          <div className="space-y-2 rounded-lg border bg-muted/20 p-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-sm font-medium">{t('pool.countrySelectable')}</p>
+                <p className="text-xs text-muted-foreground mt-0.5 leading-snug">{t('pool.countrySelectableHint')}</p>
+              </div>
+              <Switch checked={countrySelectable} onCheckedChange={setCountrySelectable} />
+            </div>
+            {countrySelectable && (
+              <div className="space-y-2 pt-1">
+                <Input
+                  value={countryFormat}
+                  onChange={(e) => setCountryFormat(e.target.value)}
+                  placeholder="{user}-country-{country}"
+                  className="font-mono text-xs"
+                />
+                <div className="space-y-1 rounded-md border border-dashed p-2">
+                  <p className="text-[11px] font-semibold text-muted-foreground">{t('pool.countryFormatExamples')}</p>
+                  {COUNTRY_FORMAT_EXAMPLES.map((ex) => (
+                    <button
+                      key={ex.format}
+                      type="button"
+                      onClick={() => setCountryFormat(ex.format)}
+                      className="block w-full text-left rounded px-1.5 py-1 hover:bg-muted transition-colors"
+                    >
+                      <code className="text-[11px] font-mono text-primary">{ex.format}</code>
+                      <span className="text-[11px] text-muted-foreground"> — {ex.desc}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
           {result && (
             <div className={`p-2.5 rounded-md text-xs font-semibold ${result.toLowerCase().includes('erreur') ? 'bg-destructive/10 text-destructive' : 'bg-emerald-500/10 text-emerald-500'}`}>
               {result}
