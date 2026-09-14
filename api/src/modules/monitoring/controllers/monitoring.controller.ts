@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -311,6 +312,7 @@ export class PanelMonitoringController {
         port: p.port,
         protocol: p.protocol,
         country: p.country,
+        country_format: p.countryFormat,
         provider: p.provider,
         is_working: p.isWorking,
         is_blacklisted: p.isBlacklisted,
@@ -496,6 +498,42 @@ export class PanelMonitoringController {
       })
       .catch(() => undefined);
     return { status: 'success', deleted: res.count };
+  }
+
+  /**
+   * Applique (ou retire) un gabarit "pays sélectionnable" à une sélection de
+   * proxies existants — pour corriger/configurer après coup, sans devoir
+   * ré-importer le lot. `countryFormat: null` retire le gabarit (le proxy
+   * redevient un proxy classique, pays fixe).
+   */
+  @Roles('ADMIN')
+  @Patch('proxies/country-format')
+  async setCountryFormat(
+    @Body() body: { ids: string[]; countryFormat: string | null },
+    @CurrentUser() me: JwtUser,
+  ) {
+    if (!body.ids?.length) throw new BadRequestException('Aucun proxy sélectionné');
+    const format = body.countryFormat?.trim() || null;
+    if (format && (!format.includes('{user}') || !format.includes('{country}'))) {
+      return {
+        status: 'error',
+        message: 'Le format "pays sélectionnable" doit contenir exactement {user} et {country}.',
+      };
+    }
+    const res = await this.prisma.backendProxy.updateMany({
+      where: { id: { in: body.ids } },
+      data: { countryFormat: format },
+    });
+    void this.auditService
+      .log({
+        userId: me.id,
+        userEmail: me.email,
+        action: 'proxy.setCountryFormat',
+        target: body.ids.join(','),
+        details: { count: res.count, format },
+      })
+      .catch(() => undefined);
+    return { status: 'success', updated: res.count };
   }
 
   /**
