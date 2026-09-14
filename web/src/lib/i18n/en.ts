@@ -727,6 +727,8 @@ const en: Language = {
     'pools.confirmClearProxies': 'Delete ALL proxies in category "{name}"? The category itself will be kept. This cannot be undone.',
     'pools.proxiesCleared': '{n} proxy(ies) deleted from the category.',
     'pools.clearStarted': 'Clearing started in the background — you\'ll be notified when it\'s done.',
+    'pools.fallbackCountryFormat': 'Residential fallback username format',
+    'pools.fallbackCountryFormatHint': 'Template used to inject the country into the fallback residential proxy username (must contain {user} and {country}). Empty = default format {user}__country__{country}.',
     'pools.editTitle': 'Edit category',
     'pool.filterByPool': 'Category',
   },
