@@ -44,6 +44,7 @@ interface ProxyPool {
   fakeIpCountMax: number | null;
   fakeIpCountByCountry: Record<string, number> | null;
   fakeIpRotateSeconds: number | null;
+  fallbackCountryFormat: string | null;
   createdAt: string;
 }
 
@@ -263,6 +264,7 @@ const EMPTY_POOL_FORM = {
   fakeIpMax: '',
   fakeIpRotateEnabled: false,
   fakeIpRotateSeconds: '',
+  fallbackCountryFormat: '',
 };
 
 function CreateDialog({ onCreated }: { onCreated: () => void }) {
@@ -291,6 +293,7 @@ function CreateDialog({ onCreated }: { onCreated: () => void }) {
         fakeIpCountMin: fakeMin ? Number(fakeMin) : undefined,
         fakeIpCountMax: fakeMax ? Number(fakeMax) : undefined,
         fakeIpRotateSeconds: form.fakeIpRotateEnabled && form.fakeIpRotateSeconds ? Number(form.fakeIpRotateSeconds) : undefined,
+        fallbackCountryFormat: form.fallbackCountryFormat || undefined,
       });
       setOpen(false);
       setForm(EMPTY_POOL_FORM);
@@ -336,6 +339,7 @@ function EditDialog({ pool, onClose, onSaved }: { pool: ProxyPool; onClose: () =
     fakeIpMax: pool.fakeIpCountMax != null ? String(pool.fakeIpCountMax) : '',
     fakeIpRotateEnabled: pool.fakeIpRotateSeconds != null,
     fakeIpRotateSeconds: pool.fakeIpRotateSeconds != null ? String(pool.fakeIpRotateSeconds) : '',
+    fallbackCountryFormat: pool.fallbackCountryFormat ?? '',
   });
   const [error, setError] = useState('');
   const set = (k: string, v: any) => setForm((f) => ({ ...f, [k]: v }));
@@ -368,6 +372,7 @@ function EditDialog({ pool, onClose, onSaved }: { pool: ProxyPool; onClose: () =
         fakeIpCountMin: fakeMin ? Number(fakeMin) : null,
         fakeIpCountMax: fakeMax ? Number(fakeMax) : null,
         fakeIpRotateSeconds: form.fakeIpRotateEnabled && form.fakeIpRotateSeconds ? Number(form.fakeIpRotateSeconds) : null,
+        fallbackCountryFormat: form.fallbackCountryFormat || null,
       });
       toast.success(t('pools.updated'));
       onSaved();
@@ -405,6 +410,7 @@ function PoolForm({
     alwaysOnline: boolean; checkerEnabled: boolean; fakeCountries: string; fakePriorityCountries: string; fakeIpMode: 'fixed' | 'random';
     fakeIpFixed: string; fakeIpMin: string; fakeIpMax: string;
     fakeIpRotateEnabled: boolean; fakeIpRotateSeconds: string;
+    fallbackCountryFormat: string;
   };
   set: (k: string, v: any) => void;
   error: string;
@@ -576,6 +582,16 @@ function PoolForm({
             <p className="text-xs text-muted-foreground">{t('pools.fakeIpRerollHint')}</p>
           </>
         )}
+      </div>
+
+      <div className="space-y-1.5">
+        <Label>{t('pools.fallbackCountryFormat')}</Label>
+        <Input
+          value={form.fallbackCountryFormat}
+          onChange={(e) => set('fallbackCountryFormat', e.target.value)}
+          placeholder="{user}__country__{country}"
+        />
+        <p className="text-xs text-muted-foreground">{t('pools.fallbackCountryFormatHint')}</p>
       </div>
 
       {error && <p className="text-sm text-destructive">{error}</p>}
