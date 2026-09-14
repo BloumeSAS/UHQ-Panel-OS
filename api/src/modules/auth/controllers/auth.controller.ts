@@ -22,6 +22,7 @@ import { LoginDto, RegisterDto, SetupDto, ForgotPasswordDto, ResetPasswordDto } 
 import { t } from '../../../common/utils/i18n';
 import { verifyCaptcha, type CaptchaProvider } from '../../../common/utils/captcha.util';
 import { MailService } from '../../mail/mail.service';
+import { RateLimiterService } from '../../../common/rate-limiter.service';
 
 const SINGLETON = 'singleton';
 
@@ -39,7 +40,12 @@ export class PanelAuthController {
     private readonly mail: MailService,
     private readonly notificationService: NotificationService,
     private readonly auditService: AuditService,
+    private readonly rateLimiter: RateLimiterService,
   ) {}
+
+  private clientIp(req: any): string {
+    return req.headers['x-forwarded-for']?.split(',')[0]?.trim() ?? req.socket?.remoteAddress ?? 'unknown';
+  }
 
   /** Lecture publique : pilote l'écran de démarrage du front. */
   @Get('setup/status')
@@ -139,10 +145,21 @@ export class PanelAuthController {
 
   @Post('auth/login')
   async login(@Body() body: LoginDto, @Req() req: any) {
+    // Frein anti-brute-force : le captcha (`captchaProvider`) est le seul
+    // autre garde-fou et n'est pas configuré par défaut sur une install
+    // fraîche — sans ça, /auth/login accepte un débit illimité de tentatives
+    // contre un email admin connu. Double clé (IP globale + IP+email) pour
+    // freiner aussi bien le spray multi-comptes que le brute-force ciblé.
+    const ip = this.clientIp(req);
+    const email = body.email.toLowerCase();
+    if (!this.rateLimiter.check(`login:ip:${ip}`, 20, 60_000) || !this.rateLimiter.check(`login:ip-email:${ip}:${email}`, 5, 60_000)) {
+      throw new UnauthorizedException(t('errors.tooManyAttempts'));
+    }
+
     await this.assertCaptcha(body.captchaToken);
 
     const user = await this.prisma.panelUser.findUnique({
-      where: { email: body.email.toLowerCase() },
+      where: { email },
     });
     if (!user || !(await bcrypt.compare(body.password, user.passwordHash))) {
       throw new UnauthorizedException(t('errors.invalidCredentials'));
@@ -152,8 +169,6 @@ export class PanelAuthController {
       throw new UnauthorizedException('Votre compte a expiré.');
     }
 
-    // Notification de connexion (si SMTP configuré et option activée)
-    const ip = req.headers['x-forwarded-for']?.split(',')[0] ?? req.socket?.remoteAddress;
     void this.mail.sendLoginNotification(user.email, this.settings.get('siteName'), ip);
     void this.auditService
       .log({ userId: user.id, userEmail: user.email, action: 'auth.login', ip })
@@ -179,12 +194,17 @@ export class PanelAuthController {
 
   /** Demande de réinitialisation de mot de passe — envoie un e-mail si SMTP configuré. */
   @Post('auth/forgot-password')
-  async forgotPassword(@Body() body: ForgotPasswordDto) {
+  async forgotPassword(@Body() body: ForgotPasswordDto, @Req() req: any) {
     if (!this.settings.getBool('emailResetEnabled')) {
       throw new ForbiddenException('Réinitialisation de mot de passe désactivée.');
     }
     if (!this.mail.isConfigured()) {
       throw new ForbiddenException('SMTP non configuré.');
+    }
+    // Même frein qu'au login : sans lui, un débit illimité permet de spammer
+    // n'importe quelle boîte mail de réinitialisation.
+    if (!this.rateLimiter.check(`forgot:ip:${this.clientIp(req)}`, 5, 60_000)) {
+      throw new UnauthorizedException(t('errors.tooManyAttempts'));
     }
 
     await this.assertCaptcha(body.captchaToken);
