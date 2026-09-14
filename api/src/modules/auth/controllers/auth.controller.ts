@@ -43,8 +43,13 @@ export class PanelAuthController {
     private readonly rateLimiter: RateLimiterService,
   ) {}
 
+  // `req.ip` (Express) respecte le réglage `trust proxy` posé dans main.ts
+  // (1 hop = Traefik/Coolify) : contrairement à un parsing manuel de
+  // `X-Forwarded-For`, un client ne peut pas y injecter une IP arbitraire
+  // pour contourner le rate-limit — Express ignore tout ce qui précède le
+  // dernier hop réellement ajouté par le reverse proxy de confiance.
   private clientIp(req: any): string {
-    return req.headers['x-forwarded-for']?.split(',')[0]?.trim() ?? req.socket?.remoteAddress ?? 'unknown';
+    return req.ip ?? req.socket?.remoteAddress ?? 'unknown';
   }
 
   /** Lecture publique : pilote l'écran de démarrage du front. */
@@ -181,7 +186,7 @@ export class PanelAuthController {
 
   private async createSession(userId: string, token: string, req: any) {
     const userAgent = req?.headers?.['user-agent'] || null;
-    const ip = req?.headers?.['x-forwarded-for']?.split(',')[0] ?? req?.socket?.remoteAddress ?? null;
+    const ip = this.clientIp(req);
     await this.prisma.activeSession.create({
       data: {
         userId,
