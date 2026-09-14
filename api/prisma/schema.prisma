@@ -263,6 +263,12 @@ model ProxyPool {
   // toutes les N secondes, sans tâche planifiée ni écriture en base.
   // Null/0 = désactivé (comportement stable habituel).
   fakeIpRotateSeconds  Int?
+  // Gabarit du username injecté dans le fallback résidentiel (SCRAPER_PROXY)
+  // quand un pays est demandé — doit contenir {user} et {country}. Null =
+  // format par défaut du moteur ("{user}__country__{country}"). Permet de
+  // coller à la convention attendue par certains fournisseurs résidentiels
+  // (ex. "{user}-country-{country}") sans toucher au code.
+  fallbackCountryFormat String?
 }
 
 model BackendProxy {
