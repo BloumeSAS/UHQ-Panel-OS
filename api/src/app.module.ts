@@ -14,6 +14,7 @@ import { DatabaseModule } from './database/database.module';
 import { SettingsModule } from './config/settings.module';
 import { SecurityModule } from './common/security.module';
 import { JobCoordinatorModule } from './common/job-coordinator.module';
+import { RateLimiterModule } from './common/rate-limiter.module';
 import { HealthController } from './common/health.controller';
 
 // --- Modules métier (feature-based) -----------------------------------------
@@ -62,6 +63,7 @@ function resolveWebDist(): string {
     SettingsModule,
     SecurityModule,
     JobCoordinatorModule,
+    RateLimiterModule,
     MailModule,
     BackupModule,
     NotificationsModule,
