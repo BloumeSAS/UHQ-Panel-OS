@@ -4,6 +4,7 @@ const en = {
     registrationDisabled: "Registrations are disabled",
     emailTaken: "Email already in use",
     invalidCredentials: "Invalid credentials",
+    tooManyAttempts: "Too many attempts — try again in a minute.",
     invalidPassword: "Incorrect password",
     accountDisabled: "Account disabled",
     dbAlreadyConfigured: "Database already configured",

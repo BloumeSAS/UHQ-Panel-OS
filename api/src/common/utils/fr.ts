@@ -4,6 +4,7 @@ const fr = {
     registrationDisabled: "Les inscriptions sont désactivées",
     emailTaken: "Email déjà utilisé",
     invalidCredentials: "Identifiants invalides",
+    tooManyAttempts: "Trop de tentatives — réessayez dans une minute.",
     invalidPassword: "Mot de passe incorrect",
     accountDisabled: "Compte désactivé",
     dbAlreadyConfigured: "Base déjà configurée",
