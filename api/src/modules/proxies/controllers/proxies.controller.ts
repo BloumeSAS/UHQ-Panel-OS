@@ -28,6 +28,21 @@ import { assertPortAvailable } from '../../../common/utils/port-validation';
 import { buildPoolEndpointMap, resolveConnectionEndpoint, resolveHostPortSync } from '../../../common/utils/connection-endpoint';
 import { AuditService } from '../../audit/audit.service';
 
+type Period = 'week' | 'month' | 'year' | 'all';
+function periodStart(period: Period): Date {
+  const now = Date.now();
+  switch (period) {
+    case 'week':
+      return new Date(now - 7 * 86400_000);
+    case 'month':
+      return new Date(now - 30 * 86400_000);
+    case 'year':
+      return new Date(now - 365 * 86400_000);
+    default:
+      return new Date(2000, 0, 1);
+  }
+}
+
 /**
  * Gestion des comptes proxy (UserProxy) côté panel admin, en JWT.
  * Réutilise la même logique que l'API legacy /api/v1/sub-user (Basic Auth).
@@ -296,7 +311,9 @@ export class PanelSubUserController {
     const { host, port } = await resolveConnectionEndpoint(this.prisma, this.settings, user);
     return {
       status: 'success',
-      format: 'host:port:username:session:password',
+      // 4 champs (host:port:user-session-XXXX:pass) — compatible avec tout
+      // logiciel n'acceptant que le format classique host:port:user:pass.
+      format: 'host:port:username-session-XXXX:password',
       count: c,
       proxies: buildStickyList(user, host, port, c),
       // Format rotatif (pas de session : chaque nouvelle connexion sur cette
@@ -304,6 +321,57 @@ export class PanelSubUserController {
       // clients qui ne gèrent pas le host:port:user:session:pass.
       rotating_format: 'username:password@host:port',
       rotating: `${user.username}:${user.password}@${host}:${port}`,
+    };
+  }
+
+  /**
+   * Statistiques d'usage d'un compte proxy pour l'admin : total envoyé/reçu,
+   * nombre de requêtes, threads actifs, ET répartition par site (top
+   * domaines) — jusqu'ici réservé au propriétaire du compte via
+   * `me/proxies/:id/usage` ; les admins n'avaient aucune vue détaillée par
+   * site depuis la page Sous-utilisateurs.
+   */
+  @ApiParam({ name: 'id', description: 'ID du sous-utilisateur proxy' })
+  @ApiQuery({ name: 'period', required: false, enum: ['week', 'month', 'year', 'all'], description: 'Période de statistiques' })
+  @Get(':id/usage')
+  async usage(@Param('id') id: string, @Query('period') period: Period = 'week') {
+    const user = await this.prisma.userProxy.findUnique({ where: { id } });
+    if (!user) throw new NotFoundException(t('errors.proxyNotFound'));
+    const start = periodStart(period);
+    const where = { userProxyId: id, date: { gte: start } };
+    const [totals, topDomains] = await Promise.all([
+      this.prisma.proxyUsage.aggregate({
+        where,
+        _sum: { bytesSent: true, bytesReceived: true, requests: true },
+      }),
+      this.prisma.proxyUsage.groupBy({
+        by: ['hostname'],
+        where,
+        _sum: { bytesSent: true, bytesReceived: true, requests: true },
+        orderBy: { _sum: { requests: 'desc' } },
+        take: 25,
+      }),
+    ]);
+    const sent = totals._sum.bytesSent ?? 0;
+    const received = totals._sum.bytesReceived ?? 0;
+    const active = this.engine.getActiveThreads().get(user.username) ?? 0;
+    return {
+      status: 'success',
+      period,
+      total_stats: {
+        bytesSent: sent,
+        bytesReceived: received,
+        totalGb: Math.round(((sent + received) / 1024 ** 3) * 10000) / 10000,
+        requests: totals._sum.requests ?? 0,
+        active_threads: active,
+        threads_limit: user.threadsLimit,
+      },
+      top_domains: topDomains.map((d) => ({
+        hostname: d.hostname,
+        requests: d._sum.requests ?? 0,
+        bytesSent: d._sum.bytesSent ?? 0,
+        bytesReceived: d._sum.bytesReceived ?? 0,
+      })),
     };
   }
 
