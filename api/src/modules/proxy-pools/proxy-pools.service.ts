@@ -1,10 +1,30 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { ProxyServerService } from '../proxy-engine/proxy-server.service';
 import { assertPortAvailable } from '../../common/utils/port-validation';
 import { normalizeDomain } from '../../common/utils/proxy-format';
 import { parseCountryCodes, rollFakeCount, sameCountrySet, splitRangeForPriority } from '../../common/utils/fake-stats';
 import { CreatePoolDto, UpdatePoolDto } from './dto';
+
+/**
+ * Valide le gabarit de username du fallback résidentiel avant sauvegarde —
+ * doit contenir {user} ET {country}, sinon le moteur ne peut jamais
+ * reconstruire un username exploitable (compte non trouvé côté fournisseur,
+ * ou pays jamais injecté). `undefined` = champ non touché par ce PATCH,
+ * chaîne vide/whitespace = retire le format custom (retombe sur le défaut
+ * moteur "{user}__country__{country}").
+ */
+function validateFallbackFormat(raw: string | null | undefined): string | null {
+  if (raw === undefined) return null;
+  const trimmed = raw?.trim();
+  if (!trimmed) return null;
+  if (!trimmed.includes('{user}') || !trimmed.includes('{country}')) {
+    throw new BadRequestException(
+      'Le format du fallback résidentiel doit contenir exactement {user} et {country}.',
+    );
+  }
+  return trimmed;
+}
 
 /** Tire un nombre d'IP indépendant pour CHAQUE pays — pas un total partagé à répartir. */
 function rollAllCountries(countries: string[], min: number, max: number, priority: string[]): Record<string, number> {
@@ -52,9 +72,12 @@ export class ProxyPoolsService {
         fakeIpCountMax: dto.fakeIpCountMax ?? null,
         fakeIpCountByCountry,
         fakeIpRotateSeconds: dto.fakeIpRotateSeconds ?? null,
+        fallbackCountryFormat: validateFallbackFormat(dto.fallbackCountryFormat),
       },
     });
-    if (dto.port != null) this.engine.invalidatePortCache();
+    // Toujours invalider (pas seulement si `port` a changé) : ça rafraîchit
+    // aussi le cache en mémoire du format fallback par pool.
+    this.engine.invalidatePortCache();
     return pool;
   }
 
@@ -125,9 +148,14 @@ export class ProxyPoolsService {
           ...(dto.fakeIpCountMax !== undefined && { fakeIpCountMax: dto.fakeIpCountMax }),
           ...(fakeIpCountByCountry !== undefined && { fakeIpCountByCountry }),
           ...(dto.fakeIpRotateSeconds !== undefined && { fakeIpRotateSeconds: dto.fakeIpRotateSeconds }),
+          ...(dto.fallbackCountryFormat !== undefined && {
+            fallbackCountryFormat: validateFallbackFormat(dto.fallbackCountryFormat),
+          }),
         },
       });
-      if (dto.port !== undefined) this.engine.invalidatePortCache();
+      // Toujours invalider (pas seulement si `port` a changé) : ça rafraîchit
+      // aussi le cache en mémoire du format fallback par pool.
+      this.engine.invalidatePortCache();
       return pool;
     } catch {
       throw new NotFoundException('Pool introuvable');

@@ -68,6 +68,15 @@ export class CreatePoolDto {
   @IsInt()
   @Min(1)
   fakeIpRotateSeconds?: number;
+
+  @ApiPropertyOptional({
+    example: '{user}-country-{country}',
+    description: 'Gabarit du username injecté dans le fallback résidentiel quand un pays est demandé — doit contenir {user} et {country}. Absent/vide = format par défaut du moteur ({user}__country__{country}).',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  fallbackCountryFormat?: string;
 }
 
 export class UpdatePoolDto {
@@ -125,4 +134,13 @@ export class UpdatePoolDto {
   @IsInt()
   @Min(1)
   fakeIpRotateSeconds?: number | null;
+
+  @ApiPropertyOptional({
+    example: '{user}-country-{country}',
+    description: 'Gabarit du username injecté dans le fallback résidentiel quand un pays est demandé — doit contenir {user} et {country}. Null/vide = retire (format par défaut du moteur).',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  fallbackCountryFormat?: string | null;
 }
