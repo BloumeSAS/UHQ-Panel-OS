@@ -593,6 +593,9 @@ function PoolForm({
           className="font-mono text-xs"
         />
         <p className="text-xs text-muted-foreground">{t('pools.fallbackCountryFormatHint')}</p>
+        <p className="text-xs rounded-md bg-primary/5 border border-primary/20 px-2.5 py-1.5 text-muted-foreground">
+          {t('pools.fallbackCountryFormatVsProxies')}
+        </p>
         <div className="space-y-1 rounded-md border border-dashed p-2">
           <p className="text-[11px] font-semibold text-muted-foreground">{t('pool.countryFormatExamples')}</p>
           {[

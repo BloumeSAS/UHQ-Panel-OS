@@ -746,6 +746,9 @@ function ImportDialog({ onDone }: { onDone: () => void }) {
                   placeholder="{user}-country-{country}"
                   className="font-mono text-xs"
                 />
+                <p className="text-xs rounded-md bg-primary/5 border border-primary/20 px-2.5 py-1.5 text-muted-foreground">
+                  {t('pool.countryFormatPerBatchHint')}
+                </p>
                 <div className="space-y-1 rounded-md border border-dashed p-2">
                   <p className="text-[11px] font-semibold text-muted-foreground">{t('pool.countryFormatExamples')}</p>
                   {COUNTRY_FORMAT_EXAMPLES.map((ex) => (
