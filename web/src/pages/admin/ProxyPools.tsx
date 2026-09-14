@@ -590,8 +590,27 @@ function PoolForm({
           value={form.fallbackCountryFormat}
           onChange={(e) => set('fallbackCountryFormat', e.target.value)}
           placeholder="{user}__country__{country}"
+          className="font-mono text-xs"
         />
         <p className="text-xs text-muted-foreground">{t('pools.fallbackCountryFormatHint')}</p>
+        <div className="space-y-1 rounded-md border border-dashed p-2">
+          <p className="text-[11px] font-semibold text-muted-foreground">{t('pool.countryFormatExamples')}</p>
+          {[
+            { format: '{user}__country__{country}', desc: 'Défaut du moteur — double underscore, minuscule' },
+            { format: '{user}-country-{country}', desc: 'Tiret au lieu de underscore' },
+            { format: '{user}-{COUNTRY}', desc: 'MAJUSCULE, simple suffixe' },
+          ].map((ex) => (
+            <button
+              key={ex.format}
+              type="button"
+              onClick={() => set('fallbackCountryFormat', ex.format)}
+              className="block w-full text-left rounded px-1.5 py-1 hover:bg-muted transition-colors"
+            >
+              <code className="text-[11px] font-mono text-primary">{ex.format}</code>
+              <span className="text-[11px] text-muted-foreground"> — {ex.desc}</span>
+            </button>
+          ))}
+        </div>
       </div>
 
       {error && <p className="text-sm text-destructive">{error}</p>}
