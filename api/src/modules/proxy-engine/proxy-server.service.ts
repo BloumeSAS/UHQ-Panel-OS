@@ -79,6 +79,12 @@ export class ProxyServerService implements OnModuleDestroy {
   private readonly poolPortMap = new Map<string, number>();
   /** Pools "Toujours en ligne" : un échec réel de connexion ne doit jamais les marquer KO (le checker les force déjà à isWorking=true, cf. checker.service.ts). */
   private readonly alwaysOnlinePoolSet = new Set<string>();
+  /**
+   * nom de pool → gabarit de username pour le fallback résidentiel
+   * (ex. "{user}-country-{country}"). Absent = format par défaut du moteur
+   * ("{user}__country__{country}"), cf. `getFallbackUpstream`.
+   */
+  private readonly poolFallbackFormatMap = new Map<string, string>();
   /** port → username : ce port est exclusif à CE compte (407 pour tout autre). */
   private readonly portUserMap = new Map<number, string>();
   /** Plage publiée par Docker (PROXY_PORT_RANGE="min-max", défaut 9000-9250) — avertissement non-bloquant ici (le blocage dur est fait à l'écriture, cf. `assertPortAvailable`). */
@@ -216,10 +222,17 @@ export class ProxyServerService implements OnModuleDestroy {
     if (this.syncing) return;
     this.syncing = true;
     try {
-      const [pools, users, alwaysOnlinePools] = await Promise.all([
+      const [pools, users, alwaysOnlinePools, fallbackFormatPools] = await Promise.all([
         this.prisma.proxyPool.findMany({ where: { port: { not: null } } }),
         this.prisma.userProxy.findMany({ where: { port: { not: null } } }),
         this.prisma.proxyPool.findMany({ where: { alwaysOnline: true }, select: { name: true } }),
+        // Toutes les pools (pas seulement celles avec un port dédié) qui ont
+        // un format de username fallback custom — la grande majorité des
+        // pools partagent le port par défaut et seraient exclues du fetch ci-dessus.
+        this.prisma.proxyPool.findMany({
+          where: { fallbackCountryFormat: { not: null } },
+          select: { name: true, fallbackCountryFormat: true },
+        }),
       ]);
       this.portPoolMap.clear();
       this.poolPortMap.clear();
@@ -231,6 +244,8 @@ export class ProxyServerService implements OnModuleDestroy {
       for (const u of users) if (u.port) this.portUserMap.set(u.port, u.username);
       this.alwaysOnlinePoolSet.clear();
       for (const p of alwaysOnlinePools) this.alwaysOnlinePoolSet.add(p.name);
+      this.poolFallbackFormatMap.clear();
+      for (const p of fallbackFormatPools) if (p.fallbackCountryFormat) this.poolFallbackFormatMap.set(p.name, p.fallbackCountryFormat);
 
       const desired = new Set<number>([
         this.port,
@@ -641,7 +656,7 @@ export class ProxyServerService implements OnModuleDestroy {
       // --- Final fallback (Phase 10 in Python) ---
       if (!winner && this.fallbackProxyUrl) {
         try {
-          const fb = this.getFallbackUpstream(requestedCountry);
+          const fb = this.getFallbackUpstream(requestedCountry, effectivePool);
           if (fb) {
             const sock = await tcpConnect(fb.ip, fb.port, this.timeoutMs);
             const skipHs = method !== 'CONNECT' && (fb.protocol ?? 'http').toLowerCase() === 'http';
@@ -1184,17 +1199,27 @@ export class ProxyServerService implements OnModuleDestroy {
     return this.mapDbProxy(picked);
   }
 
-  /** Build a synthetic UpstreamProxy from SCRAPER_PROXY env var. */
-  private getFallbackUpstream(country: string | null): UpstreamProxy | null {
+  /**
+   * Build a synthetic UpstreamProxy from SCRAPER_PROXY env var.
+   *
+   * `poolName` sélectionne le gabarit de username à utiliser pour injecter
+   * le pays demandé : celui configuré sur la pool (`fallbackCountryFormat`,
+   * ex. "{user}-country-{country}") si présent, sinon le format historique
+   * du moteur ("{user}__country__{country}") — certains fournisseurs
+   * résidentiels attendent une convention précise, pas toujours "__country__".
+   */
+  private getFallbackUpstream(country: string | null, poolName?: string | null): UpstreamProxy | null {
     let urlStr = buildProxyUrl(this.fallbackProxyUrl);
     if (!urlStr) return null;
     try {
       const u = new URL(urlStr);
       // Residential fallback: inject country in username -> "user__country__xx:pass@host"
+      // (ou le format custom de la pool, cf. doc ci-dessus).
       if (country && u.username) {
         const target = country.split(',')[0].trim().toLowerCase();
         const decodedUser = decodeURIComponent(u.username);
-        u.username = `${decodedUser}__country__${target}`;
+        const format = (poolName && this.poolFallbackFormatMap.get(poolName)) || '{user}__country__{country}';
+        u.username = format.replace('{user}', decodedUser).replace('{country}', target);
         urlStr = u.toString();
       }
       const parsed = new URL(urlStr);
