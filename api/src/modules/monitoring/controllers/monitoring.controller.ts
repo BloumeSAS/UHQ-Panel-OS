@@ -372,6 +372,13 @@ export class PanelMonitoringController {
     if (parsed.length === 0) {
       return { status: 'success', imported: 0, message: 'Aucun proxy valide détecté' };
     }
+    const countryFormat = body.countryFormat?.trim() || null;
+    if (countryFormat && (!countryFormat.includes('{user}') || !countryFormat.includes('{country}'))) {
+      return {
+        status: 'error',
+        message: 'Le format "pays sélectionnable" doit contenir exactement {user} et {country}.',
+      };
+    }
     const forceProto = body?.protocol?.toLowerCase();
     // Upsert (pas createMany+skipDuplicates) : une ligne dont l'URL existe déjà
     // en base (proxy archivé/mort, ou déjà importé dans une autre catégorie) doit
@@ -392,6 +399,7 @@ export class PanelMonitoringController {
           provider: 'Manual',
           isWorking: true,
           pool: body.pool || null,
+          countryFormat,
         },
         update: {
           isWorking: true,
@@ -399,6 +407,10 @@ export class PanelMonitoringController {
           archived: false,
           failCount: 0,
           pool: body.pool || null,
+          // Ne touche à countryFormat QUE si ce lot en précise un — un
+          // ré-import sans le champ (ex. pour juste réactiver/réassigner de
+          // pool) ne doit pas effacer un format déjà configuré sur ce proxy.
+          ...(body.countryFormat !== undefined && { countryFormat }),
         },
       });
       imported += 1;

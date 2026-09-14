@@ -6,6 +6,7 @@ import {
   IsIn,
   IsOptional,
   IsString,
+  MaxLength,
   MinLength,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
@@ -293,4 +294,13 @@ export class ImportProxiesDto {
   @IsOptional()
   @IsString()
   pool?: string;
+
+  @ApiPropertyOptional({
+    example: '{user}-country-{country}',
+    description: 'Gabarit "pays sélectionnable" appliqué à TOUS les proxies de ce lot (doit contenir {user} et {country}) — pour les fournisseurs où une seule passerelle sert plusieurs pays selon le username. Absent = proxies classiques (pays fixe, déterminé par le checker).',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  countryFormat?: string;
 }
