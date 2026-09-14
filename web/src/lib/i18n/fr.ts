@@ -735,7 +735,7 @@ const fr: Language = {
     'pools.proxiesCleared': '{n} proxy(s) supprimé(s) de la catégorie.',
     'pools.clearStarted': 'Vidage lancé en arrière-plan — vous serez notifié à la fin.',
     'pools.fallbackCountryFormat': 'Format username du fallback résidentiel',
-    'pools.fallbackCountryFormatHint': 'Gabarit utilisé pour injecter le pays dans le username du proxy résidentiel de secours (doit contenir {user} et {country}). Vide = format par défaut {user}__country__{country}.',
+    'pools.fallbackCountryFormatHint': 'Gabarit utilisé pour injecter le pays dans le username du proxy résidentiel de secours (doit contenir {country} ou {COUNTRY} — {user} optionnel). Vide = format par défaut {user}__country__{country}.',
     'pools.fallbackCountryFormatVsProxies': "⚠️ Ce champ ne concerne QUE le proxy résidentiel de secours (SCRAPER_PROXY), pas les proxies de cette catégorie. Pour rendre les proxies DU POOL \"pays sélectionnable\" (plusieurs fournisseurs, plusieurs formats dans la même catégorie), utilisez le toggle \"Proxies pays sélectionnable\" lors de l'import manuel (Pool de proxies → Importer) — un format par lot importé.",
     'pool.countrySelectable': 'Proxies "pays sélectionnable"',
     'pool.countrySelectableHint': "Une seule passerelle sert plusieurs pays selon le username envoyé (courant chez certains fournisseurs). Le username de CE lot sera réécrit à la volée selon le format ci-dessous, quel que soit le pays demandé par le compte.",

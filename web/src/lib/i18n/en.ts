@@ -735,7 +735,7 @@ const en: Language = {
     'pools.proxiesCleared': '{n} proxy(ies) deleted from the category.',
     'pools.clearStarted': 'Clearing started in the background — you\'ll be notified when it\'s done.',
     'pools.fallbackCountryFormat': 'Residential fallback username format',
-    'pools.fallbackCountryFormatHint': 'Template used to inject the country into the fallback residential proxy username (must contain {user} and {country}). Empty = default format {user}__country__{country}.',
+    'pools.fallbackCountryFormatHint': 'Template used to inject the country into the fallback residential proxy username (must contain {country} or {COUNTRY} — {user} optional). Empty = default format {user}__country__{country}.',
     'pools.fallbackCountryFormatVsProxies': "⚠️ This field only affects the residential fallback proxy (SCRAPER_PROXY), not this category's own proxies. To make the POOL's own proxies \"country-selectable\" (several providers, several formats in the same category), use the \"Country-selectable proxies\" toggle in the manual import screen (Proxy Pool → Import) — one format per imported batch.",
     'pool.countrySelectable': '"Country-selectable" proxies',
     'pool.countrySelectableHint': "A single gateway serves multiple countries depending on the username sent (common with some providers). This batch's username will be rewritten on the fly using the format below, regardless of which country the account requests.",
