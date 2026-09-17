@@ -12,6 +12,7 @@ import { PrismaService } from './database/prisma.service';
 import { RingBufferLogger } from './modules/logs/ring-buffer.logger';
 import { applyDatabaseEnv } from './database/db-config';
 import { translateValidationErrors } from './common/utils/i18n';
+import { RequestIdInterceptor } from './common/interceptors/request-id.interceptor';
 
 // Filet de sécurité : un incident isolé (ex. moteur Prisma d'un test de
 // connexion DB) ne doit JAMAIS tuer le process et couper l'API.
@@ -48,6 +49,10 @@ async function bootstrap() {
   app.use(urlencoded({ extended: true, limit: '25mb' }));
 
   app.useWebSocketAdapter(new WsAdapter(app));
+  // ID de corrélation par requête (repris de X-Request-Id si fourni, sinon
+  // généré) — propagé via AsyncLocalStorage et inclus dans chaque ligne de
+  // log émise pendant la durée de vie de la requête (cf. RingBufferLogger).
+  app.useGlobalInterceptors(new RequestIdInterceptor());
   app.useGlobalPipes(
     new ValidationPipe({
       transform: true,
