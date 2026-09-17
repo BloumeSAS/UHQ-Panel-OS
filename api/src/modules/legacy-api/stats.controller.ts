@@ -62,6 +62,18 @@ export class StatsController {
     const totalReceived = all.reduce((a, r) => a + r.bytesReceived, 0);
     const totalReqs = all.reduce((a, r) => a + r.requests, 0);
 
+    // Erreurs détectées sur le trafic HTTP en clair (403/captcha/geo-block —
+    // sniff de chaîne sur le premier chunk, cf. ProxyServerService.onChunk).
+    // Ne couvre PAS l'HTTPS (le moteur ne voit jamais de code de statut à
+    // travers un tunnel CONNECT chiffré) — c'est une limite structurelle du
+    // moteur bas niveau, pas un manque de collecte.
+    const errorRows = await this.prisma.proxyUsageError.findMany({
+      where: { userProxyId: proxyId, date: { gte: startDate } },
+    });
+    const errorAgg: Record<string, number> = {};
+    for (const e of errorRows) errorAgg[e.reason] = (errorAgg[e.reason] ?? 0) + e.count;
+    const totalErrors = Object.values(errorAgg).reduce((a, b) => a + b, 0);
+
     return {
       status: 'success',
       proxy_id: proxyId,
@@ -72,7 +84,9 @@ export class StatsController {
         totalBytes: totalSent + totalReceived,
         totalGb: Math.round(((totalSent + totalReceived) / 1024 ** 3) * 10000) / 10000,
         requests: totalReqs,
+        errors: totalErrors,
       },
+      errors_by_reason: Object.entries(errorAgg).map(([reason, count]) => ({ reason, count })),
       usage: records.map((r) => ({
         hostname: r.hostname,
         bytesSent: r.bytesSent,
