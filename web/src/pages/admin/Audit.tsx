@@ -2,7 +2,7 @@ import { Fragment, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useT } from '@/lib/i18n';
-import { ClipboardList, ChevronLeft, ChevronRight, ChevronDown, Download } from 'lucide-react';
+import { ClipboardList, ChevronLeft, ChevronRight, ChevronDown, Download, X } from 'lucide-react';
 import { Button, Card } from '@/components/ui';
 
 function parseDetails(details: string | null): any {
@@ -10,10 +10,21 @@ function parseDetails(details: string | null): any {
   try { return JSON.parse(details); } catch { return null; }
 }
 
+interface Filters {
+  action: string;
+  userEmail: string;
+  from: string;
+  to: string;
+}
+
+const EMPTY_FILTERS: Filters = { action: '', userEmail: '', from: '', to: '' };
+
 export default function AuditPage() {
   const t = useT();
   const [page, setPage] = useState(1);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
+  const [draft, setDraft] = useState<Filters>(EMPTY_FILTERS);
   const limit = 50;
 
   const toggleExpand = (id: string) => {
@@ -25,26 +36,50 @@ export default function AuditPage() {
     });
   };
 
+  const buildParams = (extra: Record<string, string | number> = {}) => {
+    const params = new URLSearchParams();
+    if (filters.action) params.set('action', filters.action);
+    if (filters.userEmail) params.set('userEmail', filters.userEmail);
+    if (filters.from) params.set('from', filters.from);
+    if (filters.to) params.set('to', filters.to);
+    for (const [k, v] of Object.entries(extra)) params.set(k, String(v));
+    return params;
+  };
+
   const { data } = useQuery({
-    queryKey: ['audit', page],
+    queryKey: ['audit', page, filters],
     queryFn: async () => {
-      const { data } = await api.get(`/audit?page=${page}&limit=${limit}`);
+      const params = buildParams({ page, limit });
+      const { data } = await api.get(`/audit?${params.toString()}`);
       return data as { items: any[]; total: number; page: number; limit: number };
     },
   });
 
   const totalPages = Math.ceil((data?.total ?? 0) / limit);
 
-  const downloadCsv = () => {
-    const rows = (data?.items ?? []).map((l: any) =>
-      [l.id, l.userEmail ?? '', l.action, l.target ?? '', l.ip ?? '', new Date(l.createdAt).toISOString()].join(',')
-    );
-    const csv = ['id,user_email,action,target,ip,created_at', ...rows].join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
+  const applyFilters = () => {
+    setFilters(draft);
+    setPage(1);
+  };
+
+  const clearFilters = () => {
+    setDraft(EMPTY_FILTERS);
+    setFilters(EMPTY_FILTERS);
+    setPage(1);
+  };
+
+  const hasActiveFilters = Object.values(filters).some(Boolean);
+
+  const downloadCsv = async () => {
+    // Export complet côté serveur (filtré, pas juste la page affichée). Passe
+    // par le client axios (pas window.open) pour que le header Authorization
+    // Bearer soit envoyé — le endpoint est protégé par JwtAuthGuard.
+    const params = buildParams();
+    const { data } = await api.get(`/audit/export?${params.toString()}`, { responseType: 'blob' });
+    const url = URL.createObjectURL(new Blob([data], { type: 'text/csv' }));
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'audit-log.csv';
+    a.download = `audit-log-${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -71,6 +106,53 @@ export default function AuditPage() {
           {t('common.download')} CSV
         </Button>
       </div>
+
+      <Card className="p-4">
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-muted-foreground">{t('audit.action')}</label>
+            <input
+              value={draft.action}
+              onChange={(e) => setDraft((d) => ({ ...d, action: e.target.value }))}
+              className="h-9 rounded-md border border-input bg-background px-3 text-sm w-40"
+              placeholder="settings.update"
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-muted-foreground">{t('audit.user')}</label>
+            <input
+              value={draft.userEmail}
+              onChange={(e) => setDraft((d) => ({ ...d, userEmail: e.target.value }))}
+              className="h-9 rounded-md border border-input bg-background px-3 text-sm w-48"
+              placeholder="user@mail.com"
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-muted-foreground">{t('audit.from')}</label>
+            <input
+              type="date"
+              value={draft.from}
+              onChange={(e) => setDraft((d) => ({ ...d, from: e.target.value }))}
+              className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-muted-foreground">{t('audit.to')}</label>
+            <input
+              type="date"
+              value={draft.to}
+              onChange={(e) => setDraft((d) => ({ ...d, to: e.target.value }))}
+              className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+            />
+          </div>
+          <Button size="sm" onClick={applyFilters}>{t('audit.applyFilters')}</Button>
+          {hasActiveFilters && (
+            <Button size="sm" variant="outline" onClick={clearFilters}>
+              <X className="h-3.5 w-3.5 mr-1" /> {t('audit.clearFilters')}
+            </Button>
+          )}
+        </div>
+      </Card>
 
       <Card className="overflow-hidden">
         <div className="overflow-x-auto">
