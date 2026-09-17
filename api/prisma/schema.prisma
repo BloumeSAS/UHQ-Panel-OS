@@ -30,6 +30,7 @@ model UserProxy {
   ownerId            String?
   owner              PanelUser? @relation(fields: [ownerId], references: [id], onDelete: SetNull)
   usageStats         ProxyUsage[]
+  usageErrors        ProxyUsageError[]
   // Tags (comma-separated list of tag IDs or names stored as JSON array string)
   tags               String?
   // Bandwidth throttle in KB/s (null = unlimited)
@@ -339,6 +340,26 @@ model ProxyUsage {
   // un `date >= X` sans filtrer aussi sur hostname.
   @@index([userProxyId, date])
   // Requêtes globales par plage de dates sans compte précis (monitoring/live).
+  @@index([date])
+}
+
+// Compteur d'erreurs détectées sur le trafic HTTP en clair (sniff de chaîne
+// sur le premier chunk reçu — cf. `ProxyServerService.onChunk`). Le moteur
+// TCP est un tunnel bas niveau : pour l'HTTPS (l'essentiel du trafic), il ne
+// voit jamais de code de statut (juste des octets chiffrés après le CONNECT).
+// Ce compteur ne couvre donc QUE ce que le sniff HTTP en clair peut détecter
+// (403, captcha, geo-block) — pas un vrai code de statut HTTP générique.
+model ProxyUsageError {
+  id          String    @id @default(cuid())
+  userProxyId String
+  hostname    String
+  date        DateTime  @default(now())
+  reason      String    // ex. "403 Forbidden", "Captcha detected", "Geo-blocked"
+  count       Int       @default(1)
+  userProxy   UserProxy @relation(fields: [userProxyId], references: [id], onDelete: Cascade)
+
+  @@unique([userProxyId, hostname, date, reason])
+  @@index([userProxyId, date])
   @@index([date])
 }
 

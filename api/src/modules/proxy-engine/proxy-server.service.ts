@@ -1409,8 +1409,32 @@ export class ProxyServerService implements OnModuleDestroy {
         reason = 'Captcha detected';
       else if (snip.includes('geo-blocked') || snip.includes('not available in your country'))
         reason = 'Geo-blocked';
-      if (reason) this.logger.warn(`Target blocking on ${cleanHost}: ${reason}`);
+      if (reason) {
+        this.logger.warn(`Target blocking on ${cleanHost}: ${reason}`);
+        this.recordProxyUsageError(username, cleanHost, reason);
+      }
     }
+  }
+
+  /**
+   * Persiste une raison de blocage détectée (sniff HTTP en clair) — avant,
+   * seul un `logger.warn()` transitoire existait, perdu dès que la ligne
+   * sortait du ring buffer. Bucketing par jour, incrémenté (pas une ligne par
+   * occurrence) pour rester léger sur du trafic à fort volume. Fire-and-forget :
+   * ne doit jamais ralentir/faire échouer le relais de données en cours.
+   */
+  private recordProxyUsageError(username: string, hostname: string, reason: string): void {
+    const userId = this.userListCache.get(username)?.id;
+    if (!userId) return;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    this.prisma.proxyUsageError
+      .upsert({
+        where: { userProxyId_hostname_date_reason: { userProxyId: userId, hostname, date: today, reason } },
+        create: { userProxyId: userId, hostname, date: today, reason, count: 1 },
+        update: { count: { increment: 1 } },
+      })
+      .catch(() => undefined);
   }
 }
 
