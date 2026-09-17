@@ -339,7 +339,7 @@ export class PanelSubUserController {
     if (!user) throw new NotFoundException(t('errors.proxyNotFound'));
     const start = periodStart(period);
     const where = { userProxyId: id, date: { gte: start } };
-    const [totals, topDomains] = await Promise.all([
+    const [totals, topDomains, errorRows] = await Promise.all([
       this.prisma.proxyUsage.aggregate({
         where,
         _sum: { bytesSent: true, bytesReceived: true, requests: true },
@@ -351,10 +351,20 @@ export class PanelSubUserController {
         orderBy: { _sum: { requests: 'desc' } },
         take: 25,
       }),
+      // Erreurs détectées sur le trafic HTTP en clair (403/captcha/geo-block) —
+      // ne couvre pas l'HTTPS, le moteur ne voit jamais de code de statut à
+      // travers un tunnel CONNECT chiffré (limite structurelle, pas un manque
+      // de collecte).
+      this.prisma.proxyUsageError.groupBy({
+        by: ['reason'],
+        where,
+        _sum: { count: true },
+      }),
     ]);
     const sent = totals._sum.bytesSent ?? 0;
     const received = totals._sum.bytesReceived ?? 0;
     const active = this.engine.getActiveThreads().get(user.username) ?? 0;
+    const totalErrors = errorRows.reduce((a, e) => a + (e._sum.count ?? 0), 0);
     return {
       status: 'success',
       period,
@@ -365,6 +375,7 @@ export class PanelSubUserController {
         requests: totals._sum.requests ?? 0,
         active_threads: active,
         threads_limit: user.threadsLimit,
+        errors: totalErrors,
       },
       top_domains: topDomains.map((d) => ({
         hostname: d.hostname,
@@ -372,6 +383,7 @@ export class PanelSubUserController {
         bytesSent: d._sum.bytesSent ?? 0,
         bytesReceived: d._sum.bytesReceived ?? 0,
       })),
+      errors_by_reason: errorRows.map((e) => ({ reason: e.reason, count: e._sum.count ?? 0 })),
     };
   }
 
