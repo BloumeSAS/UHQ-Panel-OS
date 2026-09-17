@@ -42,6 +42,10 @@ export const SETTING_DEFS = {
   checkerTimeout: { def: '5', env: 'CHECKER_TIMEOUT', secret: false },
   skipDeadProxies: { def: 'true', env: undefined, secret: false },
   deadProxyMaxRetries: { def: '3', env: undefined, secret: false },
+  // Rétention de la table AuditLog (mois) — contrairement au ring buffer de
+  // logs (2000 entrées) et aux fichiers (30 jours), cette table grossissait
+  // indéfiniment. Nettoyage quotidien via AuditService.
+  auditLogRetentionMonths: { def: '12', env: undefined, secret: false },
   scraperProxy: { def: '', env: 'SCRAPER_PROXY', secret: true },
   groqApiKey: { def: '', env: 'GROQ_API_KEY', secret: true },
   // Clé API de l'API legacy /api/v1 — générée au setup, régénérable depuis le panel.
