@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { LogLevel } from '@nestjs/common';
 
-function resolveLogDir(): string {
+export function resolveLogDir(): string {
   if (process.env.LOG_DIR) return process.env.LOG_DIR;
   // Docker: /app/logs  — local monorepo: <api-root>/logs
   const dockerPath = '/app/logs';
@@ -14,11 +14,12 @@ function dateSuffix(): string {
   return new Date().toISOString().slice(0, 10); // YYYY-MM-DD
 }
 
-function formatLine(level: LogLevel, context: string | undefined, message: string): string {
+function formatLine(level: LogLevel, context: string | undefined, message: string, reqId?: string): string {
   const ts = new Date().toISOString();
   const lvl = level.toUpperCase().padEnd(7);
+  const req = reqId ? `(${reqId.slice(0, 8)}) ` : '';
   const ctx = context ? `[${context}] ` : '';
-  return `${ts} ${lvl} ${ctx}${message}\n`;
+  return `${ts} ${lvl} ${req}${ctx}${message}\n`;
 }
 
 export class FileAppender {
@@ -53,9 +54,9 @@ export class FileAppender {
     }
   }
 
-  write(level: LogLevel, context: string | undefined, message: string): void {
+  write(level: LogLevel, context: string | undefined, message: string, reqId?: string): void {
     this.init();
-    const line = formatLine(level, context, message);
+    const line = formatLine(level, context, message, reqId);
     const suffix = dateSuffix();
     try {
       fs.appendFileSync(path.join(this.dir, `combined-${suffix}.log`), line, 'utf8');
