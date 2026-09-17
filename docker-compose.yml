@@ -70,6 +70,10 @@ services:
       PROXY_PORT_RANGE: "9000-9250"
     volumes:
       - appdata:/app/data
+      # Fichiers de logs (combined-*.log / error-*.log, rotation 30 jours) —
+      # sans ce volume, `/app/logs` est éphémère et tout est perdu à chaque
+      # redéploiement, ce qui annule la rétention déjà codée côté FileAppender.
+      - logsdata:/app/logs
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
       interval: 30s
@@ -88,3 +92,5 @@ volumes:
     name: uhq-panel-pgdata
   appdata:
     name: uhq-panel-appdata
+  logsdata:
+    name: uhq-panel-logsdata
