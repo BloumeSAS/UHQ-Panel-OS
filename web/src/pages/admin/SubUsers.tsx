@@ -341,7 +341,7 @@ export default function SubUsers() {
                         </Badge>
                       )}
                     </TD>
-                    <TD>{u.country_filter || <span className="text-muted-foreground">—</span>}</TD>
+                    <TD><CountryFlags value={u.country_filter} /></TD>
                     <TD>
                       <Switch
                         checked={u.is_blocked}
@@ -518,7 +518,10 @@ function QuickView({
         <QRow label="Username" value={subUser.username} />
         <QRow label="Password" value={subUser.password} />
         <QRow label="Threads" value={String(subUser.threads_limit)} />
-        <QRow label="Pays" value={subUser.country_filter || '—'} />
+        <div className="flex items-center justify-between gap-2 py-1 border-b border-dashed">
+          <span className="text-muted-foreground text-xs">Pays</span>
+          <CountryFlags value={subUser.country_filter} />
+        </div>
         <QRow label="Tags" value={subUser.tags || '—'} />
         <QRow label="Port dédié" value={subUser.port ? String(subUser.port) : '—'} />
         <QRow label="Domaine" value={subUser.domain || '—'} />
@@ -553,6 +556,64 @@ function QRow({ label, value }: { label: string; value: string }) {
       <span className="text-muted-foreground text-xs">{label}</span>
       <span className="font-mono text-xs truncate max-w-[220px]">{value}</span>
     </div>
+  );
+}
+
+function getFlagEmoji(countryCode: string): string {
+  const code = countryCode.trim().toUpperCase();
+  if (!/^[A-Z]{2}$/.test(code)) return '🌐';
+  const codePoints = code.split('').map((c) => 127397 + c.charCodeAt(0));
+  try {
+    return String.fromCodePoint(...codePoints);
+  } catch {
+    return '🌐';
+  }
+}
+
+// Liste de pays affichée en drapeaux : au-delà de quelques entrées, le texte
+// brut ("NL,FR,DE,GB,RU,...") débordait la cellule/ligne. On n'affiche plus
+// que les premiers drapeaux inline, avec un "+N" cliquable ouvrant la liste
+// complète en modal quand il y en a trop.
+const COUNTRY_FLAGS_INLINE_MAX = 8;
+
+function CountryFlags({ value }: { value: string | null }) {
+  const [open, setOpen] = useState(false);
+  if (!value) return <span className="text-muted-foreground">—</span>;
+  const codes = value.split(',').map((c) => c.trim()).filter(Boolean);
+  if (codes.length === 0) return <span className="text-muted-foreground">—</span>;
+
+  const shown = codes.slice(0, COUNTRY_FLAGS_INLINE_MAX);
+  const rest = codes.length - shown.length;
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="inline-flex items-center gap-0.5 text-base leading-none hover:opacity-75 transition-opacity"
+        title={codes.join(', ')}
+      >
+        {shown.map((c, i) => (
+          <span key={`${c}-${i}`}>{getFlagEmoji(c)}</span>
+        ))}
+        {rest > 0 && <span className="ml-1 text-xs font-medium text-muted-foreground">+{rest}</span>}
+      </button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Pays sélectionnés ({codes.length})</DialogTitle>
+          </DialogHeader>
+          <div className="grid grid-cols-4 sm:grid-cols-6 gap-2 max-h-[60vh] overflow-y-auto py-2">
+            {codes.map((c, i) => (
+              <div key={`${c}-${i}`} className="flex flex-col items-center gap-1 rounded-md border border-border p-2 text-xs">
+                <span className="text-xl leading-none">{getFlagEmoji(c)}</span>
+                <span className="font-mono">{c}</span>
+              </div>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
