@@ -18,6 +18,7 @@ import {
   ChevronRight,
   Gauge,
 } from 'lucide-react';
+import { CountryFlag } from '@/components/CountryFlag';
 import { api, apiError } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { toast } from '@/lib/toast';
@@ -256,12 +257,6 @@ export default function Pool() {
       } catch { return `${p.ip}:${p.port}`; }
     }
     return `${p.ip}:${p.port}`;
-  };
-
-  const getFlagEmoji = (countryCode: string | null) => {
-    if (!countryCode || countryCode === '—' || countryCode === 'Unknown') return '🌐';
-    const codePoints = countryCode.toUpperCase().split('').map((c) => 127397 + c.charCodeAt(0));
-    try { return String.fromCodePoint(...codePoints); } catch { return '🌐'; }
   };
 
   const copyToClipboard = (text: string, id: string) => {
@@ -560,9 +555,9 @@ export default function Pool() {
                           </Badge>
                         ) : (
                           <>
-                            <span className="mr-1.5" title={p.country || 'Unknown'}>
-                              {getFlagEmoji(p.country)}
-                            </span>
+                            {p.country && p.country !== 'Unknown' && (
+                              <CountryFlag code={p.country} className="mr-1.5" />
+                            )}
                             <span className="font-mono text-xs font-semibold">{p.country || '—'}</span>
                           </>
                         )}

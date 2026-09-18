@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, List, Copy, Check, Pencil, Tag, Calendar, Zap, CheckSquare, Square, RotateCcw, ChevronLeft, ChevronRight, Upload, Link2, Ban, Eye, BarChart3, Globe2 } from 'lucide-react';
 import { SlideOver } from '@/components/SlideOver';
 import { AddonPageBar } from '@/components/AddonPageBar';
+import { CountryFlag } from '@/components/CountryFlag';
 import { api, apiError } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import {
@@ -559,17 +560,6 @@ function QRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-function getFlagEmoji(countryCode: string): string {
-  const code = countryCode.trim().toUpperCase();
-  if (!/^[A-Z]{2}$/.test(code)) return '🌐';
-  const codePoints = code.split('').map((c) => 127397 + c.charCodeAt(0));
-  try {
-    return String.fromCodePoint(...codePoints);
-  } catch {
-    return '🌐';
-  }
-}
-
 // Liste de pays affichée en drapeaux : au-delà de quelques entrées, le texte
 // brut ("NL,FR,DE,GB,RU,...") débordait la cellule/ligne. On n'affiche plus
 // que les premiers drapeaux inline, avec un "+N" cliquable ouvrant la liste
@@ -590,11 +580,11 @@ function CountryFlags({ value }: { value: string | null }) {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="inline-flex items-center gap-0.5 text-base leading-none hover:opacity-75 transition-opacity"
+        className="inline-flex items-center gap-1 hover:opacity-75 transition-opacity"
         title={codes.join(', ')}
       >
         {shown.map((c, i) => (
-          <span key={`${c}-${i}`}>{getFlagEmoji(c)}</span>
+          <CountryFlag key={`${c}-${i}`} code={c} />
         ))}
         {rest > 0 && <span className="ml-1 text-xs font-medium text-muted-foreground">+{rest}</span>}
       </button>
@@ -606,7 +596,7 @@ function CountryFlags({ value }: { value: string | null }) {
           <div className="grid grid-cols-4 sm:grid-cols-6 gap-2 max-h-[60vh] overflow-y-auto py-2">
             {codes.map((c, i) => (
               <div key={`${c}-${i}`} className="flex flex-col items-center gap-1 rounded-md border border-border p-2 text-xs">
-                <span className="text-xl leading-none">{getFlagEmoji(c)}</span>
+                <CountryFlag code={c} className="h-5 w-7" />
                 <span className="font-mono">{c}</span>
               </div>
             ))}
