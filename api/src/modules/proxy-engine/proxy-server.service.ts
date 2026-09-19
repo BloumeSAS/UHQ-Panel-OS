@@ -106,6 +106,12 @@ export class ProxyServerService implements OnModuleDestroy {
   >();
   /** Memory-only auth: every UserProxy keyed by username */
   private userListCache = new Map<string, any>();
+  /**
+   * IP bannies (indépendant des comptes) — vérifié avant même l'authentification
+   * pour couper court à toute tentative depuis cette IP. Rechargé au boot, toutes
+   * les 60s, et immédiatement après chaque écriture via `invalidateBanCache()`.
+   */
+  private bannedIpSet = new Set<string>();
   /** Cache des listes privées d'upstreams parsées, clé = texte brut `customProxies`. */
   private readonly customUpstreamCache = new Map<string, UpstreamProxy[]>();
   /** Top-N best-performing working proxies (refreshed every 30s) */
@@ -150,6 +156,7 @@ export class ProxyServerService implements OnModuleDestroy {
         this.proxyPoolCache = proxies;
         this.proxyMapCache = new Map(this.proxyPoolCache.map((p) => [p.id, p]));
       }
+      await this.reloadBannedIps();
       this.logger.log('Caches pre-warmed (users & proxies).');
     } catch (e) {
       this.logger.error(`Failed to pre-warm caches: ${e}`);
@@ -345,11 +352,34 @@ export class ProxyServerService implements OnModuleDestroy {
       } catch (e) {
         this.logger.error(`Failed to refresh user cache: ${e}`);
       }
+      try {
+        await this.reloadBannedIps();
+      } catch (e) {
+        this.logger.error(`Failed to refresh banned IP cache: ${e}`);
+      }
     }, 60_000);
   }
 
   public invalidateUserCache(username: string): void {
     this.userListCache.delete(username);
+  }
+
+  /** Recharge la liste des IP bannies en mémoire (bans non expirés uniquement). */
+  private async reloadBannedIps(): Promise<void> {
+    const rows = await this.prisma.bannedIp.findMany({
+      where: { OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] },
+      select: { ip: true },
+    });
+    this.bannedIpSet = new Set(rows.map((r) => r.ip));
+  }
+
+  /** Déclenchement immédiat depuis le panel après un ban/débannissement. */
+  public invalidateBanCache(): void {
+    void this.reloadBannedIps().catch((e) => this.logger.error(`Failed to reload banned IPs: ${e}`));
+  }
+
+  private isIpBanned(ip: string): boolean {
+    return !!ip && this.bannedIpSet.has(ip);
   }
 
   async onModuleDestroy(): Promise<void> {
@@ -430,6 +460,18 @@ export class ProxyServerService implements OnModuleDestroy {
     // (readUntil, handshake, bidirectionalPipe) n'est attaché à ce moment
     // précis. Voir le même correctif sur les sockets upstream (tcpConnect).
     client.on('error', () => {});
+
+    // Ban IP : coupé avant même de lire la moindre donnée — `remoteAddress`
+    // est déjà connu à l'établissement de la connexion TCP, pas besoin
+    // d'attendre la requête pour rejeter. "Erreur HTTP" écrite en dur car le
+    // protocole du client (HTTP proxy le plus souvent) n'est pas encore connu.
+    const clientIp = client.remoteAddress?.replace(/^::ffff:/, '') ?? '';
+    if (this.isIpBanned(clientIp)) {
+      client.write('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\nIP banned.\r\n');
+      client.end();
+      return;
+    }
+
     let user: any | null = null;
     // Username under which we actually incremented activeThreads. Stays null
     // when we never counted this connection (auth failure, 429 rejection),
@@ -465,7 +507,6 @@ export class ProxyServerService implements OnModuleDestroy {
         }
       }
 
-      const clientIp = client.remoteAddress?.replace(/^::ffff:/, '') ?? '';
       user = await this.authenticate(clientIp, authHeader);
       if (!user) {
         this.logger.log(`Auth failed for ${clientIp}`);
