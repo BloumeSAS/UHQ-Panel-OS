@@ -21,9 +21,11 @@ import Reports from '@/pages/admin/Reports';
 import About from '@/pages/admin/About';
 import Checker from '@/pages/admin/Checker';
 import Audit from '@/pages/admin/Audit';
+import BannedIps from '@/pages/admin/BannedIps';
 import MyProxies from '@/pages/user/MyProxies';
 import SecurityPage from '@/pages/user/Security';
 import ApiKeysPage from '@/pages/user/ApiKeys';
+import ProfilePage from '@/pages/Profile';
 import ProxyPools from '@/pages/admin/ProxyPools';
 import Addons from '@/pages/admin/Addons';
 import AddonDocs from '@/pages/admin/AddonDocs';
@@ -110,10 +112,12 @@ function AppRoutes() {
       <Route path="/settings" element={<Protected admin><Settings /></Protected>} />
       <Route path="/reports" element={<Protected roles={['ADMIN', 'SUPPORT']}><Reports /></Protected>} />
       <Route path="/audit" element={<Protected roles={['ADMIN', 'SUPPORT']}><Audit /></Protected>} />
+      <Route path="/banned-ips" element={<Protected admin><BannedIps /></Protected>} />
       <Route path="/addons-manage" element={<Protected admin><Addons /></Protected>} />
       <Route path="/addon-docs" element={<Protected admin><AddonDocs /></Protected>} />
 
       {/* User routes (any authenticated) */}
+      <Route path="/profile" element={<Protected><ProfilePage /></Protected>} />
       <Route path="/security" element={<Protected><SecurityPage /></Protected>} />
       <Route path="/api-keys" element={<Protected><ApiKeysPage /></Protected>} />
       <Route path="/addons/:id/:pagePath" element={<Protected><AddonIframe /></Protected>} />
