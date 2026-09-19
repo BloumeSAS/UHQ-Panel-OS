@@ -24,6 +24,8 @@ import {
   Puzzle,
   Bell,
   ShieldCheck,
+  ShieldBan,
+  UserCircle,
   KeyRound,
   ClipboardList,
   UserPlus,
@@ -134,13 +136,18 @@ export function Layout({ children }: { children: React.ReactNode }) {
     { to: '/logs', label: t('nav.logs'), icon: ScrollText },
     { to: '/reports', label: t('nav.reports'), icon: BarChart3 },
     { to: '/audit', label: t('nav.audit'), icon: ClipboardList },
+    { to: '/banned-ips', label: t('nav.bannedIps'), icon: ShieldBan },
     { to: '/addons-manage', label: t('nav.addons'), icon: Puzzle },
     { to: '/addon-docs', label: t('nav.addonDocs'), icon: BookOpen },
     { to: '/settings', label: t('nav.settings'), icon: Settings },
+    { to: '/profile', label: t('nav.profile'), icon: UserCircle },
+    { to: '/security', label: t('nav.security'), icon: ShieldCheck },
+    { to: '/api-keys', label: t('nav.apiKeys'), icon: KeyRound },
     { to: '/about', label: t('nav.about'), icon: Info },
   ];
   const userNav: NavItem[] = [
     { to: '/', label: t('nav.myProxies'), icon: Network },
+    { to: '/profile', label: t('nav.profile'), icon: UserCircle },
     { to: '/security', label: t('nav.security'), icon: ShieldCheck },
     { to: '/api-keys', label: t('nav.apiKeys'), icon: KeyRound },
     { to: '/about', label: t('nav.about'), icon: Info },
@@ -154,6 +161,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
     { to: '/logs', label: t('nav.logs'), icon: ScrollText },
     { to: '/reports', label: t('nav.reports'), icon: BarChart3 },
     { to: '/audit', label: t('nav.audit'), icon: ClipboardList },
+    { to: '/profile', label: t('nav.profile'), icon: UserCircle },
     { to: '/about', label: t('nav.about'), icon: Info },
   ];
 
@@ -219,12 +227,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
     if (insertAt !== -1) nav.splice(insertAt, 0, ...addonNav);
     else nav.push(...addonNav);
   }
-
-  // Admin-only nav additions for non-sidebar items
-  const adminHeaderNav = user?.role === 'ADMIN' ? [
-    { to: '/security', label: t('nav.security'), icon: ShieldCheck },
-    { to: '/api-keys', label: t('nav.apiKeys'), icon: KeyRound },
-  ] : [];
 
   const unreadCount = notifData ?? 0;
 
