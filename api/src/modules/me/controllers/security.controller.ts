@@ -6,6 +6,7 @@ import {
   Get,
   NotFoundException,
   Param,
+  Patch,
   Post,
   Req,
   UseGuards,
@@ -13,12 +14,14 @@ import {
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { authenticator } from '@otplib/preset-default';
 import * as QRCode from 'qrcode';
+import * as bcrypt from 'bcryptjs';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../../common/decorators/current-user.decorator';
 import type { JwtUser } from '../../../common/guards/jwt-auth.guard';
 import { PrismaService } from '../../../database/prisma.service';
 import { SettingsService } from '../../../config/settings.service';
-import { TotpEnableDto, TotpVerifyDto } from '../../../common/dto/security.dto';
+import { AuditService } from '../../audit/audit.service';
+import { TotpEnableDto, TotpVerifyDto, ChangePasswordDto } from '../../../common/dto/security.dto';
 
 @ApiTags('panel-security')
 @ApiBearerAuth()
@@ -28,7 +31,41 @@ export class SecurityController {
   constructor(
     private readonly prisma: PrismaService,
     private readonly settings: SettingsService,
+    private readonly auditService: AuditService,
   ) {}
+
+  // ── Profil ───────────────────────────────────────────────────────────────────
+
+  /** Infos du compte panel courant (email, rôle) — utilisé par la page Profil. */
+  @Get('me')
+  async me(@CurrentUser() me: JwtUser) {
+    const user = await this.prisma.panelUser.findUnique({ where: { id: me.id } });
+    if (!user) throw new NotFoundException('User not found');
+    return {
+      status: 'success',
+      data: { id: user.id, email: user.email, role: user.role, createdAt: user.createdAt },
+    };
+  }
+
+  /** Change le mot de passe du compte courant (nécessite l'ancien). */
+  @Patch('password')
+  async changePassword(@CurrentUser() me: JwtUser, @Body() dto: ChangePasswordDto) {
+    const user = await this.prisma.panelUser.findUnique({ where: { id: me.id } });
+    if (!user) throw new NotFoundException('User not found');
+    const valid = await bcrypt.compare(dto.currentPassword, user.passwordHash);
+    if (!valid) throw new BadRequestException('Mot de passe actuel incorrect');
+
+    await this.prisma.panelUser.update({
+      where: { id: me.id },
+      data: { passwordHash: await bcrypt.hash(dto.newPassword, 10) },
+    });
+    await this.auditService.log({
+      userId: me.id,
+      userEmail: me.email,
+      action: 'auth.password-change',
+    });
+    return { status: 'success', message: 'Password updated' };
+  }
 
   // ── 2FA / TOTP ───────────────────────────────────────────────────────────────
 
