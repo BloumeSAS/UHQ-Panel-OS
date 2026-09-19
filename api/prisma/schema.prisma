@@ -155,6 +155,22 @@ model AuditLog {
   @@index([userId])
 }
 
+// IP bannie de l'utilisation du moteur proxy (indépendant des comptes UserProxy
+// individuels — coupe l'accès à TOUT compte connecté depuis cette IP). Vérifié
+// en mémoire à chaque connexion entrante, avant même l'authentification (voir
+// `ProxyServerService.handleClient`) — la connexion est fermée immédiatement
+// avec une erreur HTTP 403, sans compter de thread ni tenter d'upstream.
+model BannedIp {
+  id        String    @id @default(cuid())
+  ip        String    @unique
+  reason    String?
+  createdBy String?   // email de l'admin qui a posé le ban (traçabilité)
+  expiresAt DateTime? // null = ban permanent
+  createdAt DateTime  @default(now())
+
+  @@index([expiresAt])
+}
+
 // Invitation par e-mail (inscription contrôlée)
 model Invitation {
   id        String    @id @default(uuid())
