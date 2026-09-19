@@ -71,6 +71,18 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
     if (!this.connecting) {
       this.connecting = (async () => {
         try {
+          // Toujours se déconnecter avant de rouvrir — sans ça, à chaque
+          // cycle de reconnexion (coupure réseau/DB), l'ancien pool de
+          // connexions TCP du query engine restait ouvert en arrière-plan.
+          // Sur une série de coupures rapprochées (observé en prod : ~17
+          // cycles en 14 min), les sockets/fds jamais fermés finissaient par
+          // épuiser la limite du process (EMFILE), y compris pour de simples
+          // lectures de fichiers statiques sans rapport avec la DB.
+          try {
+            await this.$disconnect();
+          } catch {
+            /* jamais connecté, ou déjà déconnecté — non bloquant */
+          }
           await this.$connect();
           this.connected = true;
           this.logger.log('Prisma connected to Database.');
