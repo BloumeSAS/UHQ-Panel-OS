@@ -46,6 +46,11 @@ export const SETTING_DEFS = {
   // logs (2000 entrées) et aux fichiers (30 jours), cette table grossissait
   // indéfiniment. Nettoyage quotidien via AuditService.
   auditLogRetentionMonths: { def: '12', env: undefined, secret: false },
+  // Rétention des notifications in-app (jours) — même constat que l'audit
+  // log : aucune purge n'existait, une seule catégorie (proxy hors ligne, sur
+  // un pool de dizaines de milliers d'entrées) a fait grossir la table à
+  // plusieurs Go. Nettoyage quotidien via NotificationsCleanupService.
+  notificationRetentionDays: { def: '30', env: undefined, secret: false },
   scraperProxy: { def: '', env: 'SCRAPER_PROXY', secret: true },
   groqApiKey: { def: '', env: 'GROQ_API_KEY', secret: true },
   // Clé API de l'API legacy /api/v1 — générée au setup, régénérable depuis le panel.
