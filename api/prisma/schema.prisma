@@ -47,6 +47,13 @@ model UserProxy {
   // celui de sa pool, sinon `publicProxyHost`). Purement informatif (DNS) —
   // ne change rien au bind réseau du moteur.
   domain             String?
+  // Domaines interdits pour CE compte (liste séparée par virgules, ex.
+  // "exemple.com,autre.net") — bloque le domaine exact ET ses sous-domaines.
+  // Vérifié dès la connexion (avant même de consommer un slot thread), pour
+  // CONNECT (HTTPS, on connaît le host cible sans voir le contenu chiffré) et
+  // HTTP en clair. Configurable en panel ET via l'API sub-user (legacy v1 +
+  // self-service /me/proxies/:id).
+  blockedDomains     String?
 
   @@index([ownerId])
 }

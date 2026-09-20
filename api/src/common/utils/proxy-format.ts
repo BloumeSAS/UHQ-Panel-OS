@@ -26,6 +26,7 @@ export function formatSubUser(u: any) {
     is_blocked: u.isBlocked,
     sticky_session_ttl: u.stickySessionTtl,
     custom_proxies: u.customProxies ?? null,
+    blocked_domains: u.blockedDomains ?? null,
     owner_id: u.ownerId ?? null,
     bandwidth_limit: u.bandwidthLimit ?? null,
     expires_at: u.expiresAt ?? null,
@@ -46,6 +47,22 @@ export function normalizeDomain(raw: string): string {
     .replace(/^[a-z][a-z0-9+.-]*:\/\//i, '')
     .replace(/\/.*$/, '')
     .replace(/:\d+$/, '');
+}
+
+/**
+ * `targetHost` ("example.com" ou "example.com:443") est-il couvert par la
+ * liste `blockedDomainsCsv` (1 domaine par virgule) ? Bloque le domaine exact
+ * ET ses sous-domaines (ex. "example.com" bloque aussi "api.example.com").
+ */
+export function isDomainBlocked(targetHost: string, blockedDomainsCsv: string | null | undefined): boolean {
+  if (!blockedDomainsCsv) return false;
+  const host = targetHost.split(':')[0].trim().toLowerCase();
+  if (!host) return false;
+  const blocked = blockedDomainsCsv
+    .split(',')
+    .map((d) => normalizeDomain(d).toLowerCase())
+    .filter(Boolean);
+  return blocked.some((d) => host === d || host.endsWith(`.${d}`));
 }
 
 /**
