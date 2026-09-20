@@ -66,6 +66,11 @@ export class SubUserCreateDto {
   @IsOptional()
   @IsString()
   pool?: string;
+
+  @ApiPropertyOptional({ description: 'Domaines interdits pour ce compte, séparés par virgules (bloque aussi les sous-domaines).', example: 'exemple.com,autre.net' })
+  @IsOptional()
+  @IsString()
+  blocked_domains?: string;
 }
 
 export class SubUserUpdateDto {
@@ -132,6 +137,11 @@ export class SubUserUpdateDto {
   @IsOptional()
   @IsString()
   pool?: string;
+
+  @ApiPropertyOptional({ description: 'Domaines interdits pour ce compte, séparés par virgules (bloque aussi les sous-domaines).', example: 'exemple.com,autre.net' })
+  @IsOptional()
+  @IsString()
+  blocked_domains?: string;
 }
 
 /**
@@ -160,6 +170,17 @@ export class AllowedIpsAddDto {
   @IsArray()
   @IsString({ each: true })
   ips!: string[];
+}
+
+export class BlockedDomainsAddDto {
+  @ApiProperty({ example: 'subuser_id_here' })
+  @IsString()
+  id!: string;
+
+  @ApiProperty({ type: [String], example: ['exemple.com', 'autre.net'] })
+  @IsArray()
+  @IsString({ each: true })
+  domains!: string[];
 }
 
 export class StickySettingsDto {

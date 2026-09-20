@@ -18,10 +18,12 @@ import { buildPoolEndpointMap, resolveConnectionEndpoint, resolveHostPortSync } 
 import { SettingsService } from '../../config/settings.service';
 import {
   AllowedIpsAddDto,
+  BlockedDomainsAddDto,
   SubUserBlockDto,
   SubUserCreateDto,
   SubUserUpdateDto,
 } from './dto';
+import { normalizeDomain } from '../../common/utils/proxy-format';
 
 @ApiTags('legacy-subuser')
 @ApiSecurity('x-api-key')
@@ -75,6 +77,7 @@ export class SubUserController {
           expiresAt: dto.expires_at ? new Date(dto.expires_at) : null,
           tags: dto.tags || null,
           pool: dto.pool || null,
+          blockedDomains: dto.blocked_domains || null,
         },
       });
       return { status: 'success', data: formatSubUser(user) };
@@ -102,8 +105,10 @@ export class SubUserController {
     if (dto.expires_at !== undefined) data.expiresAt = dto.expires_at ? new Date(dto.expires_at) : null;
     if (dto.tags !== undefined) data.tags = dto.tags || null;
     if (dto.pool !== undefined) data.pool = dto.pool || null;
+    if (dto.blocked_domains !== undefined) data.blockedDomains = dto.blocked_domains || null;
     try {
       const user = await this.prisma.userProxy.update({ where: { id: dto.id }, data });
+      this.engine.invalidateUserCache(user.username);
       return { status: 'success', data: formatSubUser(user) };
     } catch {
       throw new HttpException('Sub-user not found', HttpStatus.NOT_FOUND);
@@ -137,6 +142,25 @@ export class SubUserController {
       where: { id: dto.id },
       data: { ipWhitelist: merged.join(',') },
     });
+    this.engine.invalidateUserCache(updated.username);
+    return { status: 'success', data: formatSubUser(updated) };
+  }
+
+  /** Ajoute des domaines à la liste des domaines bloqués de ce compte (fusionne avec l'existant). */
+  @Post('blocked-domains/add')
+  @Scopes('write:proxies')
+  async addBlockedDomains(@Body() dto: BlockedDomainsAddDto) {
+    const user = await this.prisma.userProxy.findUnique({ where: { id: dto.id } });
+    if (!user) throw new HttpException('Sub-user not found', HttpStatus.NOT_FOUND);
+
+    const current = user.blockedDomains ? user.blockedDomains.split(',') : [];
+    const incoming = dto.domains.map((d) => normalizeDomain(d)).filter(Boolean);
+    const merged = Array.from(new Set([...current, ...incoming]));
+    const updated = await this.prisma.userProxy.update({
+      where: { id: dto.id },
+      data: { blockedDomains: merged.join(',') },
+    });
+    this.engine.invalidateUserCache(updated.username);
     return { status: 'success', data: formatSubUser(updated) };
   }
 
