@@ -113,6 +113,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
     },
   });
 
+  const purgeNotificationsMutation = useMutation({
+    mutationFn: () => api.delete('/notifications'),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['notifications-count'] });
+      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+    },
+  });
+
   // Close notif panel on outside click
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -354,12 +362,24 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 <div className="absolute right-0 top-full mt-2 w-80 rounded-xl border border-border bg-popover shadow-xl z-50 overflow-hidden">
                   <div className="flex items-center justify-between border-b px-4 py-3">
                     <span className="font-semibold text-sm">{t('notifications.title')}</span>
-                    <button
-                      onClick={() => markReadMutation.mutate()}
-                      className="text-xs text-muted-foreground hover:text-foreground"
-                    >
-                      {t('notifications.markAllRead')}
-                    </button>
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={() => markReadMutation.mutate()}
+                        className="text-xs text-muted-foreground hover:text-foreground"
+                      >
+                        {t('notifications.markAllRead')}
+                      </button>
+                      {user?.role === 'ADMIN' && (
+                        <button
+                          onClick={() => {
+                            if (confirm(t('notifications.purgeConfirm'))) purgeNotificationsMutation.mutate();
+                          }}
+                          className="text-xs text-destructive hover:opacity-75"
+                        >
+                          {t('notifications.purge')}
+                        </button>
+                      )}
+                    </div>
                   </div>
                   <div className="max-h-80 overflow-y-auto divide-y divide-border">
                     {!notifications?.length && (

@@ -704,6 +704,8 @@ const en: Language = {
     // ── Notifications ─────────────────────────────────────────────────────
     'notifications.title': 'Notifications',
     'notifications.markAllRead': 'Mark all as read',
+    'notifications.purge': 'Purge',
+    'notifications.purgeConfirm': 'Permanently delete ALL notifications (including other admins\')? This cannot be undone.',
     'notifications.empty': 'No notifications.',
 
     // ── Dashboard pool health ──────────────────────────────────────────────

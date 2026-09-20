@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Post,
   Query,
@@ -11,6 +12,7 @@ import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../../common/guards/roles.guard';
 import { Roles } from '../../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../../common/decorators/current-user.decorator';
+import { AuditService } from '../../audit/audit.service';
 import type { JwtUser } from '../../../common/guards/jwt-auth.guard';
 import { PrismaService } from '../../../database/prisma.service';
 
@@ -19,7 +21,10 @@ import { PrismaService } from '../../../database/prisma.service';
 @UseGuards(JwtAuthGuard)
 @Controller('api/panel/notifications')
 export class InboxController {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly auditService: AuditService,
+  ) {}
 
   /** Notifications de l'utilisateur courant (+ globales pour l'admin). */
   @ApiQuery({ name: 'unread', required: false, type: Boolean })
@@ -85,5 +90,20 @@ export class InboxController {
       data: { read: true },
     });
     return { status: 'success' };
+  }
+
+  /** Purge TOUTES les notifications (y compris globales) — admin uniquement. */
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @Delete()
+  async purgeAll(@CurrentUser() me: JwtUser) {
+    const res = await this.prisma.notification.deleteMany({});
+    await this.auditService.log({
+      userId: me.id,
+      userEmail: me.email,
+      action: 'notifications.purge',
+      details: { count: res.count },
+    });
+    return { status: 'success', count: res.count };
   }
 }
