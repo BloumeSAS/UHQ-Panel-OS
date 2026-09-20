@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import { SettingsService } from '../../config/settings.service';
 import { PrismaService } from '../../database/prisma.service';
 import { request } from 'undici';
@@ -13,6 +14,22 @@ export class NotificationService {
     private readonly settings: SettingsService,
     private readonly prisma: PrismaService,
   ) {}
+
+  /** Purge quotidienne des notifications in-app plus vieilles que notificationRetentionDays. */
+  @Cron(CronExpression.EVERY_DAY_AT_3AM)
+  async cleanupOldNotifications(): Promise<void> {
+    try {
+      const days = this.settings.getPositiveNumber('notificationRetentionDays') || 30;
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - days);
+      const res = await this.prisma.notification.deleteMany({ where: { createdAt: { lt: cutoff } } });
+      if (res.count > 0) {
+        this.logger.log(`Purge Notification : ${res.count} ligne(s) de plus de ${days} jours supprimée(s).`);
+      }
+    } catch (e) {
+      this.logger.error(`Échec de la purge Notification : ${e}`);
+    }
+  }
 
   /**
    * Crée une notification in-app dans la base de données.
@@ -187,13 +204,12 @@ export class NotificationService {
     const desc = `The backend proxy **${proxyUrl}** has failed health check verification.`;
     const reason = error || 'Connection timed out or returned invalid response';
 
-    // Save in-app notification
-    await this.createInApp({
-      type: 'error',
-      title: '🚨 Proxy Hors Ligne',
-      message: `Le proxy ${proxyUrl} est hors ligne. Raison : ${reason}`,
-      link: '/pool',
-    });
+    // PAS de notification in-app ici (volontaire) : avec un pool de plusieurs
+    // dizaines de milliers de proxies gratuits/instables, même dédupliquée à
+    // 1/heure/URL, cette alerte à elle seule a fait grossir la table
+    // `Notification` à plusieurs Go en quelques semaines sans aucune purge.
+    // Les webhooks Discord/Slack (si configurés) restent le canal d'alerte
+    // pour cet événement — voir `notifyPoolLow` pour la vue d'ensemble du pool.
 
     const discordPayload = {
       username: 'UHQ Panel OS Alerts',
