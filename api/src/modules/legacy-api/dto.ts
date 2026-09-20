@@ -183,6 +183,28 @@ export class BlockedDomainsAddDto {
   domains!: string[];
 }
 
+export class BlockedDomainsRemoveDto {
+  @ApiProperty({ example: 'subuser_id_here' })
+  @IsString()
+  id!: string;
+
+  @ApiProperty({ type: [String], example: ['exemple.com'] })
+  @IsArray()
+  @IsString({ each: true })
+  domains!: string[];
+}
+
+export class BlockedDomainsSetDto {
+  @ApiProperty({ example: 'subuser_id_here' })
+  @IsString()
+  id!: string;
+
+  @ApiProperty({ type: [String], example: ['exemple.com', 'autre.net'], description: 'Remplace intégralement la liste existante.' })
+  @IsArray()
+  @IsString({ each: true })
+  domains!: string[];
+}
+
 export class StickySettingsDto {
   @ApiProperty({ example: 30 })
   @IsInt()

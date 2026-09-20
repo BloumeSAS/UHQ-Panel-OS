@@ -8,7 +8,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBasicAuth, ApiQuery, ApiSecurity, ApiTags } from '@nestjs/swagger';
+import { ApiBasicAuth, ApiOperation, ApiQuery, ApiSecurity, ApiTags } from '@nestjs/swagger';
 import { ApiKeyGuard } from '../../common/guards/api-key.guard';
 import { Scopes } from '../../common/decorators/scopes.decorator';
 import { PrismaService } from '../../database/prisma.service';
@@ -19,6 +19,8 @@ import { SettingsService } from '../../config/settings.service';
 import {
   AllowedIpsAddDto,
   BlockedDomainsAddDto,
+  BlockedDomainsRemoveDto,
+  BlockedDomainsSetDto,
   SubUserBlockDto,
   SubUserCreateDto,
   SubUserUpdateDto,
@@ -147,6 +149,7 @@ export class SubUserController {
   }
 
   /** Ajoute des domaines à la liste des domaines bloqués de ce compte (fusionne avec l'existant). */
+  @ApiOperation({ summary: 'Ajoute des domaines à la liste des domaines bloqués (fusionne avec l\'existant).' })
   @Post('blocked-domains/add')
   @Scopes('write:proxies')
   async addBlockedDomains(@Body() dto: BlockedDomainsAddDto) {
@@ -162,6 +165,43 @@ export class SubUserController {
     });
     this.engine.invalidateUserCache(updated.username);
     return { status: 'success', data: formatSubUser(updated) };
+  }
+
+  /** Retire des domaines de la liste des domaines bloqués de ce compte. */
+  @ApiOperation({ summary: 'Retire des domaines de la liste des domaines bloqués.' })
+  @Post('blocked-domains/remove')
+  @Scopes('write:proxies')
+  async removeBlockedDomains(@Body() dto: BlockedDomainsRemoveDto) {
+    const user = await this.prisma.userProxy.findUnique({ where: { id: dto.id } });
+    if (!user) throw new HttpException('Sub-user not found', HttpStatus.NOT_FOUND);
+
+    const current = user.blockedDomains ? user.blockedDomains.split(',') : [];
+    const toRemove = new Set(dto.domains.map((d) => normalizeDomain(d)).filter(Boolean));
+    const remaining = current.filter((d) => !toRemove.has(d));
+    const updated = await this.prisma.userProxy.update({
+      where: { id: dto.id },
+      data: { blockedDomains: remaining.join(',') || null },
+    });
+    this.engine.invalidateUserCache(updated.username);
+    return { status: 'success', data: formatSubUser(updated) };
+  }
+
+  /** Remplace intégralement la liste des domaines bloqués de ce compte. */
+  @ApiOperation({ summary: 'Remplace intégralement la liste des domaines bloqués (resynchronisation en un appel).' })
+  @Post('blocked-domains/set')
+  @Scopes('write:proxies')
+  async setBlockedDomains(@Body() dto: BlockedDomainsSetDto) {
+    const incoming = Array.from(new Set(dto.domains.map((d) => normalizeDomain(d)).filter(Boolean)));
+    try {
+      const updated = await this.prisma.userProxy.update({
+        where: { id: dto.id },
+        data: { blockedDomains: incoming.join(',') || null },
+      });
+      this.engine.invalidateUserCache(updated.username);
+      return { status: 'success', data: formatSubUser(updated) };
+    } catch {
+      throw new HttpException('Sub-user not found', HttpStatus.NOT_FOUND);
+    }
   }
 
   /**
