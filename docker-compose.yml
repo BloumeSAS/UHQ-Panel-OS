@@ -56,8 +56,8 @@ services:
       - "traefik.http.services.uhq-panel-app.loadbalancer.server.port=8000"
     ulimits:
       nofile:
-        soft: 200000
-        hard: 200000
+        soft: 1048576
+        hard: 1048576
     environment:
       DATABASE_URL: postgresql://uhq:uhqpanel_internal@db:5432/uhqpanel
       DATA_DIR: /app/data
