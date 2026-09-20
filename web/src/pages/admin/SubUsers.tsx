@@ -52,6 +52,7 @@ interface SubUser {
   pool: string | null;
   port: number | null;
   domain: string | null;
+  blocked_domains: string | null;
 }
 
 function fmtGb(bytes: number) {
@@ -61,6 +62,15 @@ function fmtGb(bytes: number) {
 function fmtLimit(limit: number | null) {
   if (!limit) return '∞';
   return (limit / 1024 ** 3).toFixed(1) + ' Go';
+}
+
+// blocked_domains est une simple liste CSV côté API — affichée/éditée une
+// ligne par domaine dans le panel, convertie dans les deux sens.
+function csvFromLines(text: string): string {
+  return text.split(/[\n,]/).map((s) => s.trim()).filter(Boolean).join(',');
+}
+function linesFromCsv(csv: string | null): string {
+  return csv ? csv.split(',').map((s) => s.trim()).filter(Boolean).join('\n') : '';
 }
 
 export default function SubUsers() {
@@ -983,6 +993,7 @@ function CreateDialog({ onCreated }: { onCreated: () => void }) {
     pool: '',
     port: '',
     domain: '',
+    blocked_domains: '',
   });
   const [error, setError] = useState('');
   const [templateId, setTemplateId] = useState('');
@@ -1047,6 +1058,7 @@ function CreateDialog({ onCreated }: { onCreated: () => void }) {
         pool: form.pool || undefined,
         port: form.port ? Number(form.port) : undefined,
         domain: form.domain || undefined,
+        blocked_domains: csvFromLines(form.blocked_domains) || undefined,
       });
       setOpen(false);
       setForm({
@@ -1063,6 +1075,7 @@ function CreateDialog({ onCreated }: { onCreated: () => void }) {
         pool: '',
         port: '',
         domain: '',
+        blocked_domains: '',
       });
       onCreated();
     } catch (err) {
@@ -1130,6 +1143,7 @@ function EditDialog({
     pool: subUser.pool || '',
     port: subUser.port != null ? String(subUser.port) : '',
     domain: subUser.domain || '',
+    blocked_domains: linesFromCsv(subUser.blocked_domains),
   });
   const [error, setError] = useState('');
   const set = (k: string, v: any) => setForm((f) => ({ ...f, [k]: v }));
@@ -1155,6 +1169,7 @@ function EditDialog({
         pool: form.pool || null,
         port: form.port ? Number(form.port) : null,
         domain: form.domain || null,
+        blocked_domains: csvFromLines(form.blocked_domains) || null,
       });
       onSaved();
     } catch (err) {
@@ -1300,6 +1315,18 @@ function SubUserForm({
           className="w-full rounded-md border border-input bg-transparent px-3 py-2 font-mono text-xs shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         />
         <p className="text-xs text-muted-foreground">{t('sub.customProxiesHint')}</p>
+      </div>
+
+      <div className="space-y-1.5">
+        <Label>{t('sub.blockedDomains')}</Label>
+        <textarea
+          value={form.blocked_domains}
+          onChange={(e) => set('blocked_domains', e.target.value)}
+          rows={3}
+          placeholder={'exemple.com\nautre-site.net'}
+          className="w-full rounded-md border border-input bg-transparent px-3 py-2 font-mono text-xs shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        />
+        <p className="text-xs text-muted-foreground">{t('sub.blockedDomainsHint')}</p>
       </div>
 
       {error && <p className="text-sm text-destructive">{error}</p>}

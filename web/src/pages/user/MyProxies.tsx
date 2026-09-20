@@ -36,6 +36,7 @@ interface MyProxy {
   allowed_ips: string | null;
   port: number | null;
   domain: string | null;
+  blocked_domains: string | null;
   effective_host: string;
   effective_port: string;
 }
@@ -96,6 +97,7 @@ export default function MyProxies() {
                 <Row label={t('sub.threads')} value={`${p.threads_limit}`} />
                 <Row label={t('sub.country')} value={p.country_filter || '—'} />
                 <Row label={t('sub.ipWhitelist')} value={p.allowed_ips || '—'} />
+                <Row label={t('sub.blockedDomains')} value={p.blocked_domains || '—'} />
                 {p.domain && <Row label={t('me.dedicatedDomain')} value={p.domain} copyable />}
                 {p.port && <Row label={t('me.dedicatedPort')} value={String(p.port)} copyable />}
                 <Row label={t('me.usage')} value={formatBytes(p.bytes_sent + p.bytes_received)} />
@@ -201,6 +203,7 @@ function EditDialog({
     password: '',
     country_filter: proxy.country_filter || '',
     allowed_ips: proxy.allowed_ips || '',
+    blocked_domains: proxy.blocked_domains ? proxy.blocked_domains.split(',').map((s) => s.trim()).filter(Boolean).join('\n') : '',
   });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -210,10 +213,12 @@ function EditDialog({
     setBusy(true);
     setError('');
     try {
+      const blockedDomainsCsv = form.blocked_domains.split(/[\n,]/).map((s) => s.trim()).filter(Boolean).join(',');
       await api.patch(`/me/proxies/${proxy.id}`, {
         password: form.password || undefined,
         country_filter: form.country_filter || null,
         allowed_ips: form.allowed_ips || null,
+        blocked_domains: blockedDomainsCsv || null,
       });
       toast.success(t('settings.saved'));
       onSaved();
@@ -257,6 +262,17 @@ function EditDialog({
               placeholder="1.2.3.4, 5.6.7.8"
             />
             <p className="text-xs text-muted-foreground">IP autorisées sans mot de passe.</p>
+          </div>
+          <div className="space-y-1.5">
+            <Label>{t('sub.blockedDomains')}</Label>
+            <textarea
+              value={form.blocked_domains}
+              onChange={(e) => setForm({ ...form, blocked_domains: e.target.value })}
+              rows={3}
+              placeholder={'exemple.com\nautre-site.net'}
+              className="w-full rounded-md border border-input bg-transparent px-3 py-2 font-mono text-xs shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            />
+            <p className="text-xs text-muted-foreground">{t('sub.blockedDomainsHint')}</p>
           </div>
 
           {error && <p className="text-sm text-destructive">{error}</p>}

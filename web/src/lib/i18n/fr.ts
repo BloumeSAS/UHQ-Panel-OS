@@ -171,6 +171,8 @@ const fr: Language = {
     'sub.assignedTo': 'Assigné à',
     'sub.customProxies': 'Liste de proxies spécifique (optionnel)',
     'sub.customProxiesHint': '1 par ligne : [proto://][user:pass@]ip:port. Si renseignée, remplace le pool partagé.',
+    'sub.blockedDomains': 'Domaines bloqués',
+    'sub.blockedDomainsHint': '1 domaine par ligne. Bloque aussi les sous-domaines (ex. "exemple.com" bloque aussi "api.exemple.com"). Vérifié à chaque connexion, avant même de compter dans l\'auth.',
     'sub.resetTraffic': 'Réinitialiser le trafic',
     'sub.confirmResetTraffic': 'Réinitialiser le trafic de ce compte ?',
     'sub.stats': 'Statistiques',
