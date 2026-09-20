@@ -6,7 +6,7 @@ import { PrismaService } from '../../database/prisma.service';
 import { TrafficService } from '../traffic/traffic.service';
 import { SettingsService } from '../../config/settings.service';
 import { parseProxyList, buildProxyUrl } from '../../common/utils/proxy-parse';
-import { randomString } from '../../common/utils/proxy-format';
+import { randomString, isDomainBlocked } from '../../common/utils/proxy-format';
 import { allowedPortRange } from '../../common/utils/port-validation';
 import { NotificationService } from '../notifications/notification.service';
 import {
@@ -518,6 +518,22 @@ export class ProxyServerService implements OnModuleDestroy {
       }
       this.logger.log(`Auth success for ${clientIp} (user=${user.username})`);
 
+      // --- Domaines bloqués (par compte) ---
+      // Vérifié tôt, avant de consommer un slot thread ou de tenter un
+      // upstream. Pour CONNECT, `path` EST déjà le host:port cible (voir le
+      // même correctif appliqué à `targetHost` plus bas) — pas besoin
+      // d'attendre le contenu chiffré, le nom de domaine est connu dès la
+      // ligne de requête.
+      if (user.blockedDomains) {
+        const checkHost = method === 'CONNECT' ? path : this.extractHost(path, headers);
+        if (isDomainBlocked(checkHost, user.blockedDomains)) {
+          this.logger.warn(`Domain blocked for ${user.username}: ${checkHost}`);
+          client.write('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\nDomain blocked for this account.\r\n');
+          client.end();
+          return;
+        }
+      }
+
       // --- Sticky session + country override parsing ---
       let username = user.username;
       let sessionId: string | null = null;
@@ -703,10 +719,15 @@ export class ProxyServerService implements OnModuleDestroy {
             const sock = await tcpConnect(fb.ip, fb.port, this.timeoutMs);
             const skipHs = method !== 'CONNECT' && (fb.protocol ?? 'http').toLowerCase() === 'http';
             if (!skipHs) {
+              // CONNECT: `path` EST déjà "host:port" (ligne de requête) — le
+              // repasser dans extractHost() (qui attend une URL absolue ou un
+              // header Host) le faisait échouer silencieusement et retomber
+              // sur le fallback 'google.com:80', envoyant le tunnel vers le
+              // mauvais hôte pour tout CONNECT sans header Host (courant).
               await performHandshake(
                 sock,
                 fb,
-                this.extractHost(path, headers),
+                method === 'CONNECT' ? path : this.extractHost(path, headers),
                 this.timeoutMs,
               );
             }
@@ -728,7 +749,12 @@ export class ProxyServerService implements OnModuleDestroy {
 
       // --- Pipe data ---
       this.logger.log(`Race won by ${winner.upstream.url}`);
-      const targetHost = this.extractHost(path, headers);
+      // Même piège que le fallback ci-dessus : pour CONNECT, `path` est déjà
+      // le host:port cible — extractHost() (qui suppose une URL absolue ou un
+      // header Host) échouait silencieusement dessus et renvoyait le domaine
+      // de secours 'google.com' en dur, polluant le tracking par domaine
+      // (top domaines visités) pour tout CONNECT sans header Host.
+      const targetHost = method === 'CONNECT' ? path : this.extractHost(path, headers);
       this.trackUpstreamOpen(winner.upstream, user.username);
       openUpstreamId = winner.upstream.id;
 
@@ -1356,7 +1382,10 @@ export class ProxyServerService implements OnModuleDestroy {
         /* */
       }
     }
-    if (!host) return 'google.com:80';
+    // Repli neutre — un vrai nom de domaine ici (l'ancien 'google.com:80')
+    // polluait silencieusement le tracking et le blocage par domaine dès
+    // qu'un client HTTP omettait le header Host (rare mais déjà observé).
+    if (!host) return 'unknown-host:80';
     if (!host.includes(':')) host = `${host}:80`;
     return host;
   }
