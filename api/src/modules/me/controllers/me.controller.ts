@@ -168,13 +168,14 @@ export class PanelMeController {
   async updateProxy(
     @CurrentUser() me: JwtUser,
     @Param('id') id: string,
-    @Body() dto: { password?: string; allowed_ips?: string; country_filter?: string },
+    @Body() dto: { password?: string; allowed_ips?: string; country_filter?: string; blocked_domains?: string },
   ) {
     const proxy = await this.ownedProxy(me, id);
     const data: any = {};
     if (dto.password !== undefined) data.password = dto.password;
     if (dto.allowed_ips !== undefined) data.ipWhitelist = dto.allowed_ips;
     if (dto.country_filter !== undefined) data.countryFilter = dto.country_filter;
+    if (dto.blocked_domains !== undefined) data.blockedDomains = dto.blocked_domains || null;
 
     const updated = await this.prisma.userProxy.update({
       where: { id: proxy.id },

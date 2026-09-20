@@ -102,6 +102,7 @@ export class PanelSubUserController {
         pool: dto.pool || null,
         port: dto.port ?? null,
         domain: dto.domain ? normalizeDomain(dto.domain) || null : null,
+        blockedDomains: dto.blocked_domains || null,
       },
     });
     if (dto.port != null) this.engine.invalidatePortCache();
@@ -153,6 +154,7 @@ export class PanelSubUserController {
             pool: dto.pool || null,
             port: dto.port ?? null,
             domain: dto.domain ? normalizeDomain(dto.domain) || null : null,
+            blockedDomains: dto.blocked_domains || null,
           },
         });
         if (dto.port != null) this.engine.invalidatePortCache();
@@ -228,6 +230,7 @@ export class PanelSubUserController {
     if (dto.pool !== undefined) data.pool = dto.pool || null;
     if (dto.port !== undefined) data.port = dto.port;
     if (dto.domain !== undefined) data.domain = dto.domain ? normalizeDomain(dto.domain) || null : null;
+    if (dto.blocked_domains !== undefined) data.blockedDomains = dto.blocked_domains || null;
     try {
       const user = await this.prisma.userProxy.update({ where: { id }, data });
       this.engine.invalidateUserCache(user.username);
