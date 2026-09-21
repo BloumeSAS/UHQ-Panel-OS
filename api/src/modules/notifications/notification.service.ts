@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { SettingsService } from '../../config/settings.service';
 import { PrismaService } from '../../database/prisma.service';
+import { MailService } from '../mail/mail.service';
 import { request } from 'undici';
 
 @Injectable()
@@ -13,7 +14,41 @@ export class NotificationService {
   constructor(
     private readonly settings: SettingsService,
     private readonly prisma: PrismaService,
+    private readonly mail: MailService,
   ) {}
+
+  /**
+   * Alerte connexion depuis une IP jamais vue pour ce compte (in-app +
+   * e-mail si SMTP configuré). Appelé par `finishLogin()` uniquement quand
+   * aucune session existante de cet utilisateur n'a cette IP — best-effort,
+   * jamais bloquant pour le login lui-même.
+   */
+  async notifyNewLoginLocation(userId: string, email: string, ip: string, userAgent?: string): Promise<void> {
+    await this.createInApp({
+      userId,
+      type: 'warning',
+      title: '🌍 Nouvelle IP de connexion',
+      message: `Connexion depuis une IP inconnue : ${ip}.`,
+      link: '/profile',
+    });
+    if (this.mail.isConfigured()) {
+      void this.mail.sendNewLoginLocationAlert(email, this.settings.get('siteName'), ip, userAgent);
+    }
+  }
+
+  /** Alerte utilisation d'un code de récupération 2FA (in-app + e-mail). */
+  async notifyRecoveryCodeUsed(userId: string, email: string, ip: string): Promise<void> {
+    await this.createInApp({
+      userId,
+      type: 'warning',
+      title: '🔑 Code de récupération 2FA utilisé',
+      message: `Un code de récupération a été utilisé pour se connecter depuis ${ip}.`,
+      link: '/profile',
+    });
+    if (this.mail.isConfigured()) {
+      void this.mail.sendRecoveryCodeUsedAlert(email, this.settings.get('siteName'), ip);
+    }
+  }
 
   /** Purge quotidienne des notifications in-app plus vieilles que notificationRetentionDays. */
   @Cron(CronExpression.EVERY_DAY_AT_3AM)

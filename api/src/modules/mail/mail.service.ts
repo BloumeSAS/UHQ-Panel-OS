@@ -97,6 +97,37 @@ export class MailService {
     });
   }
 
+  /** Alerte connexion depuis une IP jamais vue pour ce compte — toujours envoyé si SMTP configuré (pas de flag emailOnLogin : évènement rare, pas un spam sur chaque connexion). */
+  async sendNewLoginLocationAlert(to: string, siteName: string, ip: string, userAgent?: string): Promise<boolean> {
+    return this.send({
+      to,
+      subject: `[${siteName}] Nouvelle connexion depuis une IP inconnue`,
+      html: `
+        <div style="font-family:sans-serif;max-width:480px;margin:0 auto">
+          <h2>${siteName} — Nouvelle IP détectée</h2>
+          <p>Une connexion vient d'avoir lieu sur votre compte depuis une adresse IP que nous n'avions encore jamais vue.</p>
+          <p>Adresse IP : <code>${ip}</code></p>
+          ${userAgent ? `<p style="color:#666;font-size:12px">Appareil/navigateur : ${userAgent}</p>` : ''}
+          <p>Si c'est bien vous, aucune action n'est requise. Sinon, changez immédiatement votre mot de passe et activez la double authentification.</p>
+        </div>`,
+    });
+  }
+
+  /** Un code de récupération 2FA vient d'être utilisé pour se connecter. */
+  async sendRecoveryCodeUsedAlert(to: string, siteName: string, ip: string): Promise<boolean> {
+    return this.send({
+      to,
+      subject: `[${siteName}] Code de récupération 2FA utilisé`,
+      html: `
+        <div style="font-family:sans-serif;max-width:480px;margin:0 auto">
+          <h2>${siteName} — Code de récupération utilisé</h2>
+          <p>Un code de récupération à usage unique vient d'être utilisé pour vous connecter, à la place de votre code d'application d'authentification.</p>
+          <p>Adresse IP : <code>${ip}</code></p>
+          <p>Ce code ne fonctionnera plus. Si ce n'est pas vous, changez immédiatement votre mot de passe — quelqu'un d'autre a accès à vos codes de récupération.</p>
+        </div>`,
+    });
+  }
+
   /** Rapport automatique global (traffic, pool, users). */
   async sendReport(report: {
     siteName: string;
