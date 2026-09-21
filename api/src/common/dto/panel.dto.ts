@@ -76,6 +76,16 @@ export class LoginDto {
   captchaToken?: string;
 }
 
+export class Login2faDto {
+  @ApiProperty({ description: 'Jeton temporaire renvoyé par /auth/login quand requires2fa=true' })
+  @IsString()
+  tempToken!: string;
+
+  @ApiProperty({ example: '123456' })
+  @IsString()
+  code!: string;
+}
+
 export class RegisterDto {
   @ApiProperty()
   @IsEmail()

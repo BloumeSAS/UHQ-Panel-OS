@@ -18,11 +18,12 @@ import { SettingsService } from '../../../config/settings.service';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../../common/decorators/current-user.decorator';
 import type { JwtUser } from '../../../common/guards/jwt-auth.guard';
-import { LoginDto, RegisterDto, SetupDto, ForgotPasswordDto, ResetPasswordDto } from '../../../common/dto/panel.dto';
+import { LoginDto, Login2faDto, RegisterDto, SetupDto, ForgotPasswordDto, ResetPasswordDto } from '../../../common/dto/panel.dto';
 import { t } from '../../../common/utils/i18n';
 import { verifyCaptcha, type CaptchaProvider } from '../../../common/utils/captcha.util';
 import { MailService } from '../../mail/mail.service';
 import { RateLimiterService } from '../../../common/rate-limiter.service';
+import { authenticator } from '@otplib/preset-default';
 
 const SINGLETON = 'singleton';
 
@@ -174,6 +175,53 @@ export class PanelAuthController {
       throw new UnauthorizedException('Votre compte a expiré.');
     }
 
+    // 2FA : mot de passe correct mais pas encore de session — le client doit
+    // repasser par /auth/login/2fa avec le code TOTP avant d'obtenir un vrai
+    // JWT. `tempToken` est signé à part (type='2fa-pending', 5 min) : il ne
+    // vaut rien pour appeler l'API tant qu'il n'a pas été échangé.
+    if ((user as any).totpEnabled) {
+      const tempToken = this.jwt.sign({ sub: user.id, type: '2fa-pending' }, { expiresIn: '5m' });
+      return { status: 'success', requires2fa: true, tempToken };
+    }
+
+    return this.finishLogin(user, req, ip);
+  }
+
+  /** Deuxième étape du login quand le compte a la 2FA activée. */
+  @Post('auth/login/2fa')
+  async login2fa(@Body() body: Login2faDto, @Req() req: any) {
+    const ip = this.clientIp(req);
+    // Même esprit que le frein sur /auth/login : un code TOTP est un 6
+    // chiffres, brute-forçable en un temps raisonnable sans limite de débit.
+    if (!this.rateLimiter.check(`login2fa:ip:${ip}`, 10, 60_000)) {
+      throw new UnauthorizedException(t('errors.tooManyAttempts'));
+    }
+
+    let payload: any;
+    try {
+      payload = this.jwt.verify(body.tempToken);
+    } catch {
+      throw new UnauthorizedException(t('errors.invalidCredentials'));
+    }
+    if (payload?.type !== '2fa-pending' || !payload?.sub) {
+      throw new UnauthorizedException(t('errors.invalidCredentials'));
+    }
+
+    const user = await this.prisma.panelUser.findUnique({ where: { id: payload.sub } });
+    const u = user as any;
+    if (!user || !u.totpEnabled || !u.totpSecret) {
+      throw new UnauthorizedException(t('errors.invalidCredentials'));
+    }
+    if (!user.isActive) throw new UnauthorizedException(t('errors.accountDisabled'));
+
+    const valid = authenticator.verify({ token: body.code, secret: u.totpSecret });
+    if (!valid) throw new UnauthorizedException('Code 2FA invalide.');
+
+    return this.finishLogin(user, req, ip);
+  }
+
+  /** Émet la session + le JWT final — partagé entre login direct et validation 2FA. */
+  private async finishLogin(user: { id: string; email: string; role: string }, req: any, ip: string) {
     void this.mail.sendLoginNotification(user.email, this.settings.get('siteName'), ip);
     void this.auditService
       .log({ userId: user.id, userEmail: user.email, action: 'auth.login', ip })
