@@ -466,6 +466,40 @@ export class PanelSubUserController {
   }
 
   /**
+   * Historique de trafic JOUR PAR JOUR pour CE compte (Analytics → filtre par
+   * sous-utilisateur). Granularité fixée par le modèle `ProxyUsage` (une ligne
+   * par compte+hostname+jour) — pas d'intervalle plus fin possible sans
+   * changer ce que le moteur persiste.
+   */
+  @ApiParam({ name: 'id', description: 'ID du sous-utilisateur proxy' })
+  @ApiQuery({ name: 'days', required: false, type: Number, description: 'Nombre de jours (défaut 7)' })
+  @Get(':id/traffic-history')
+  async trafficHistory(@Param('id') id: string, @Query('days') days = '7') {
+    const user = await this.prisma.userProxy.findUnique({ where: { id }, select: { id: true } });
+    if (!user) throw new NotFoundException(t('errors.proxyNotFound'));
+    const d = Math.max(1, Math.min(90, parseInt(days, 10) || 7));
+    const since = new Date();
+    since.setDate(since.getDate() - d);
+    since.setHours(0, 0, 0, 0);
+
+    const rows = await this.prisma.proxyUsage.groupBy({
+      by: ['date'],
+      where: { userProxyId: id, date: { gte: since } },
+      _sum: { bytesSent: true, bytesReceived: true, requests: true },
+      orderBy: { date: 'asc' },
+    });
+    return {
+      status: 'success',
+      data: rows.map((r) => ({
+        date: r.date,
+        bytesSent: r._sum.bytesSent ?? 0,
+        bytesReceived: r._sum.bytesReceived ?? 0,
+        requests: r._sum.requests ?? 0,
+      })),
+    };
+  }
+
+  /**
    * Liste les liens de partage (actifs et expirés/révoqués) d'un compte proxy,
    * pour affichage + révocation dans le panel.
    */
