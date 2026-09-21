@@ -2,6 +2,16 @@ import { Injectable, Logger } from '@nestjs/common';
 import { SettingsService } from '../../config/settings.service';
 import * as nodemailer from 'nodemailer';
 
+/** Échappe une valeur avant interpolation dans un corps d'e-mail HTML — `ip`/`userAgent` viennent de la requête cliente. */
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 @Injectable()
 export class MailService {
   private readonly logger = new Logger(MailService.name);
@@ -106,8 +116,8 @@ export class MailService {
         <div style="font-family:sans-serif;max-width:480px;margin:0 auto">
           <h2>${siteName} — Nouvelle IP détectée</h2>
           <p>Une connexion vient d'avoir lieu sur votre compte depuis une adresse IP que nous n'avions encore jamais vue.</p>
-          <p>Adresse IP : <code>${ip}</code></p>
-          ${userAgent ? `<p style="color:#666;font-size:12px">Appareil/navigateur : ${userAgent}</p>` : ''}
+          <p>Adresse IP : <code>${escapeHtml(ip)}</code></p>
+          ${userAgent ? `<p style="color:#666;font-size:12px">Appareil/navigateur : ${escapeHtml(userAgent.slice(0, 300))}</p>` : ''}
           <p>Si c'est bien vous, aucune action n'est requise. Sinon, changez immédiatement votre mot de passe et activez la double authentification.</p>
         </div>`,
     });
@@ -122,7 +132,7 @@ export class MailService {
         <div style="font-family:sans-serif;max-width:480px;margin:0 auto">
           <h2>${siteName} — Code de récupération utilisé</h2>
           <p>Un code de récupération à usage unique vient d'être utilisé pour vous connecter, à la place de votre code d'application d'authentification.</p>
-          <p>Adresse IP : <code>${ip}</code></p>
+          <p>Adresse IP : <code>${escapeHtml(ip)}</code></p>
           <p>Ce code ne fonctionnera plus. Si ce n'est pas vous, changez immédiatement votre mot de passe — quelqu'un d'autre a accès à vos codes de récupération.</p>
         </div>`,
     });
