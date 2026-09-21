@@ -15,8 +15,10 @@ const SCRIPTS: Record<string, string> = {
   hcaptcha: 'https://js.hcaptcha.com/1/api.js',
   recaptcha: 'https://www.google.com/recaptcha/api.js?render=explicit&hl=fr',
   turnstile: 'https://challenges.cloudflare.com/turnstile/v0/api.js',
-  // CAP : web component via jsDelivr
-  cap: 'https://cdn.jsdelivr.net/npm/cap-widget/dist/cap-widget.js',
+  // CAP : web component via jsDelivr — le paquet npm réel est `@cap.js/widget`
+  // (pas `cap-widget`) et le script est à la racine (`cap.min.js`), pas dans
+  // un dossier `dist/` — l'ancienne URL 404ait sur les deux points.
+  cap: 'https://cdn.jsdelivr.net/npm/@cap.js/widget@0/cap.min.js',
 };
 
 declare global {
