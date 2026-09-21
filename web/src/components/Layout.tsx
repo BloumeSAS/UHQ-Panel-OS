@@ -23,9 +23,7 @@ import {
   Activity,
   Puzzle,
   Bell,
-  ShieldCheck,
   ShieldBan,
-  UserCircle,
   KeyRound,
   ClipboardList,
   UserPlus,
@@ -49,6 +47,11 @@ interface NavItem {
   to: string;
   label: string;
   icon: React.ElementType;
+}
+
+interface NavSection {
+  label?: string;
+  items: NavItem[];
 }
 
 export function Layout({ children }: { children: React.ReactNode }) {
@@ -132,45 +135,79 @@ export function Layout({ children }: { children: React.ReactNode }) {
     return () => document.removeEventListener('mousedown', handleClick);
   }, []);
 
-  const adminNav: NavItem[] = [
-    { to: '/', label: t('nav.dashboard'), icon: LayoutDashboard },
-    { to: '/subusers', label: t('nav.subusers'), icon: Network },
-    { to: '/users', label: t('nav.users'), icon: Users },
-    { to: '/pool', label: t('nav.pool'), icon: Server },
-    { to: '/analytics', label: t('nav.analytics'), icon: BarChart3 },
-    { to: '/proxy-pools', label: t('nav.proxyPools'), icon: Layers },
-    { to: '/scraper', label: t('nav.scraper'), icon: Radar },
-    { to: '/checker', label: t('nav.checker'), icon: Activity },
-    { to: '/logs', label: t('nav.logs'), icon: ScrollText },
-    { to: '/reports', label: t('nav.reports'), icon: BarChart3 },
-    { to: '/audit', label: t('nav.audit'), icon: ClipboardList },
-    { to: '/banned-ips', label: t('nav.bannedIps'), icon: ShieldBan },
-    { to: '/addons-manage', label: t('nav.addons'), icon: Puzzle },
-    { to: '/addon-docs', label: t('nav.addonDocs'), icon: BookOpen },
-    { to: '/settings', label: t('nav.settings'), icon: Settings },
-    { to: '/profile', label: t('nav.profile'), icon: UserCircle },
-    { to: '/security', label: t('nav.security'), icon: ShieldCheck },
-    { to: '/api-keys', label: t('nav.apiKeys'), icon: KeyRound },
-    { to: '/about', label: t('nav.about'), icon: Info },
+  // Profil/Sécurité ne sont plus des entrées de sidebar : accessibles depuis
+  // la zone email/rôle du topbar (→ /profile), qui renvoie elle-même vers la
+  // sécurité. Évite de mélanger gestion admin et compte personnel dans une
+  // seule longue liste plate.
+  const adminSections: NavSection[] = [
+    {
+      items: [{ to: '/', label: t('nav.dashboard'), icon: LayoutDashboard }],
+    },
+    {
+      label: t('nav.sectionManagement'),
+      items: [
+        { to: '/subusers', label: t('nav.subusers'), icon: Network },
+        { to: '/users', label: t('nav.users'), icon: Users },
+        { to: '/pool', label: t('nav.pool'), icon: Server },
+        { to: '/proxy-pools', label: t('nav.proxyPools'), icon: Layers },
+        { to: '/scraper', label: t('nav.scraper'), icon: Radar },
+        { to: '/checker', label: t('nav.checker'), icon: Activity },
+        { to: '/banned-ips', label: t('nav.bannedIps'), icon: ShieldBan },
+      ],
+    },
+    {
+      label: t('nav.sectionMonitoring'),
+      items: [
+        { to: '/analytics', label: t('nav.analytics'), icon: BarChart3 },
+        { to: '/logs', label: t('nav.logs'), icon: ScrollText },
+        { to: '/reports', label: t('nav.reports'), icon: BarChart3 },
+        { to: '/audit', label: t('nav.audit'), icon: ClipboardList },
+      ],
+    },
+    {
+      label: t('nav.sectionSystem'),
+      items: [
+        { to: '/addons-manage', label: t('nav.addons'), icon: Puzzle },
+        { to: '/addon-docs', label: t('nav.addonDocs'), icon: BookOpen },
+        { to: '/settings', label: t('nav.settings'), icon: Settings },
+      ],
+    },
+    {
+      label: t('nav.sectionAccount'),
+      items: [
+        { to: '/api-keys', label: t('nav.apiKeys'), icon: KeyRound },
+        { to: '/about', label: t('nav.about'), icon: Info },
+      ],
+    },
   ];
-  const userNav: NavItem[] = [
-    { to: '/', label: t('nav.myProxies'), icon: Network },
-    { to: '/profile', label: t('nav.profile'), icon: UserCircle },
-    { to: '/security', label: t('nav.security'), icon: ShieldCheck },
-    { to: '/api-keys', label: t('nav.apiKeys'), icon: KeyRound },
-    { to: '/about', label: t('nav.about'), icon: Info },
+  const userSections: NavSection[] = [
+    { items: [{ to: '/', label: t('nav.myProxies'), icon: Network }] },
+    {
+      label: t('nav.sectionAccount'),
+      items: [
+        { to: '/api-keys', label: t('nav.apiKeys'), icon: KeyRound },
+        { to: '/about', label: t('nav.about'), icon: Info },
+      ],
+    },
   ];
   // SUPPORT : accès lecture seule (dashboard, pool, logs, rapports, audit) —
   // pas de gestion sous-users/users/settings/scraper/pools.
-  const supportNav: NavItem[] = [
-    { to: '/', label: t('nav.dashboard'), icon: LayoutDashboard },
-    { to: '/pool', label: t('nav.pool'), icon: Server },
-    { to: '/analytics', label: t('nav.analytics'), icon: BarChart3 },
-    { to: '/logs', label: t('nav.logs'), icon: ScrollText },
-    { to: '/reports', label: t('nav.reports'), icon: BarChart3 },
-    { to: '/audit', label: t('nav.audit'), icon: ClipboardList },
-    { to: '/profile', label: t('nav.profile'), icon: UserCircle },
-    { to: '/about', label: t('nav.about'), icon: Info },
+  const supportSections: NavSection[] = [
+    { items: [{ to: '/', label: t('nav.dashboard'), icon: LayoutDashboard }] },
+    {
+      label: t('nav.sectionMonitoring'),
+      items: [
+        { to: '/pool', label: t('nav.pool'), icon: Server },
+        { to: '/analytics', label: t('nav.analytics'), icon: BarChart3 },
+        { to: '/logs', label: t('nav.logs'), icon: ScrollText },
+        { to: '/reports', label: t('nav.reports'), icon: BarChart3 },
+        { to: '/audit', label: t('nav.audit'), icon: ClipboardList },
+      ],
+    },
+    {
+      label: t('nav.sectionAccount'),
+      items: [{ to: '/about', label: t('nav.about'), icon: Info }],
+    },
   ];
 
   // ─── Fusion des traductions d'addons au runtime ───────────────────────────
@@ -228,13 +265,15 @@ export function Layout({ children }: { children: React.ReactNode }) {
         });
     });
 
-  const baseNav = user?.role === 'ADMIN' ? adminNav : user?.role === 'SUPPORT' ? supportNav : userNav;
-  const nav = [...baseNav];
+  const baseSections =
+    user?.role === 'ADMIN' ? adminSections : user?.role === 'SUPPORT' ? supportSections : userSections;
+  const sections: NavSection[] = [...baseSections];
   if (addonNav.length > 0) {
-    const insertAt = nav.findIndex((item) => item.to === '/settings' || item.to === '/about');
-    if (insertAt !== -1) nav.splice(insertAt, 0, ...addonNav);
-    else nav.push(...addonNav);
+    // Inséré juste avant la dernière section ("Compte") plutôt qu'à la fin,
+    // pour ne pas se retrouver après des entrées purement personnelles.
+    sections.splice(sections.length - 1, 0, { label: t('nav.sectionExtensions'), items: addonNav });
   }
+  const nav = sections.flatMap((s) => s.items);
 
   const unreadCount = notifData ?? 0;
 
@@ -260,25 +299,34 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <img src={status?.logoUrl || '/static/logo.png'} alt="logo" className="h-8 w-8 rounded" />
           <span className="truncate text-sm font-semibold">{status?.siteName || 'UHQ Panel OS'}</span>
         </div>
-        <nav className="flex flex-col gap-1 p-3 overflow-y-auto max-h-[calc(100vh-4rem)]">
-          {nav.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              end={item.to === '/'}
-              onClick={() => setOpen(false)}
-              className={({ isActive }) =>
-                cn(
-                  'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',
-                  isActive
-                    ? 'bg-sidebar-primary text-primary-foreground'
-                    : 'hover:bg-sidebar-accent',
-                )
-              }
-            >
-              <item.icon className="h-4 w-4" />
-              {item.label}
-            </NavLink>
+        <nav className="flex flex-col gap-3 p-3 overflow-y-auto max-h-[calc(100vh-4rem)]">
+          {sections.map((section, i) => (
+            <div key={section.label ?? `s${i}`} className="flex flex-col gap-1">
+              {section.label && (
+                <p className="px-3 pt-2 text-[11px] font-semibold uppercase tracking-wider text-sidebar-foreground/50">
+                  {section.label}
+                </p>
+              )}
+              {section.items.map((item) => (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  end={item.to === '/'}
+                  onClick={() => setOpen(false)}
+                  className={({ isActive }) =>
+                    cn(
+                      'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',
+                      isActive
+                        ? 'bg-sidebar-primary text-primary-foreground'
+                        : 'hover:bg-sidebar-accent',
+                    )
+                  }
+                >
+                  <item.icon className="h-4 w-4" />
+                  {item.label}
+                </NavLink>
+              ))}
+            </div>
           ))}
           {user && (
             <a

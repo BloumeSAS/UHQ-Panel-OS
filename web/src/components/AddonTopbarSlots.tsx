@@ -1,14 +1,16 @@
 /**
- * AddonTopbarSlots — Dropdown déclenché par la zone email/rôle du topbar.
+ * AddonTopbarSlots — Menu de compte déclenché par la zone email/rôle du topbar.
  *
- * Si des addons déclarent des slots "topbar", le clic sur l'email ouvre
- * un menu listant ces raccourcis. Sans slots, la zone email est non-cliquable.
+ * Toujours cliquable : mène directement à /profile sans addons. Si des
+ * addons déclarent des slots "topbar", le clic ouvre plutôt un dropdown avec
+ * "Profil" épinglé en tête, suivi de leurs raccourcis.
  */
 
 import { useState, useRef, useEffect } from 'react';
-import { Link } from 'react-router-dom';
-import { Puzzle, ChevronDown } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import { Puzzle, ChevronDown, UserCircle } from 'lucide-react';
 import * as LucideIcons from 'lucide-react';
+import { useT } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 
 export interface TopbarSlotItem {
@@ -30,6 +32,8 @@ interface Props {
 }
 
 export function AddonTopbarSlots({ slots, email, role }: Props) {
+  const t = useT();
+  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const hasSlots = slots.length > 0;
@@ -43,36 +47,53 @@ export function AddonTopbarSlots({ slots, email, role }: Props) {
     return () => document.removeEventListener('mousedown', handler);
   }, [open]);
 
+  // Icône seule sous le breakpoint sm (place limitée dans le topbar mobile) —
+  // email/rôle en texte au-delà. Le déclencheur reste toujours visible/
+  // cliquable à toutes les tailles : Profil (et donc Sécurité, un cran plus
+  // loin) ne sont plus dans la sidebar, il ne doit pas devenir injoignable
+  // sur mobile.
   const trigger = (
-    <div className="hidden text-right sm:block">
-      <div className="text-sm font-medium leading-tight">{email}</div>
-      <div className="flex items-center justify-end gap-1">
-        <span className="text-xs text-muted-foreground">{role}</span>
-        {hasSlots && (
+    <>
+      <UserCircle className="h-5 w-5 sm:hidden" />
+      <div className="hidden text-right sm:block">
+        <div className="text-sm font-medium leading-tight">{email}</div>
+        <div className="flex items-center justify-end gap-1">
+          <span className="text-xs text-muted-foreground">{role}</span>
           <ChevronDown
             className={cn(
               'h-3 w-3 text-muted-foreground transition-transform duration-150',
               open && 'rotate-180',
             )}
           />
-        )}
+        </div>
       </div>
-    </div>
+    </>
   );
 
-  if (!hasSlots) return trigger;
+  // Sans slot d'addon : raccourci direct vers /profile, pas de dropdown.
+  if (!hasSlots) {
+    return (
+      <button
+        onClick={() => navigate('/profile')}
+        className="flex items-center rounded-md px-2 py-1 text-right transition-colors hover:bg-accent"
+        aria-label={t('nav.profile')}
+      >
+        {trigger}
+      </button>
+    );
+  }
 
   return (
-    <div ref={ref} className="relative hidden sm:block">
+    <div ref={ref} className="relative">
       {/* Déclencheur : zone email/rôle */}
       <button
         onClick={() => setOpen((v) => !v)}
         className={cn(
-          'rounded-md px-2 py-1 text-right transition-colors hover:bg-accent',
+          'flex items-center rounded-md px-2 py-1 text-right transition-colors hover:bg-accent',
           open && 'bg-accent',
         )}
         aria-expanded={open}
-        aria-label="Extensions"
+        aria-label={t('nav.profile')}
       >
         {trigger}
       </button>
@@ -83,10 +104,22 @@ export function AddonTopbarSlots({ slots, email, role }: Props) {
           className="absolute right-0 top-full mt-1.5 z-50 min-w-52 rounded-lg border bg-popover text-popover-foreground shadow-lg ring-1 ring-black/5"
           role="menu"
         >
-          <div className="flex items-center gap-2 border-b px-3 py-2">
+          <div className="p-1" role="group">
+            <Link
+              to="/profile"
+              role="menuitem"
+              onClick={() => setOpen(false)}
+              className="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:outline-none"
+            >
+              <UserCircle className="h-4 w-4 shrink-0 text-primary" />
+              {t('nav.profile')}
+            </Link>
+          </div>
+
+          <div className="flex items-center gap-2 border-t px-3 py-2">
             <Puzzle className="h-3.5 w-3.5 text-primary" />
             <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Extensions
+              {t('nav.sectionExtensions')}
             </span>
           </div>
 
