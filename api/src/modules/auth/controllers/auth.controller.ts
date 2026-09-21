@@ -24,6 +24,7 @@ import { verifyCaptcha, type CaptchaProvider } from '../../../common/utils/captc
 import { MailService } from '../../mail/mail.service';
 import { RateLimiterService } from '../../../common/rate-limiter.service';
 import { authenticator } from '@otplib/preset-default';
+import { consumeRecoveryCode } from '../../../common/utils/recovery-codes';
 
 const SINGLETON = 'singleton';
 
@@ -214,22 +215,54 @@ export class PanelAuthController {
     }
     if (!user.isActive) throw new UnauthorizedException(t('errors.accountDisabled'));
 
+    let usedRecoveryCode = false;
     const valid = authenticator.verify({ token: body.code, secret: u.totpSecret });
-    if (!valid) throw new UnauthorizedException('Code 2FA invalide.');
+    if (!valid) {
+      // Repli : `code` peut être un des codes de récupération à usage unique
+      // (format "XXXX-XXXX") plutôt qu'un TOTP à 6 chiffres — utile quand
+      // l'appareil TOTP est perdu.
+      const updatedList = await consumeRecoveryCode(u.totpRecoveryCodes, body.code);
+      if (!updatedList) throw new UnauthorizedException('Code 2FA invalide.');
+      await this.prisma.panelUser.update({
+        where: { id: user.id },
+        data: { totpRecoveryCodes: updatedList } as any,
+      });
+      usedRecoveryCode = true;
+    }
 
-    return this.finishLogin(user, req, ip);
+    return this.finishLogin(user, req, ip, usedRecoveryCode);
   }
 
   /** Émet la session + le JWT final — partagé entre login direct et validation 2FA. */
-  private async finishLogin(user: { id: string; email: string; role: string }, req: any, ip: string) {
+  private async finishLogin(
+    user: { id: string; email: string; role: string; totpEnabled?: boolean },
+    req: any,
+    ip: string,
+    usedRecoveryCode = false,
+  ) {
     void this.mail.sendLoginNotification(user.email, this.settings.get('siteName'), ip);
     void this.auditService
       .log({ userId: user.id, userEmail: user.email, action: 'auth.login', ip })
       .catch(() => undefined);
 
+    // Alerte nouvelle IP : avant d'insérer la session courante, pour ne pas
+    // se comparer à elle-même. Best-effort (in-app + email si configuré),
+    // jamais bloquant.
+    const seenBefore = await this.prisma.activeSession.findFirst({ where: { userId: user.id, ip } });
+    if (!seenBefore) {
+      void this.notificationService.notifyNewLoginLocation(user.id, user.email, ip, req?.headers?.['user-agent']).catch(() => undefined);
+    }
+    if (usedRecoveryCode) {
+      void this.notificationService.notifyRecoveryCodeUsed(user.id, user.email, ip).catch(() => undefined);
+    }
+
     const token = this.sign(user);
     await this.createSession(user.id, token, req);
-    return { status: 'success', token, user: this.publicUser(user) };
+
+    const mustSetup2fa =
+      user.role === 'ADMIN' && this.settings.getBool('require2faForAdmins') && !user.totpEnabled;
+
+    return { status: 'success', token, user: { ...this.publicUser(user), mustSetup2fa } };
   }
 
   private async createSession(userId: string, token: string, req: any) {
@@ -321,8 +354,11 @@ export class PanelAuthController {
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
   @Get('auth/me')
-  me(@CurrentUser() user: JwtUser) {
-    return { status: 'success', user };
+  async me(@CurrentUser() user: JwtUser) {
+    const full = await this.prisma.panelUser.findUnique({ where: { id: user.id } });
+    const mustSetup2fa =
+      user.role === 'ADMIN' && this.settings.getBool('require2faForAdmins') && !(full as any)?.totpEnabled;
+    return { status: 'success', user: { ...user, mustSetup2fa } };
   }
 
   /** Version applicative (footer du panel, vérification de déploiement). */

@@ -51,6 +51,10 @@ export const SETTING_DEFS = {
   // un pool de dizaines de milliers d'entrées) a fait grossir la table à
   // plusieurs Go. Nettoyage quotidien via NotificationsCleanupService.
   notificationRetentionDays: { def: '30', env: undefined, secret: false },
+  // Bloque l'accès aux pages admin tant que la 2FA n'est pas activée sur le
+  // compte (ne bloque PAS le login lui-même — sinon un admin sans 2FA
+  // n'aurait plus aucun moyen d'entrer pour l'activer). Voir finishLogin().
+  require2faForAdmins: { def: 'false', env: undefined, secret: false },
   scraperProxy: { def: '', env: 'SCRAPER_PROXY', secret: true },
   groqApiKey: { def: '', env: 'GROQ_API_KEY', secret: true },
   // Clé API de l'API legacy /api/v1 — générée au setup, régénérable depuis le panel.
