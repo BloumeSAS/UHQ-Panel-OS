@@ -26,6 +26,12 @@ export default function Analytics() {
     queryFn: async () => (await api.get(`/monitoring/pool-health-history?hours=${hours}`)).data.data as any[],
     refetchInterval: 60000,
   });
+  // Volume de trafic par intervalle de 15 min (deltas déjà calculés côté serveur) — même plage que le graphique de santé du pool.
+  const trafficHistory = useQuery({
+    queryKey: ['analytics', 'traffic-history', hours],
+    queryFn: async () => (await api.get(`/monitoring/traffic-history?hours=${hours}`)).data.data as { createdAt: string; bytesSent: number; bytesReceived: number; requests: number }[],
+    refetchInterval: 60000,
+  });
   const pool = useQuery({
     queryKey: ['analytics', 'pool'],
     queryFn: async () => (await api.get('/monitoring/pool')).data.data,
@@ -113,6 +119,15 @@ export default function Analytics() {
               {t('analytics.lastSnapshot')} : {new Date(last.createdAt).toLocaleString()} — {last.working}/{last.total} {t('analytics.workingLower')} ({last.healthPct?.toFixed?.(1)}%)
             </p>
           )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>{t('analytics.trafficVolume')} ({RANGES.find((r) => r.hours === hours)?.label})</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <TrafficChart data={trafficHistory.data ?? []} t={t} />
         </CardContent>
       </Card>
 
@@ -324,6 +339,51 @@ function LatencyBars({ data }: { data: { bucket: string; count: number }[] }) {
           <span className="text-[9px] text-muted-foreground mt-1 truncate w-full text-center">{d.bucket}</span>
         </div>
       ))}
+    </div>
+  );
+}
+
+function TrafficChart({ data, t }: { data: { createdAt: string; bytesSent: number; bytesReceived: number; requests: number }[]; t: (k: any) => string }) {
+  if (!data.length) return <p className="text-sm text-muted-foreground text-center py-10">{t('analytics.noHistoryYet')}</p>;
+  const height = 160;
+  const width = 100;
+  const maxVal = Math.max(...data.map((d) => Math.max(d.bytesSent, d.bytesReceived)), 1);
+
+  const pathFor = (key: 'bytesSent' | 'bytesReceived') =>
+    data.map((d, i) => {
+      const x = (i / Math.max(data.length - 1, 1)) * width;
+      const y = height - (d[key] / maxVal) * height;
+      return `${x},${y}`;
+    }).join(' ');
+
+  const totalSent = data.reduce((a, d) => a + d.bytesSent, 0);
+  const totalReceived = data.reduce((a, d) => a + d.bytesReceived, 0);
+  const totalRequests = data.reduce((a, d) => a + d.requests, 0);
+
+  return (
+    <div className="space-y-3">
+      <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-40 overflow-visible" preserveAspectRatio="none">
+        <defs>
+          <linearGradient id="sentGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#10b981" stopOpacity="0.3" />
+            <stop offset="100%" stopColor="#10b981" stopOpacity="0" />
+          </linearGradient>
+          <linearGradient id="receivedGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity="0.3" />
+            <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        <polygon points={`0,${height} ${pathFor('bytesReceived')} ${width},${height}`} fill="url(#receivedGrad)" />
+        <polyline points={pathFor('bytesReceived')} fill="none" stroke="hsl(var(--primary))" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
+        <polygon points={`0,${height} ${pathFor('bytesSent')} ${width},${height}`} fill="url(#sentGrad)" />
+        <polyline points={pathFor('bytesSent')} fill="none" stroke="#10b981" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
+      </svg>
+      <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
+        <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full" style={{ backgroundColor: '#10b981' }} /> {t('analytics.sent')} ({formatBytes(totalSent)})</span>
+        <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-primary" /> {t('analytics.received')} ({formatBytes(totalReceived)})</span>
+        <span>{totalRequests.toLocaleString()} {t('analytics.requests')}</span>
+        <span className="ml-auto">{new Date(data[0].createdAt).toLocaleString()} → {new Date(data[data.length - 1].createdAt).toLocaleString()}</span>
+      </div>
     </div>
   );
 }
