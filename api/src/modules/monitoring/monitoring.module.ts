@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { PanelMonitoringController } from './controllers/monitoring.controller';
 import { PoolHealthSnapshotService } from './pool-health-snapshot.service';
+import { TrafficSnapshotService } from './traffic-snapshot.service';
 import { MonitoringGateway } from './monitoring.gateway';
 import { NotificationsModule } from '../notifications/notifications.module';
 
@@ -8,7 +9,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
 @Module({
   imports: [NotificationsModule],
   controllers: [PanelMonitoringController],
-  providers: [PoolHealthSnapshotService, MonitoringGateway],
-  exports: [PoolHealthSnapshotService],
+  providers: [PoolHealthSnapshotService, TrafficSnapshotService, MonitoringGateway],
+  exports: [PoolHealthSnapshotService, TrafficSnapshotService],
 })
 export class MonitoringModule {}

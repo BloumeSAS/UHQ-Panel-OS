@@ -221,6 +221,22 @@ model PoolHealthSnapshot {
   @@index([createdAt])
 }
 
+// Snapshot périodique des compteurs CUMULATIFS de trafic (tous comptes
+// confondus) — même principe que PoolHealthSnapshot, mais pour la bande
+// passante. Un graphique de volume "par intervalle" se lit en faisant la
+// différence entre deux points consécutifs, PAS la valeur brute (qui ne fait
+// que croître). Sans cette table, seul le total du jour courant est visible
+// (`/monitoring/live`) — aucun historique de trafic n'existait.
+model TrafficSnapshot {
+  id                 String   @id @default(cuid())
+  totalBytesSent     BigInt
+  totalBytesReceived BigInt
+  totalRequests      BigInt
+  createdAt          DateTime @default(now())
+
+  @@index([createdAt])
+}
+
 // Configuration éditable depuis le panel admin (clé/valeur). Fallback sur process.env.
 model Setting {
   key       String   @id

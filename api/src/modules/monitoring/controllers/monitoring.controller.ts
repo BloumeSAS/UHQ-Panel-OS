@@ -24,6 +24,7 @@ import { TrafficService } from '../../traffic/traffic.service';
 import { parseProxyList, parseProxyLine } from '../../../common/utils/proxy-parse';
 import { ImportProxiesDto } from '../../../common/dto/panel.dto';
 import { PoolHealthSnapshotService } from '../pool-health-snapshot.service';
+import { TrafficSnapshotService } from '../traffic-snapshot.service';
 import { AuditService } from '../../audit/audit.service';
 
 /**
@@ -40,9 +41,19 @@ export class PanelMonitoringController {
     private readonly prisma: PrismaService,
     private readonly engine: ProxyServerService,
     private readonly poolHealth: PoolHealthSnapshotService,
+    private readonly trafficSnapshot: TrafficSnapshotService,
     private readonly auditService: AuditService,
     private readonly traffic: TrafficService,
   ) {}
+
+  /** Historique de trafic (volume/requêtes par intervalle de 15 min) — time series. */
+  @Roles('ADMIN', 'SUPPORT')
+  @ApiQuery({ name: 'hours', required: false, type: Number, description: 'Nombre d\'heures (défaut: 24)' })
+  @Get('traffic-history')
+  async trafficHistory(@Query('hours') hours = '24') {
+    const data = await this.trafficSnapshot.getHistory(parseInt(hours, 10) || 24);
+    return { status: 'success', data };
+  }
 
   /**
    * Comptes proxy actuellement actifs (au moins un thread ouvert) : threads
