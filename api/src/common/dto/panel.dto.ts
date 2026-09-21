@@ -104,12 +104,14 @@ export class RegisterDto {
 
 export class UpdateSettingsDto {
   @ApiPropertyOptional() @IsOptional() @IsString() siteName?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() logoUrl?: string;
   @ApiPropertyOptional() @IsOptional() @IsBoolean() @Transform(({ value }) => value === undefined || value === null ? value : (value === 'true' || value === true)) registrationEnabled?: boolean;
   @ApiPropertyOptional() @IsOptional() @IsString() defaultLang?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() publicProxyHost?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() publicProxyPort?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() proxyTimeout?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() proxyRacingTimeout?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() connectionIdleTimeout?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() scrapeInterval?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() scraperMinPoolSize?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() proxyCheckInterval?: string;
@@ -118,6 +120,17 @@ export class UpdateSettingsDto {
   @ApiPropertyOptional() @IsOptional() @IsString() checkerTimeout?: string;
   @ApiPropertyOptional() @IsOptional() @IsBoolean() @Transform(({ value }) => value === undefined || value === null ? value : (value === 'true' || value === true)) skipDeadProxies?: boolean;
   @ApiPropertyOptional() @IsOptional() @IsString() deadProxyMaxRetries?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() auditLogRetentionMonths?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() notificationRetentionDays?: string;
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() @Transform(({ value }) => value === undefined || value === null ? value : (value === 'true' || value === true)) require2faForAdmins?: boolean;
+  @ApiPropertyOptional() @IsOptional() @IsString() poolHealthSnapshotRetentionDays?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() trafficSnapshotRetentionDays?: string;
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() @Transform(({ value }) => value === undefined || value === null ? value : (value === 'true' || value === true)) poolLowAlertEnabled?: boolean;
+  @ApiPropertyOptional() @IsOptional() @IsString() poolLowThresholdPct?: string;
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() @Transform(({ value }) => value === undefined || value === null ? value : (value === 'true' || value === true)) proxyAuthAutoBanEnabled?: boolean;
+  @ApiPropertyOptional() @IsOptional() @IsString() proxyAuthFailBanThreshold?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() proxyAuthFailBanWindowSec?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() proxyAuthAutoBanDurationHours?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() scraperProxy?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() groqApiKey?: string;
   // SMTP
