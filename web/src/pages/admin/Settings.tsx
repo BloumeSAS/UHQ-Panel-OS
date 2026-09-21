@@ -130,6 +130,7 @@ export default function Settings() {
         'backupDatabaseEnabled',
         'invitationsEnabled',
         'skipDeadProxies',
+        'require2faForAdmins',
       ])
         payload[b] = payload[b] === true || payload[b] === 'true';
       await api.put('/settings', payload);
@@ -324,6 +325,15 @@ export default function Settings() {
                 label={t('settings.maintenanceMode')}
                 hint={t('settings.maintenanceModeHint')}
                 k="maintenanceModeEnabled" form={form} set={set}
+              />
+            </Row>
+
+            <Separator label={t('settings.security')} />
+            <Row>
+              <Toggle
+                label={t('settings.require2faForAdmins')}
+                hint={t('settings.require2faForAdminsHint')}
+                k="require2faForAdmins" form={form} set={set}
               />
             </Row>
 

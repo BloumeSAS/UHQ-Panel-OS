@@ -1,25 +1,34 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { api } from '@/lib/api';
+import { api, apiError } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
 import { useT } from '@/lib/i18n';
-import { ShieldCheck, Smartphone, Monitor, Trash2, CheckCircle2, XCircle, QrCode, Copy, Check } from 'lucide-react';
+import {
+  ShieldCheck, Smartphone, Monitor, Trash2, CheckCircle2, XCircle, QrCode, Copy, Check,
+  AlertTriangle, KeyRound, Download,
+} from 'lucide-react';
 import { Button, Input, Card } from '@/components/ui';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/dialog';
 import { toast } from '@/lib/toast';
 
 export default function SecurityPage() {
   const t = useT();
+  const { user, refreshUser } = useAuth();
   const queryClient = useQueryClient();
   const [totpCode, setTotpCode] = useState('');
   const [disableCode, setDisableCode] = useState('');
+  const [regenCode, setRegenCode] = useState('');
+  const [showRegenPrompt, setShowRegenPrompt] = useState(false);
   const [qrData, setQrData] = useState<{ qrCode: string; secret: string; otpauth: string } | null>(null);
   const [copied, setCopied] = useState(false);
+  const [recoveryCodes, setRecoveryCodes] = useState<string[] | null>(null);
 
   // TOTP status
   const { data: totpStatus, refetch: refetchTotp } = useQuery({
     queryKey: ['totp-status'],
     queryFn: async () => {
       const { data } = await api.get('/security/totp/status');
-      return data as { totpEnabled: boolean };
+      return data as { totpEnabled: boolean; recoveryCodesRemaining: number };
     },
   });
 
@@ -37,28 +46,43 @@ export default function SecurityPage() {
     onSuccess: ({ data }) => {
       setQrData({ qrCode: data.qrCode, secret: data.secret, otpauth: data.otpauth });
     },
-    onError: (e: any) => toast.error(e.response?.data?.message || t('common.error')),
+    onError: (e) => toast.error(apiError(e)),
   });
 
   const enableTotpMutation = useMutation({
     mutationFn: (token: string) => api.post('/security/totp/enable', { token }),
-    onSuccess: () => {
+    onSuccess: async ({ data }) => {
       toast.success(t('security.totpEnabled'));
       setQrData(null);
       setTotpCode('');
+      setRecoveryCodes(data.recoveryCodes);
       refetchTotp();
+      await refreshUser();
     },
-    onError: (e: any) => toast.error(e.response?.data?.message || t('common.error')),
+    onError: (e) => toast.error(apiError(e)),
   });
 
   const disableTotpMutation = useMutation({
     mutationFn: (token: string) => api.post('/security/totp/disable', { token }),
-    onSuccess: () => {
+    onSuccess: async () => {
       toast.success(t('security.totpDisabled'));
       setDisableCode('');
       refetchTotp();
+      await refreshUser();
     },
-    onError: (e: any) => toast.error(e.response?.data?.message || t('common.error')),
+    onError: (e) => toast.error(apiError(e)),
+  });
+
+  const regenerateCodesMutation = useMutation({
+    mutationFn: (token: string) => api.post('/security/totp/recovery-codes/regenerate', { token }),
+    onSuccess: ({ data }) => {
+      setRecoveryCodes(data.recoveryCodes);
+      setShowRegenPrompt(false);
+      setRegenCode('');
+      refetchTotp();
+      toast.success(t('security.recoveryCodesRegenerated'));
+    },
+    onError: (e) => toast.error(apiError(e)),
   });
 
   const revokeSessionMutation = useMutation({
@@ -67,7 +91,7 @@ export default function SecurityPage() {
       toast.success(t('security.sessionRevoked'));
       refetchSessions();
     },
-    onError: (e: any) => toast.error(e.response?.data?.message || t('common.error')),
+    onError: (e) => toast.error(apiError(e)),
   });
 
   const revokeAllMutation = useMutation({
@@ -76,7 +100,7 @@ export default function SecurityPage() {
       toast.success(t('security.allSessionsRevoked'));
       refetchSessions();
     },
-    onError: (e: any) => toast.error(e.response?.data?.message || t('common.error')),
+    onError: (e) => toast.error(apiError(e)),
   });
 
   const copySecret = () => {
@@ -85,6 +109,21 @@ export default function SecurityPage() {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     }
+  };
+
+  const copyRecoveryCodes = () => {
+    if (recoveryCodes) navigator.clipboard.writeText(recoveryCodes.join('\n'));
+  };
+
+  const downloadRecoveryCodes = () => {
+    if (!recoveryCodes) return;
+    const blob = new Blob([recoveryCodes.join('\n') + '\n'], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'uhq-panel-recovery-codes.txt';
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   const totpEnabled = totpStatus?.totpEnabled ?? false;
@@ -98,6 +137,16 @@ export default function SecurityPage() {
         </h1>
         <p className="text-muted-foreground mt-1">{t('security.subtitle')}</p>
       </div>
+
+      {user?.mustSetup2fa && (
+        <div className="flex items-start gap-3 rounded-lg border border-destructive/40 bg-destructive/5 p-4">
+          <AlertTriangle className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-medium text-destructive">{t('security.mustSetupTitle')}</p>
+            <p className="text-sm text-muted-foreground mt-0.5">{t('security.mustSetupHint')}</p>
+          </div>
+        </div>
+      )}
 
       {/* 2FA / TOTP */}
       <Card className="p-6 space-y-4">
@@ -161,25 +210,37 @@ export default function SecurityPage() {
         )}
 
         {totpEnabled && (
-          <div className="space-y-3 p-4 rounded-lg border border-destructive/30 bg-destructive/5">
-            <p className="text-sm text-muted-foreground">{t('security.totpDisableHint')}</p>
-            <div className="flex gap-2">
-              <Input
-                value={disableCode}
-                onChange={(e) => setDisableCode(e.target.value)}
-                placeholder={t('security.totpCodePlaceholder')}
-                maxLength={6}
-                className="max-w-[140px] font-mono text-center text-lg tracking-widest"
-              />
-              <Button
-                variant="destructive"
-                onClick={() => disableTotpMutation.mutate(disableCode)}
-                disabled={disableCode.length < 6 || disableTotpMutation.isPending}
-              >
-                {t('security.totpDisable')}
+          <>
+            <div className="flex items-center justify-between p-3 rounded-lg border bg-muted/30">
+              <div className="flex items-center gap-2 text-sm">
+                <KeyRound className="h-4 w-4 text-muted-foreground" />
+                <span>{t('security.recoveryCodesRemaining').replace('{n}', String(totpStatus?.recoveryCodesRemaining ?? 0))}</span>
+              </div>
+              <Button variant="outline" size="sm" onClick={() => setShowRegenPrompt(true)}>
+                {t('security.recoveryCodesRegenerate')}
               </Button>
             </div>
-          </div>
+
+            <div className="space-y-3 p-4 rounded-lg border border-destructive/30 bg-destructive/5">
+              <p className="text-sm text-muted-foreground">{t('security.totpDisableHint')}</p>
+              <div className="flex gap-2">
+                <Input
+                  value={disableCode}
+                  onChange={(e) => setDisableCode(e.target.value)}
+                  placeholder={t('security.totpCodePlaceholder')}
+                  maxLength={6}
+                  className="max-w-[140px] font-mono text-center text-lg tracking-widest"
+                />
+                <Button
+                  variant="destructive"
+                  onClick={() => disableTotpMutation.mutate(disableCode)}
+                  disabled={disableCode.length < 6 || disableTotpMutation.isPending}
+                >
+                  {t('security.totpDisable')}
+                </Button>
+              </div>
+            </div>
+          </>
         )}
       </Card>
 
@@ -232,6 +293,61 @@ export default function SecurityPage() {
           ))}
         </div>
       </Card>
+
+      {/* Prompt régénération : demande le code TOTP actuel avant d'invalider les anciens codes */}
+      <Dialog open={showRegenPrompt} onOpenChange={setShowRegenPrompt}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>{t('security.recoveryCodesRegenerate')}</DialogTitle>
+            <DialogDescription>{t('security.recoveryCodesRegenerateHint')}</DialogDescription>
+          </DialogHeader>
+          <Input
+            value={regenCode}
+            onChange={(e) => setRegenCode(e.target.value)}
+            placeholder={t('security.totpCodePlaceholder')}
+            maxLength={6}
+            className="font-mono text-center text-lg tracking-widest"
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowRegenPrompt(false)}>{t('common.cancel')}</Button>
+            <Button
+              onClick={() => regenerateCodesMutation.mutate(regenCode)}
+              disabled={regenCode.length < 6 || regenerateCodesMutation.isPending}
+            >
+              {t('common.confirm')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Codes de récupération — affichés une seule fois (à l'activation ou après régénération) */}
+      <Dialog open={!!recoveryCodes} onOpenChange={(o) => !o && setRecoveryCodes(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <KeyRound className="h-5 w-5 text-primary" />
+              {t('security.recoveryCodesTitle')}
+            </DialogTitle>
+            <DialogDescription>{t('security.recoveryCodesHint')}</DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-2 gap-2 rounded-lg border bg-muted/40 p-4 font-mono text-sm">
+            {recoveryCodes?.map((c) => (
+              <span key={c} className="tracking-wider">{c}</span>
+            ))}
+          </div>
+          <DialogFooter className="sm:justify-between">
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={copyRecoveryCodes}>
+                <Copy className="h-3.5 w-3.5 mr-1.5" /> {t('common.copy')}
+              </Button>
+              <Button variant="outline" size="sm" onClick={downloadRecoveryCodes}>
+                <Download className="h-3.5 w-3.5 mr-1.5" /> {t('common.download')}
+              </Button>
+            </div>
+            <Button onClick={() => setRecoveryCodes(null)}>{t('security.recoveryCodesSaved')}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -45,6 +45,10 @@ function Loader() {
  * SUPPORT (lecture seule) sur les pages qui le supportent (dashboard, pool,
  * logs, audit, about) sans lui donner accès aux pages de gestion.
  */
+// Pages accessibles même quand la 2FA admin obligatoire n'est pas encore
+// configurée — sinon l'admin n'aurait aucun moyen d'aller l'activer.
+const TWO_FA_SETUP_ALLOWED_PATHS = ['/security', '/profile', '/about'];
+
 function Protected({ children, admin, roles }: { children: React.ReactNode; admin?: boolean; roles?: Array<'ADMIN' | 'SUPPORT'> }) {
   const { user, loading } = useAuth();
   const location = useLocation();
@@ -52,6 +56,9 @@ function Protected({ children, admin, roles }: { children: React.ReactNode; admi
   if (!user) return <Navigate to="/login" replace state={{ from: location }} />;
   const allowed = roles ?? (admin ? ['ADMIN'] : null);
   if (allowed && !allowed.includes(user.role as any)) return <Navigate to="/" replace />;
+  if (user.mustSetup2fa && !TWO_FA_SETUP_ALLOWED_PATHS.includes(location.pathname)) {
+    return <Navigate to="/security" replace />;
+  }
   return <Layout>{children}</Layout>;
 }
 

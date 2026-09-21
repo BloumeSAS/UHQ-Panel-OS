@@ -5,6 +5,8 @@ export interface PanelUser {
   id: string;
   email: string;
   role: 'ADMIN' | 'USER' | 'SUPPORT';
+  /** true si `require2faForAdmins` est actif et que ce compte admin n'a pas encore activé la 2FA. */
+  mustSetup2fa?: boolean;
 }
 
 interface LoginResult {
@@ -19,6 +21,8 @@ interface AuthCtx {
   verify2fa: (tempToken: string, code: string) => Promise<void>;
   register: (email: string, password: string, captchaToken?: string) => Promise<void>;
   applyToken: (token: string, user: PanelUser) => void;
+  /** Recharge l'utilisateur courant depuis /auth/me (ex. après activation 2FA, pour effacer mustSetup2fa sans relogin). */
+  refreshUser: () => Promise<void>;
   logout: () => void;
 }
 
@@ -67,6 +71,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     applyToken(data.token, data.user);
   };
 
+  const refreshUser = async () => {
+    if (!getToken()) return;
+    try {
+      const { data } = await api.get('/auth/me');
+      setUser(data.user);
+    } catch {
+      /* non-bloquant — le prochain appel API échouera proprement si le token est mort */
+    }
+  };
+
   const logout = () => {
     clearToken();
     setUser(null);
@@ -74,7 +88,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <Ctx.Provider value={{ user, loading, login, verify2fa, register, applyToken, logout }}>
+    <Ctx.Provider value={{ user, loading, login, verify2fa, register, applyToken, refreshUser, logout }}>
       {children}
     </Ctx.Provider>
   );
