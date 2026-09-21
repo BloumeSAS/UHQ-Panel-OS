@@ -40,8 +40,9 @@ export class PoolHealthSnapshotService {
         }
       }
 
-      // Nettoyer les anciens snapshots (>7 jours)
-      const cutoff = new Date(Date.now() - 7 * 24 * 3600_000);
+      // Nettoyer les anciens snapshots (rétention configurable, défaut 7 jours)
+      const retentionDays = this.settings.getPositiveNumber('poolHealthSnapshotRetentionDays') || 7;
+      const cutoff = new Date(Date.now() - retentionDays * 24 * 3600_000);
       await this.prisma.poolHealthSnapshot.deleteMany({
         where: { createdAt: { lt: cutoff } },
       });

@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../../database/prisma.service';
+import { SettingsService } from '../../config/settings.service';
 
 /**
  * Snapshots périodiques des compteurs de trafic cumulatifs (tous comptes
@@ -11,7 +12,10 @@ import { PrismaService } from '../../database/prisma.service';
 export class TrafficSnapshotService {
   private readonly logger = new Logger(TrafficSnapshotService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly settings: SettingsService,
+  ) {}
 
   /** Un snapshot toutes les 15 minutes — même cadence que PoolHealthSnapshot. */
   @Cron('*/15 * * * *')
@@ -32,9 +36,9 @@ export class TrafficSnapshotService {
         },
       });
 
-      // Même rétention que PoolHealthSnapshot (7 jours) — assez pour la
-      // plage "7j" du panel, sans laisser la table grossir indéfiniment.
-      const cutoff = new Date(Date.now() - 7 * 24 * 3600_000);
+      // Rétention configurable (défaut 7 jours, comme PoolHealthSnapshot).
+      const retentionDays = this.settings.getPositiveNumber('trafficSnapshotRetentionDays') || 7;
+      const cutoff = new Date(Date.now() - retentionDays * 24 * 3600_000);
       await this.prisma.trafficSnapshot.deleteMany({ where: { createdAt: { lt: cutoff } } });
     } catch (err) {
       this.logger.error(`Traffic snapshot failed: ${err.message}`);

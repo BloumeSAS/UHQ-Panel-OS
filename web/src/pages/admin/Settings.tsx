@@ -337,6 +337,22 @@ export default function Settings() {
               />
             </Row>
 
+            <Separator label={t('settings.retention')} />
+            <Grid>
+              <F label={t('settings.notificationRetentionDays')} hint={t('settings.notificationRetentionDaysHint')}>
+                <Input value={form.notificationRetentionDays ?? ''} onChange={(e) => set('notificationRetentionDays', e.target.value)} placeholder="30" />
+              </F>
+              <F label={t('settings.auditLogRetentionMonths')} hint={t('settings.auditLogRetentionMonthsHint')}>
+                <Input value={form.auditLogRetentionMonths ?? ''} onChange={(e) => set('auditLogRetentionMonths', e.target.value)} placeholder="12" />
+              </F>
+              <F label={t('settings.poolHealthSnapshotRetentionDays')} hint={t('settings.poolHealthSnapshotRetentionDaysHint')}>
+                <Input value={form.poolHealthSnapshotRetentionDays ?? ''} onChange={(e) => set('poolHealthSnapshotRetentionDays', e.target.value)} placeholder="7" />
+              </F>
+              <F label={t('settings.trafficSnapshotRetentionDays')} hint={t('settings.trafficSnapshotRetentionDaysHint')}>
+                <Input value={form.trafficSnapshotRetentionDays ?? ''} onChange={(e) => set('trafficSnapshotRetentionDays', e.target.value)} placeholder="7" />
+              </F>
+            </Grid>
+
             <Separator label={t('settings.configImportExport')} />
             <ConfigImportExport />
           </>

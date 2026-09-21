@@ -55,6 +55,11 @@ export const SETTING_DEFS = {
   // compte (ne bloque PAS le login lui-même — sinon un admin sans 2FA
   // n'aurait plus aucun moyen d'entrer pour l'activer). Voir finishLogin().
   require2faForAdmins: { def: 'false', env: undefined, secret: false },
+  // Rétention des snapshots historiques (jours) — santé du pool et trafic.
+  // Était fixée en dur à 7 jours ; configurable pour les déploiements qui
+  // veulent garder plus d'historique (Analytics).
+  poolHealthSnapshotRetentionDays: { def: '7', env: undefined, secret: false },
+  trafficSnapshotRetentionDays: { def: '7', env: undefined, secret: false },
   scraperProxy: { def: '', env: 'SCRAPER_PROXY', secret: true },
   groqApiKey: { def: '', env: 'GROQ_API_KEY', secret: true },
   // Clé API de l'API legacy /api/v1 — générée au setup, régénérable depuis le panel.
