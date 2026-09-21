@@ -7,6 +7,7 @@ import { DensityProvider } from '@/lib/density';
 import { AuthProvider } from '@/lib/auth';
 import { SiteProvider } from '@/lib/site';
 import { Toaster } from '@/components/Toaster';
+import { ConfirmDialogProvider } from '@/components/ConfirmDialog';
 import App from './App';
 import './index.css';
 
@@ -22,8 +23,10 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
           <ThemeProvider>
             <DensityProvider>
               <AuthProvider>
-                <App />
-                <Toaster />
+                <ConfirmDialogProvider>
+                  <App />
+                  <Toaster />
+                </ConfirmDialogProvider>
               </AuthProvider>
             </DensityProvider>
           </ThemeProvider>

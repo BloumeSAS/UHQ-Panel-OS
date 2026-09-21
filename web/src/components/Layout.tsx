@@ -41,6 +41,7 @@ import { Button } from '@/components/ui';
 import { Footer } from '@/components/Footer';
 import { AddonTopbarSlots, TopbarSlotItem } from '@/components/AddonTopbarSlots';
 import { GlobalSearch } from '@/components/GlobalSearch';
+import { useConfirm } from '@/components/ConfirmDialog';
 import { cn } from '@/lib/utils';
 
 interface NavItem {
@@ -57,6 +58,7 @@ interface NavSection {
 export function Layout({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuth();
   const { status } = useSite();
+  const confirmDialog = useConfirm();
   const { t, lang, setLang, languages, mergeAddonTranslations } = useI18n();
   const { theme, toggle } = useTheme();
   const { density, toggle: toggleDensity } = useDensity();
@@ -419,8 +421,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
                       </button>
                       {user?.role === 'ADMIN' && (
                         <button
-                          onClick={() => {
-                            if (confirm(t('notifications.purgeConfirm'))) purgeNotificationsMutation.mutate();
+                          onClick={async () => {
+                            const ok = await confirmDialog({
+                              title: t('notifications.purge'),
+                              description: t('notifications.purgeConfirm'),
+                              destructive: true,
+                            });
+                            if (ok) purgeNotificationsMutation.mutate();
                           }}
                           className="text-xs text-destructive hover:opacity-75"
                         >
