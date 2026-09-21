@@ -132,6 +132,7 @@ export default function Settings() {
         'invitationsEnabled',
         'skipDeadProxies',
         'require2faForAdmins',
+        'proxyAuthAutoBanEnabled',
       ])
         payload[b] = payload[b] === true || payload[b] === 'true';
       await api.put('/settings', payload);
@@ -344,6 +345,28 @@ export default function Settings() {
                 k="require2faForAdmins" form={form} set={set}
               />
             </Row>
+
+            <Separator label={t('settings.proxyAuthProtection')} />
+            <Row>
+              <Toggle
+                label={t('settings.proxyAuthAutoBanEnabled')}
+                hint={t('settings.proxyAuthAutoBanEnabledHint')}
+                k="proxyAuthAutoBanEnabled" form={form} set={set}
+              />
+            </Row>
+            {(form.proxyAuthAutoBanEnabled === true || form.proxyAuthAutoBanEnabled === 'true') && (
+              <Grid>
+                <F label={t('settings.proxyAuthFailBanThreshold')} hint={t('settings.proxyAuthFailBanThresholdHint')}>
+                  <Input value={form.proxyAuthFailBanThreshold ?? ''} onChange={(e) => set('proxyAuthFailBanThreshold', e.target.value)} placeholder="15" />
+                </F>
+                <F label={t('settings.proxyAuthFailBanWindowSec')} hint={t('settings.proxyAuthFailBanWindowSecHint')}>
+                  <Input value={form.proxyAuthFailBanWindowSec ?? ''} onChange={(e) => set('proxyAuthFailBanWindowSec', e.target.value)} placeholder="60" />
+                </F>
+                <F label={t('settings.proxyAuthAutoBanDurationHours')} hint={t('settings.proxyAuthAutoBanDurationHoursHint')}>
+                  <Input value={form.proxyAuthAutoBanDurationHours ?? ''} onChange={(e) => set('proxyAuthAutoBanDurationHours', e.target.value)} placeholder="24" />
+                </F>
+              </Grid>
+            )}
 
             <Separator label={t('settings.retention')} />
             <Grid>
