@@ -17,6 +17,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Gauge,
+  UserCheck,
+  Radar,
 } from 'lucide-react';
 import { CountryFlag } from '@/components/CountryFlag';
 import { api, apiError } from '@/lib/api';
@@ -564,9 +566,15 @@ export default function Pool() {
                       </TD>
                       <TD className="text-xs">
                         {p.provider === 'Manual' ? (
-                          <Badge variant="outline" className="bg-primary/5 text-primary border-primary/20">{p.provider}</Badge>
+                          <Badge variant="outline" className="gap-1 bg-primary/5 text-primary border-primary/20">
+                            <UserCheck className="h-3 w-3" /> {t('pool.sourceManual')}
+                          </Badge>
+                        ) : p.provider ? (
+                          <Badge variant="outline" className="gap-1 bg-blue-500/5 text-blue-600 border-blue-500/20 dark:text-blue-400">
+                            <Radar className="h-3 w-3" /> {p.provider}
+                          </Badge>
                         ) : (
-                          <span className="text-muted-foreground">{p.provider || '—'}</span>
+                          <span className="text-muted-foreground">—</span>
                         )}
                       </TD>
                       <TD>
