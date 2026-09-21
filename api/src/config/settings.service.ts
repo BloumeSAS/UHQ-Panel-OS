@@ -60,6 +60,16 @@ export const SETTING_DEFS = {
   // veulent garder plus d'historique (Analytics).
   poolHealthSnapshotRetentionDays: { def: '7', env: undefined, secret: false },
   trafficSnapshotRetentionDays: { def: '7', env: undefined, secret: false },
+  // Anti-brute-force sur le moteur proxy (port 990) — contrairement à
+  // /auth/login (panel), l'authentification Basic-Auth du proxy n'avait
+  // aucune protection : une IP pouvait enchaîner des échecs d'auth sans
+  // aucune limite (observé en prod : 6-7 échecs à la même seconde depuis une
+  // IP). Au-delà du seuil, l'IP est bannie automatiquement (même mécanisme
+  // que le bannissement manuel — IP bannies), pour une durée limitée.
+  proxyAuthAutoBanEnabled: { def: 'true', env: undefined, secret: false },
+  proxyAuthFailBanThreshold: { def: '15', env: undefined, secret: false },
+  proxyAuthFailBanWindowSec: { def: '60', env: undefined, secret: false },
+  proxyAuthAutoBanDurationHours: { def: '24', env: undefined, secret: false },
   scraperProxy: { def: '', env: 'SCRAPER_PROXY', secret: true },
   groqApiKey: { def: '', env: 'GROQ_API_KEY', secret: true },
   // Clé API de l'API legacy /api/v1 — générée au setup, régénérable depuis le panel.

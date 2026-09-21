@@ -9,6 +9,7 @@ import { parseProxyList, buildProxyUrl } from '../../common/utils/proxy-parse';
 import { randomString, isDomainBlocked } from '../../common/utils/proxy-format';
 import { allowedPortRange } from '../../common/utils/port-validation';
 import { NotificationService } from '../notifications/notification.service';
+import { RateLimiterService } from '../../common/rate-limiter.service';
 import {
   performHandshake,
   tcpConnect,
@@ -131,6 +132,7 @@ export class ProxyServerService implements OnModuleDestroy {
     private readonly traffic: TrafficService,
     private readonly settings: SettingsService,
     private readonly notificationService: NotificationService,
+    private readonly rateLimiter: RateLimiterService,
   ) {}
 
   // ===== Lifecycle =====================================================
@@ -382,6 +384,41 @@ export class ProxyServerService implements OnModuleDestroy {
     return !!ip && this.bannedIpSet.has(ip);
   }
 
+  /**
+   * Compte les échecs d'authentification proxy par IP (fenêtre glissante,
+   * même mécanisme que le frein sur /auth/login) et bannit automatiquement
+   * au-delà du seuil configuré — port 990 n'avait sinon aucune protection
+   * anti-brute-force, contrairement au login panel. Ban temporaire (durée
+   * configurable), via la même table que le bannissement manuel : visible
+   * et révocable depuis IP bannies.
+   */
+  private async registerAuthFailure(ip: string): Promise<void> {
+    if (!ip || !this.settings.getBool('proxyAuthAutoBanEnabled')) return;
+    const threshold = this.settings.getPositiveNumber('proxyAuthFailBanThreshold') || 15;
+    const windowSec = this.settings.getPositiveNumber('proxyAuthFailBanWindowSec') || 60;
+    const allowed = this.rateLimiter.check(`proxyauth-fail:${ip}`, threshold, windowSec * 1000);
+    if (allowed) return; // sous le seuil — rien à faire
+
+    // Déjà bannie (ex. un burst a déjà déclenché le ban il y a quelques
+    // secondes) : ne pas re-notifier/re-écrire à chaque nouvel échec.
+    if (this.bannedIpSet.has(ip)) return;
+
+    try {
+      const durationHours = this.settings.getPositiveNumber('proxyAuthAutoBanDurationHours') || 24;
+      const expiresAt = new Date(Date.now() + durationHours * 3600_000);
+      await this.prisma.bannedIp.upsert({
+        where: { ip },
+        create: { ip, reason: `Auto-ban : ${threshold}+ échecs d'auth proxy en ${windowSec}s`, expiresAt, createdBy: 'auto' },
+        update: { reason: `Auto-ban : ${threshold}+ échecs d'auth proxy en ${windowSec}s`, expiresAt, createdBy: 'auto' },
+      });
+      this.invalidateBanCache();
+      this.logger.warn(`Auto-ban : ${ip} (${threshold}+ échecs d'auth en ${windowSec}s), ${durationHours}h`);
+      void this.notificationService.notifyProxyAuthAutoBan(ip, threshold, windowSec, durationHours);
+    } catch (e) {
+      this.logger.error(`Échec de l'auto-ban pour ${ip}: ${e}`);
+    }
+  }
+
   async onModuleDestroy(): Promise<void> {
     await Promise.all(
       Array.from(this.servers.values()).map((s) => new Promise<void>((r) => s.close(() => r()))),
@@ -510,6 +547,7 @@ export class ProxyServerService implements OnModuleDestroy {
       user = await this.authenticate(clientIp, authHeader);
       if (!user) {
         this.logger.log(`Auth failed for ${clientIp}`);
+        void this.registerAuthFailure(clientIp);
         client.write(
           'HTTP/1.1 407 Proxy Authentication Required\r\nProxy-Authenticate: Basic realm="Proxy"\r\n\r\n',
         );

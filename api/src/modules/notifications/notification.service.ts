@@ -50,6 +50,21 @@ export class NotificationService {
     }
   }
 
+  /**
+   * Alerte bannissement automatique d'une IP par le moteur proxy (trop
+   * d'échecs d'authentification en peu de temps) — in-app uniquement (admin
+   * broadcast, `userId` absent), pas d'e-mail : ça peut arriver plusieurs
+   * fois par jour sur un déploiement exposé, l'inbox suffit.
+   */
+  async notifyProxyAuthAutoBan(ip: string, failCount: number, windowSec: number, durationHours: number): Promise<void> {
+    await this.createInApp({
+      type: 'warning',
+      title: '🚫 IP bannie automatiquement',
+      message: `${ip} a été bannie ${durationHours}h après ${failCount} échecs d'authentification proxy en ${windowSec}s.`,
+      link: '/banned-ips',
+    });
+  }
+
   /** Purge quotidienne des notifications in-app plus vieilles que notificationRetentionDays. */
   @Cron(CronExpression.EVERY_DAY_AT_3AM)
   async cleanupOldNotifications(): Promise<void> {
