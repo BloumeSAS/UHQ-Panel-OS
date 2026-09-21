@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   Copy, Eye, EyeOff, RefreshCw, Send,
-  Globe, Server, Radio, Shield, Mail, Key,
+  Globe, Server, Radio, Shield, ShieldCheck, Mail, Key,
   Bell, Database, Trash2, Download, Upload, Palette, RotateCcw, BarChart3,
 } from 'lucide-react';
 import { api, apiError } from '@/lib/api';
@@ -18,6 +18,7 @@ import { toast } from '@/lib/toast';
 const TABS = [
   { key: 'dashboard', icon: BarChart3, labelKey: 'settings.dashboard' },
   { key: 'general',  icon: Globe,   labelKey: 'settings.general' },
+  { key: 'security', icon: ShieldCheck, labelKey: 'settings.security' },
   { key: 'theme',    icon: Palette, labelKey: 'settings.theme' },
   { key: 'proxy',    icon: Server,  labelKey: 'settings.proxy' },
   { key: 'scraper',  icon: Radio,   labelKey: 'settings.scraper' },
@@ -328,7 +329,14 @@ export default function Settings() {
               />
             </Row>
 
-            <Separator label={t('settings.security')} />
+            <Separator label={t('settings.configImportExport')} />
+            <ConfigImportExport />
+          </>
+        )}
+
+        {/* ────── SÉCURITÉ & RÉTENTION ────── */}
+        {tab === 'security' && (
+          <>
             <Row>
               <Toggle
                 label={t('settings.require2faForAdmins')}
@@ -352,9 +360,6 @@ export default function Settings() {
                 <Input value={form.trafficSnapshotRetentionDays ?? ''} onChange={(e) => set('trafficSnapshotRetentionDays', e.target.value)} placeholder="7" />
               </F>
             </Grid>
-
-            <Separator label={t('settings.configImportExport')} />
-            <ConfigImportExport />
           </>
         )}
 
