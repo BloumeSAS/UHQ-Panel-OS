@@ -81,6 +81,81 @@ export class PanelSubUserController {
     };
   }
 
+  /**
+   * Variante paginée + recherche côté serveur, pour l'écran Sous-utilisateurs
+   * (le `GET /subusers` ci-dessus renvoie tout — gardé tel quel pour la
+   * recherche globale, le contrôle de port/domaine et le sélecteur admin, qui
+   * ont besoin de la liste complète). Déclarée avant `:id` (route littérale).
+   */
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  @ApiQuery({ name: 'search', required: false, description: 'Filtre sur username/label (insensible à la casse)' })
+  @ApiQuery({ name: 'tag', required: false })
+  @Get('paginated')
+  async listPaginated(
+    @Query('page') page = '1',
+    @Query('limit') limit = '50',
+    @Query('search') search?: string,
+    @Query('tag') tag?: string,
+  ) {
+    const p = Math.max(1, parseInt(page, 10) || 1);
+    const l = Math.max(1, Math.min(200, parseInt(limit, 10) || 50));
+    const where: any = {};
+    if (search) {
+      where.OR = [
+        { username: { contains: search, mode: 'insensitive' } },
+        { name: { contains: search, mode: 'insensitive' } },
+      ];
+    }
+    if (tag) where.tags = { contains: tag, mode: 'insensitive' };
+
+    const [users, total] = await Promise.all([
+      this.prisma.userProxy.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: (p - 1) * l,
+        take: l,
+      }),
+      this.prisma.userProxy.count({ where }),
+    ]);
+    const active = this.engine.getActiveThreads();
+    const poolMap = await buildPoolEndpointMap(this.prisma, users.map((u) => u.pool));
+    return {
+      status: 'success',
+      page: p,
+      limit: l,
+      total,
+      data: users.map((u) => {
+        const { host, port } = resolveHostPortSync(this.settings, u, u.pool ? poolMap.get(u.pool) : null);
+        return {
+          ...formatSubUser(u),
+          port: u.port ?? null,
+          domain: u.domain ?? null,
+          effective_host: host,
+          effective_port: port,
+          active_threads: active.get(u.username) ?? 0,
+        };
+      }),
+    };
+  }
+
+  /** Liste des tags distincts (tous comptes) — pour le filtre par tag sans charger la liste complète. */
+  @Get('tags')
+  async listTags() {
+    const rows = await this.prisma.userProxy.findMany({
+      where: { tags: { not: null } },
+      select: { tags: true },
+    });
+    const set = new Set<string>();
+    for (const r of rows) {
+      for (const tagName of (r.tags ?? '').split(',')) {
+        const trimmed = tagName.trim();
+        if (trimmed) set.add(trimmed);
+      }
+    }
+    return { status: 'success', data: Array.from(set).sort() };
+  }
+
   @Post()
   async create(@Body() dto: PanelSubUserCreateDto, @CurrentUser() me: JwtUser) {
     if (dto.port != null) await assertPortAvailable(this.prisma, dto.port);

@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2, List, Copy, Check, Pencil, Tag, Calendar, Zap, CheckSquare, Square, RotateCcw, ChevronLeft, ChevronRight, Upload, Link2, Ban, Eye, BarChart3, Globe2 } from 'lucide-react';
+import { Plus, Trash2, List, Copy, Check, Pencil, Tag, Calendar, Zap, CheckSquare, Square, RotateCcw, ChevronLeft, ChevronRight, Upload, Link2, Ban, Eye, BarChart3, Globe2, Search } from 'lucide-react';
 import { SlideOver } from '@/components/SlideOver';
 import { AddonPageBar } from '@/components/AddonPageBar';
 import { CountryFlag } from '@/components/CountryFlag';
+import { useConfirm } from '@/components/ConfirmDialog';
 import { api, apiError } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import {
@@ -76,11 +77,36 @@ function linesFromCsv(csv: string | null): string {
 export default function SubUsers() {
   const t = useT();
   const qc = useQueryClient();
+  const confirmDialog = useConfirm();
   const [selectedTag, setSelectedTag] = useState('');
+  const [search, setSearch] = useState('');
+  const [searchInput, setSearchInput] = useState('');
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 50;
 
-  const { data } = useQuery({
-    queryKey: ['subusers'],
-    queryFn: async () => (await api.get('/subusers')).data.data as SubUser[],
+  // Debounce : évite une requête à chaque frappe.
+  useEffect(() => {
+    const id = setTimeout(() => setSearch(searchInput.trim()), 300);
+    return () => clearTimeout(id);
+  }, [searchInput]);
+  useEffect(() => { setPage(1); }, [selectedTag, search]);
+
+  const { data: pageData } = useQuery({
+    queryKey: ['subusers', page, search, selectedTag],
+    queryFn: async () => {
+      const params = new URLSearchParams({ page: String(page), limit: String(PAGE_SIZE) });
+      if (search) params.set('search', search);
+      if (selectedTag) params.set('tag', selectedTag);
+      const { data } = await api.get(`/subusers/paginated?${params.toString()}`);
+      return data as { data: SubUser[]; total: number; page: number; limit: number };
+    },
+    placeholderData: (prev) => prev,
+  });
+  const data = pageData?.data;
+
+  const { data: allTags } = useQuery({
+    queryKey: ['subusers-tags'],
+    queryFn: async () => (await api.get('/subusers/tags')).data.data as string[],
   });
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ['subusers'] });
@@ -102,9 +128,6 @@ export default function SubUsers() {
   const [statsFor, setStatsFor] = useState<SubUser | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [copiedId, setCopiedId] = useState<string | null>(null);
-  const [page, setPage] = useState(0);
-  const PAGE_SIZE = 50;
-  useEffect(() => { setPage(0); }, [selectedTag]);
 
   const resetTraffic = useMutation({
     mutationFn: (id: string) => api.post(`/subusers/${id}/reset-traffic`),
@@ -143,34 +166,18 @@ export default function SubUsers() {
 
   const usedGb = (u: SubUser) => u.bytes_sent + u.bytes_received;
 
-  // Extract all unique tags
-  const allTags = Array.from(
-    new Set(
-      (data ?? []).flatMap((u) =>
-        (u.tags ?? '')
-          .split(',')
-          .map((t) => t.trim())
-          .filter(Boolean),
-      ),
-    ),
-  );
+  const total = pageData?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
-  // Filter sub-users by selected tag
-  const filteredData = data?.filter((u) => {
-    if (!selectedTag) return true;
-    const utags = (u.tags ?? '').split(',').map((t) => t.trim().toLowerCase());
-    return utags.includes(selectedTag.trim().toLowerCase());
-  });
-
-  const totalPages = Math.ceil((filteredData?.length ?? 0) / PAGE_SIZE);
-  const pagedData = filteredData?.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
-
+  // La sélection ne porte que sur la page affichée — cohérent avec la
+  // pagination serveur (sélectionner "tout" à travers des milliers de
+  // comptes non chargés n'aurait pas de sens ici).
   const toggleAll = () => {
-    const ids = filteredData?.map((u) => u.id) ?? [];
+    const ids = data?.map((u) => u.id) ?? [];
     if (ids.length > 0 && ids.every((id) => selected.has(id))) setSelected(new Set());
     else setSelected(new Set(ids));
   };
-  const allSelected = (filteredData?.length ?? 0) > 0 && (filteredData ?? []).every((u) => selected.has(u.id));
+  const allSelected = (data?.length ?? 0) > 0 && (data ?? []).every((u) => selected.has(u.id));
 
   return (
     <div className="space-y-6">
@@ -182,8 +189,19 @@ export default function SubUsers() {
         </div>
       </div>
 
+      {/* Recherche serveur */}
+      <div className="relative max-w-xs">
+        <Search className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+        <Input
+          value={searchInput}
+          onChange={(e) => setSearchInput(e.target.value)}
+          placeholder={t('sub.searchPlaceholder')}
+          className="pl-8"
+        />
+      </div>
+
       {/* Tag Filter bar */}
-      {allTags.length > 0 && (
+      {!!allTags?.length && (
         <div className="flex flex-wrap items-center gap-2 text-sm bg-muted/40 p-3 rounded-lg border">
           <span className="text-muted-foreground font-medium mr-1 flex items-center gap-1">
             <Tag className="h-4 w-4" /> {t('sub.filterByTag')}
@@ -196,29 +214,21 @@ export default function SubUsers() {
                 : 'border-border text-muted-foreground hover:border-primary hover:text-foreground'
             }`}
           >
-            {t('sub.tagAll')} ({data?.length})
+            {t('sub.tagAll')}
           </button>
-          {allTags.map((tag) => {
-            const count = data?.filter((u) =>
-              (u.tags ?? '')
-                .split(',')
-                .map((t) => t.trim().toLowerCase())
-                .includes(tag.toLowerCase()),
-            ).length;
-            return (
-              <button
-                key={tag}
-                onClick={() => setSelectedTag(tag)}
-                className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
-                  selectedTag === tag
-                    ? 'bg-primary text-primary-foreground border-primary'
-                    : 'border-border text-muted-foreground hover:border-primary hover:text-foreground'
-                }`}
-              >
-                #{tag} ({count})
-              </button>
-            );
-          })}
+          {allTags.map((tag) => (
+            <button
+              key={tag}
+              onClick={() => setSelectedTag(tag)}
+              className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
+                selectedTag === tag
+                  ? 'bg-primary text-primary-foreground border-primary'
+                  : 'border-border text-muted-foreground hover:border-primary hover:text-foreground'
+              }`}
+            >
+              #{tag}
+            </button>
+          ))}
         </div>
       )}
 
@@ -233,10 +243,24 @@ export default function SubUsers() {
             <Button size="sm" variant="outline" onClick={() => bulkMutation.mutate({ action: 'unblock', ids: Array.from(selected) })}>
               {t('sub.bulkUnblock')}
             </Button>
-            <Button size="sm" variant="outline" onClick={() => confirm(t('sub.confirmResetTraffic')) && bulkMutation.mutate({ action: 'reset-traffic', ids: Array.from(selected) })}>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={async () => {
+                const ok = await confirmDialog({ title: t('sub.resetTraffic'), description: t('sub.confirmResetTraffic') });
+                if (ok) bulkMutation.mutate({ action: 'reset-traffic', ids: Array.from(selected) });
+              }}
+            >
               {t('sub.resetTraffic')}
             </Button>
-            <Button size="sm" variant="destructive" onClick={() => confirm(t('common.confirmDelete')) && bulkMutation.mutate({ action: 'delete', ids: Array.from(selected) })}>
+            <Button
+              size="sm"
+              variant="destructive"
+              onClick={async () => {
+                const ok = await confirmDialog({ title: t('common.delete'), description: t('common.confirmDelete'), destructive: true });
+                if (ok) bulkMutation.mutate({ action: 'delete', ids: Array.from(selected) });
+              }}
+            >
               {t('common.delete')}
             </Button>
           </div>
@@ -264,7 +288,7 @@ export default function SubUsers() {
               </TR>
             </THead>
             <TBody>
-              {pagedData?.map((u) => {
+              {data?.map((u) => {
                 const isExpired = u.expires_at && new Date(u.expires_at) < new Date();
                 return (
                   <TR key={u.id}>
@@ -383,7 +407,10 @@ export default function SubUsers() {
                       <Button
                         variant="ghost"
                         size="icon"
-                        onClick={() => confirm(t('sub.confirmResetTraffic')) && resetTraffic.mutate(u.id)}
+                        onClick={async () => {
+                          const ok = await confirmDialog({ title: t('sub.resetTraffic'), description: t('sub.confirmResetTraffic') });
+                          if (ok) resetTraffic.mutate(u.id);
+                        }}
                         title={t('sub.resetTraffic')}
                       >
                         <RotateCcw className="h-4 w-4" />
@@ -391,7 +418,10 @@ export default function SubUsers() {
                       <Button
                         variant="ghost"
                         size="icon"
-                        onClick={() => confirm(t('common.confirmDelete')) && del.mutate(u.id)}
+                        onClick={async () => {
+                          const ok = await confirmDialog({ title: t('common.delete'), description: t('common.confirmDelete'), destructive: true });
+                          if (ok) del.mutate(u.id);
+                        }}
                       >
                         <Trash2 className="h-4 w-4 text-destructive" />
                       </Button>
@@ -399,7 +429,7 @@ export default function SubUsers() {
                   </TR>
                 );
               })}
-              {!filteredData?.length && (
+              {!data?.length && (
                 <TR>
                   <TD colSpan={9} className="py-8 text-center text-muted-foreground">
                     {t('common.none')}
@@ -410,14 +440,14 @@ export default function SubUsers() {
           </Table>
           {totalPages > 1 && (
             <div className="flex items-center justify-between border-t px-4 py-3">
-              <Button variant="outline" size="sm" disabled={page === 0} onClick={() => setPage((p) => p - 1)} className="h-8 gap-1">
+              <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)} className="h-8 gap-1">
                 <ChevronLeft className="h-3.5 w-3.5" /> Précédent
               </Button>
               <span className="text-xs text-muted-foreground">
-                Page <span className="font-semibold">{page + 1}</span> / {totalPages}
-                <span className="ml-2 text-muted-foreground/60">({filteredData?.length} comptes)</span>
+                Page <span className="font-semibold">{page}</span> / {totalPages}
+                <span className="ml-2 text-muted-foreground/60">({total} comptes)</span>
               </span>
-              <Button variant="outline" size="sm" disabled={page >= totalPages - 1} onClick={() => setPage((p) => p + 1)} className="h-8 gap-1">
+              <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)} className="h-8 gap-1">
                 Suivant <ChevronRight className="h-3.5 w-3.5" />
               </Button>
             </div>
@@ -487,7 +517,10 @@ export default function SubUsers() {
           <QuickView
             subUser={quickViewFor}
             onBlockToggle={(v) => block.mutate({ id: quickViewFor.id, is_blocked: v })}
-            onResetTraffic={() => confirm(t('sub.confirmResetTraffic')) && resetTraffic.mutate(quickViewFor.id)}
+            onResetTraffic={async () => {
+              const ok = await confirmDialog({ title: t('sub.resetTraffic'), description: t('sub.confirmResetTraffic') });
+              if (ok) resetTraffic.mutate(quickViewFor.id);
+            }}
             onEdit={() => { setQuickViewFor(null); setEditing(quickViewFor); }}
           />
         )}
