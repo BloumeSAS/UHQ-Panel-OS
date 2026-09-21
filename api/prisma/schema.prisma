@@ -98,6 +98,10 @@ model PanelUser {
   // 2FA / TOTP
   totpEnabled         Boolean              @default(false)
   totpSecret          String?
+  // Codes de récupération à usage unique (JSON array de hash bcrypt) —
+  // générés à l'activation de la 2FA, consommés un par un si l'appareil TOTP
+  // est perdu. Null tant que la 2FA n'a jamais été activée.
+  totpRecoveryCodes   String?
   assignedProxies     UserProxy[]
   passwordResetTokens PasswordResetToken[]
   sessions            ActiveSession[]

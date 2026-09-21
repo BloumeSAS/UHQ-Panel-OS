@@ -22,6 +22,7 @@ import { PrismaService } from '../../../database/prisma.service';
 import { SettingsService } from '../../../config/settings.service';
 import { AuditService } from '../../audit/audit.service';
 import { TotpEnableDto, TotpVerifyDto, ChangePasswordDto } from '../../../common/dto/security.dto';
+import { generateRecoveryCodes, hashRecoveryCodes } from '../../../common/utils/recovery-codes';
 
 @ApiTags('panel-security')
 @ApiBearerAuth()
@@ -100,12 +101,38 @@ export class SecurityController {
     const valid = authenticator.verify({ token: dto.token, secret: u.totpSecret });
     if (!valid) throw new BadRequestException('Invalid TOTP code');
 
+    // Codes de récupération générés une seule fois ici, à l'activation —
+    // affichés en clair dans la réponse (jamais récupérables ensuite, seul
+    // leur hash est stocké). Perdre son appareil TOTP sans les avoir notés
+    // = compte bloqué sans recours DB direct, d'où leur existence.
+    const recoveryCodes = generateRecoveryCodes();
     await this.prisma.panelUser.update({
       where: { id: me.id },
-      data: { totpEnabled: true } as any,
+      data: { totpEnabled: true, totpRecoveryCodes: await hashRecoveryCodes(recoveryCodes) } as any,
     });
+    await this.auditService.log({ userId: me.id, userEmail: me.email, action: 'auth.2fa-enable' });
 
-    return { status: 'success', message: '2FA enabled' };
+    return { status: 'success', message: '2FA enabled', recoveryCodes };
+  }
+
+  /** Régénère les codes de récupération (invalide les anciens) — nécessite le code TOTP actuel. */
+  @Post('totp/recovery-codes/regenerate')
+  async regenerateRecoveryCodes(@CurrentUser() me: JwtUser, @Body() dto: TotpVerifyDto) {
+    const user = await this.prisma.panelUser.findUnique({ where: { id: me.id } });
+    const u = user as any;
+    if (!u?.totpEnabled) throw new BadRequestException('2FA not enabled');
+
+    const valid = authenticator.verify({ token: dto.token, secret: u.totpSecret! });
+    if (!valid) throw new BadRequestException('Invalid TOTP code');
+
+    const recoveryCodes = generateRecoveryCodes();
+    await this.prisma.panelUser.update({
+      where: { id: me.id },
+      data: { totpRecoveryCodes: await hashRecoveryCodes(recoveryCodes) } as any,
+    });
+    await this.auditService.log({ userId: me.id, userEmail: me.email, action: 'auth.2fa-recovery-codes-regenerate' });
+
+    return { status: 'success', recoveryCodes };
   }
 
   /** Désactive le 2FA après vérification du code actuel. */
@@ -120,17 +147,27 @@ export class SecurityController {
 
     await this.prisma.panelUser.update({
       where: { id: me.id },
-      data: { totpEnabled: false, totpSecret: null } as any,
+      data: { totpEnabled: false, totpSecret: null, totpRecoveryCodes: null } as any,
     });
+    await this.auditService.log({ userId: me.id, userEmail: me.email, action: 'auth.2fa-disable' });
 
     return { status: 'success', message: '2FA disabled' };
   }
 
-  /** Retourne le statut 2FA de l'utilisateur courant. */
+  /** Retourne le statut 2FA de l'utilisateur courant (+ nb de codes de récupération restants). */
   @Get('totp/status')
   async totpStatus(@CurrentUser() me: JwtUser) {
     const user = await this.prisma.panelUser.findUnique({ where: { id: me.id } });
-    return { status: 'success', totpEnabled: (user as any)?.totpEnabled ?? false };
+    const u = user as any;
+    let recoveryCodesRemaining = 0;
+    if (u?.totpRecoveryCodes) {
+      try {
+        recoveryCodesRemaining = JSON.parse(u.totpRecoveryCodes).length;
+      } catch {
+        /* ignore */
+      }
+    }
+    return { status: 'success', totpEnabled: u?.totpEnabled ?? false, recoveryCodesRemaining };
   }
 
   // ── Sessions ─────────────────────────────────────────────────────────────────
