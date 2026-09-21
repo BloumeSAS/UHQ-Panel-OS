@@ -271,24 +271,41 @@ export default function SecurityPage() {
           {!sessions?.length && (
             <p className="text-sm text-muted-foreground text-center py-4">{t('security.noSessions')}</p>
           )}
-          {sessions?.map((s: any) => (
-            <div key={s.id} className="flex items-center gap-3 p-3 rounded-lg border bg-card hover:bg-accent/30 transition-colors">
-              <Monitor className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+          {[...(sessions ?? [])]
+            .sort((a: any, b: any) => (b.isCurrent ? 1 : 0) - (a.isCurrent ? 1 : 0))
+            .map((s: any) => (
+            <div
+              key={s.id}
+              className={`flex items-center gap-3 p-3 rounded-lg border transition-colors ${s.isCurrent ? 'bg-primary/5 border-primary/30' : 'bg-card hover:bg-accent/30'}`}
+            >
+              <Monitor className={`h-4 w-4 flex-shrink-0 ${s.isCurrent ? 'text-primary' : 'text-muted-foreground'}`} />
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate">{s.userAgent || t('security.unknownDevice')}</p>
+                <p className="text-sm font-medium truncate flex items-center gap-2">
+                  {s.userAgent || t('security.unknownDevice')}
+                  {s.isCurrent && (
+                    <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-primary/15 text-primary">
+                      {t('security.thisDevice')}
+                    </span>
+                  )}
+                </p>
                 <p className="text-xs text-muted-foreground">
                   IP: {s.ip || '—'} · {t('security.lastSeen')}: {new Date(s.lastSeen).toLocaleString()}
                 </p>
               </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="text-destructive hover:bg-destructive/10"
-                onClick={() => revokeSessionMutation.mutate(s.id)}
-                disabled={revokeSessionMutation.isPending}
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
+              {/* Pas de bouton de révocation sur sa propre session ici — évite
+                  de se déconnecter par erreur ; "Déconnecter les autres" (ci-
+                  dessus) et le bouton de déconnexion (topbar) couvrent ce besoin. */}
+              {!s.isCurrent && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="text-destructive hover:bg-destructive/10"
+                  onClick={() => revokeSessionMutation.mutate(s.id)}
+                  disabled={revokeSessionMutation.isPending}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              )}
             </div>
           ))}
         </div>

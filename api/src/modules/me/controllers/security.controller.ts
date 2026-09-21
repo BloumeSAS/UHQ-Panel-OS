@@ -174,7 +174,9 @@ export class SecurityController {
 
   /** Liste les sessions actives de l'utilisateur courant. */
   @Get('sessions')
-  async listSessions(@CurrentUser() me: JwtUser) {
+  async listSessions(@CurrentUser() me: JwtUser, @Req() req: any) {
+    const authHeader = req.headers?.authorization || '';
+    const currentToken = authHeader.replace('Bearer ', '');
     const sessions = await this.prisma.activeSession.findMany({
       where: { userId: me.id },
       orderBy: { lastSeen: 'desc' },
@@ -187,6 +189,9 @@ export class SecurityController {
         ip: s.ip,
         createdAt: s.createdAt,
         lastSeen: s.lastSeen,
+        // Comparé côté serveur uniquement — le token lui-même n'est jamais
+        // renvoyé au client, juste ce booléen pour distinguer "cet appareil".
+        isCurrent: s.token === currentToken,
       })),
     };
   }
