@@ -29,6 +29,8 @@ const en: Language = {
 
     'login.title': 'Sign in',
     'login.submit': 'Sign in',
+    'login.totpTitle': 'Two-factor authentication',
+    'login.totpHint': 'Enter the 6-digit code from your authenticator app.',
     'login.noAccount': 'No account yet?',
     'login.register': 'Create an account',
     'login.forgotPassword': 'Forgot password?',
@@ -580,6 +582,11 @@ const en: Language = {
     'nav.apiKeys': 'API Keys',
     'nav.audit': 'Audit Log',
     'nav.bannedIps': 'Banned IPs',
+    'nav.sectionManagement': 'Management',
+    'nav.sectionMonitoring': 'Monitoring',
+    'nav.sectionSystem': 'System',
+    'nav.sectionAccount': 'Account',
+    'nav.sectionExtensions': 'Extensions',
     'nav.profile': 'Profile',
 
     // ── Banned IPs ───────────────────────────────────────────────────────

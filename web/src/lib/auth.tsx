@@ -7,10 +7,16 @@ export interface PanelUser {
   role: 'ADMIN' | 'USER' | 'SUPPORT';
 }
 
+interface LoginResult {
+  requires2fa?: boolean;
+  tempToken?: string;
+}
+
 interface AuthCtx {
   user: PanelUser | null;
   loading: boolean;
-  login: (email: string, password: string, captchaToken?: string) => Promise<void>;
+  login: (email: string, password: string, captchaToken?: string) => Promise<LoginResult>;
+  verify2fa: (tempToken: string, code: string) => Promise<void>;
   register: (email: string, password: string, captchaToken?: string) => Promise<void>;
   applyToken: (token: string, user: PanelUser) => void;
   logout: () => void;
@@ -44,8 +50,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(u);
   };
 
-  const login = async (email: string, password: string, captchaToken?: string) => {
+  const login = async (email: string, password: string, captchaToken?: string): Promise<LoginResult> => {
     const { data } = await api.post('/auth/login', { email, password, captchaToken });
+    if (data.requires2fa) return { requires2fa: true, tempToken: data.tempToken };
+    applyToken(data.token, data.user);
+    return {};
+  };
+
+  const verify2fa = async (tempToken: string, code: string) => {
+    const { data } = await api.post('/auth/login/2fa', { tempToken, code });
     applyToken(data.token, data.user);
   };
 
@@ -61,7 +74,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <Ctx.Provider value={{ user, loading, login, register, applyToken, logout }}>
+    <Ctx.Provider value={{ user, loading, login, verify2fa, register, applyToken, logout }}>
       {children}
     </Ctx.Provider>
   );

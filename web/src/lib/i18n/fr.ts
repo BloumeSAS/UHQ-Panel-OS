@@ -29,6 +29,8 @@ const fr: Language = {
 
     'login.title': 'Connexion',
     'login.submit': 'Se connecter',
+    'login.totpTitle': 'Double authentification',
+    'login.totpHint': 'Saisissez le code à 6 chiffres de votre application d\'authentification.',
     'login.noAccount': 'Pas encore de compte ?',
     'login.register': 'Créer un compte',
     'login.forgotPassword': 'Mot de passe oublié ?',
@@ -580,6 +582,11 @@ const fr: Language = {
     'nav.apiKeys': 'Clés API',
     'nav.audit': 'Journal d\'audit',
     'nav.bannedIps': 'IP bannies',
+    'nav.sectionManagement': 'Gestion',
+    'nav.sectionMonitoring': 'Supervision',
+    'nav.sectionSystem': 'Système',
+    'nav.sectionAccount': 'Compte',
+    'nav.sectionExtensions': 'Extensions',
     'nav.profile': 'Profil',
 
     // ── IP bannies ───────────────────────────────────────────────────────

@@ -9,7 +9,7 @@ import { Footer } from '@/components/Footer';
 import { CaptchaWidget } from '@/components/CaptchaWidget';
 
 export default function Login() {
-  const { login } = useAuth();
+  const { login, verify2fa } = useAuth();
   const { status } = useSite();
   const t = useT();
   const navigate = useNavigate();
@@ -18,6 +18,8 @@ export default function Login() {
   const [captchaToken, setCaptchaToken] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [tempToken, setTempToken] = useState('');
+  const [totpCode, setTotpCode] = useState('');
 
   const captchaProvider = (status?.captchaProvider || 'none') as any;
   const captchaSiteKey = status?.captchaSiteKey || '';
@@ -29,7 +31,25 @@ export default function Login() {
     setBusy(true);
     setError('');
     try {
-      await login(email, password, needCaptcha ? captchaToken : undefined);
+      const result = await login(email, password, needCaptcha ? captchaToken : undefined);
+      if (result.requires2fa && result.tempToken) {
+        setTempToken(result.tempToken);
+      } else {
+        navigate('/');
+      }
+    } catch (err) {
+      setError(apiError(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const submit2fa = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    setError('');
+    try {
+      await verify2fa(tempToken, totpCode);
       navigate('/');
     } catch (err) {
       setError(apiError(err));
@@ -37,6 +57,51 @@ export default function Login() {
       setBusy(false);
     }
   };
+
+  if (tempToken) {
+    return (
+      <div className="relative flex min-h-screen items-center justify-center bg-muted/30 p-4">
+        <Card className="w-full max-w-sm">
+          <CardHeader className="items-center text-center">
+            <img src={status?.logoUrl || '/static/logo.png'} alt="logo" className="mb-2 h-12 w-12 rounded" />
+            <CardTitle className="text-2xl">{t('login.totpTitle')}</CardTitle>
+            <p className="text-sm text-muted-foreground">{t('login.totpHint')}</p>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={submit2fa} className="space-y-4">
+              <div className="space-y-1.5">
+                <Label>{t('security.totpCodePlaceholder')}</Label>
+                <Input
+                  value={totpCode}
+                  onChange={(e) => setTotpCode(e.target.value)}
+                  maxLength={6}
+                  autoFocus
+                  className="text-center text-lg tracking-widest font-mono"
+                  placeholder="123456"
+                  required
+                />
+              </div>
+
+              {error && <p className="text-sm text-destructive">{error}</p>}
+
+              <Button type="submit" className="w-full" disabled={busy || totpCode.length < 6}>
+                {t('login.submit')}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                className="w-full"
+                onClick={() => { setTempToken(''); setTotpCode(''); setError(''); }}
+              >
+                {t('common.cancel')}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+        <Footer className="absolute inset-x-0 bottom-0" />
+      </div>
+    );
+  }
 
   return (
     <div className="relative flex min-h-screen items-center justify-center bg-muted/30 p-4">
