@@ -1,8 +1,12 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Activity, Globe2, Server, Gauge, Trophy, BarChart3 } from 'lucide-react';
+import {
+  Activity, Globe2, Server, Gauge, Trophy, BarChart3, Zap, Users, Cpu, MemoryStick,
+  Database, ArrowUp, ArrowDown, Clock, Flame,
+} from 'lucide-react';
 import { api } from '@/lib/api';
 import { useT } from '@/lib/i18n';
+import { formatBytes } from '@/lib/utils';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui';
 import { cn } from '@/lib/utils';
 import { AddonPageBar } from '@/components/AddonPageBar';
@@ -42,6 +46,24 @@ export default function Analytics() {
     queryFn: async () => (await api.get('/monitoring/reports?period=week')).data,
     refetchInterval: 60000,
   });
+  // Snapshot temps réel : threads/sessions actifs, conso du jour, top domaines du jour.
+  const live = useQuery({
+    queryKey: ['analytics', 'live'],
+    queryFn: async () => (await api.get('/monitoring/live')).data,
+    refetchInterval: 5000,
+  });
+  // RAM/CPU process+hôte, latence DB — même source que le dashboard, réutilisée ici en contexte "analytics".
+  const sysHealth = useQuery({
+    queryKey: ['analytics', 'system-health'],
+    queryFn: async () => (await api.get('/monitoring/system-health')).data.data,
+    refetchInterval: 15000,
+  });
+  // Comptes actuellement en train de faire passer du trafic — triés par threads actifs.
+  const activeAccounts = useQuery({
+    queryKey: ['analytics', 'active-accounts'],
+    queryFn: async () => (await api.get('/monitoring/active-accounts')).data.data as any[],
+    refetchInterval: 5000,
+  });
 
   const h = history.data ?? [];
   const last = h[h.length - 1];
@@ -53,9 +75,9 @@ export default function Analytics() {
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
             <BarChart3 className="h-6 w-6 text-primary" />
-            Analytics Pool & Proxies
+            {t('analytics.title')}
           </h1>
-          <p className="text-muted-foreground mt-1">Vue complète de la santé et de la performance du pool.</p>
+          <p className="text-muted-foreground mt-1">{t('analytics.subtitle')}</p>
         </div>
         <div className="flex rounded-md border overflow-hidden">
           {RANGES.map((r) => (
@@ -70,22 +92,25 @@ export default function Analytics() {
         </div>
       </div>
 
+      {/* Bandeau temps réel — rafraîchi toutes les 5s, indépendant de la période sélectionnée */}
+      <LiveStrip live={live.data} sysHealth={sysHealth.data} />
+
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Stat icon={Server} label="Total pool" value={pool.data?.total_proxies ?? '—'} />
-        <Stat icon={Activity} label="Fonctionnels" value={pool.data?.working_proxies ?? '—'} sub={`${healthRate}%`} good />
-        <Stat icon={Gauge} label="Morts / bannis" value={pool.data?.dead_proxies ?? '—'} bad={!!pool.data?.dead_proxies} />
-        <Stat icon={Globe2} label="Pays couverts" value={Object.keys(countries.data ?? {}).length} />
+        <Stat icon={Server} label={t('analytics.totalPool')} value={pool.data?.total_proxies ?? '—'} />
+        <Stat icon={Activity} label={t('analytics.working')} value={pool.data?.working_proxies ?? '—'} sub={`${healthRate}%`} good />
+        <Stat icon={Gauge} label={t('analytics.deadBanned')} value={pool.data?.dead_proxies ?? '—'} bad={!!pool.data?.dead_proxies} />
+        <Stat icon={Globe2} label={t('analytics.countriesCovered')} value={Object.keys(countries.data ?? {}).length} />
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>Évolution du pool ({RANGES.find((r) => r.hours === hours)?.label})</CardTitle>
+          <CardTitle>{t('analytics.poolEvolution')} ({RANGES.find((r) => r.hours === hours)?.label})</CardTitle>
         </CardHeader>
         <CardContent>
-          <TrendChart data={h} />
+          <TrendChart data={h} t={t} />
           {last && (
             <p className="text-xs text-muted-foreground mt-2">
-              Dernier snapshot : {new Date(last.createdAt).toLocaleString()} — {last.working}/{last.total} fonctionnels ({last.healthPct?.toFixed?.(1)}%)
+              {t('analytics.lastSnapshot')} : {new Date(last.createdAt).toLocaleString()} — {last.working}/{last.total} {t('analytics.workingLower')} ({last.healthPct?.toFixed?.(1)}%)
             </p>
           )}
         </CardContent>
@@ -93,27 +118,52 @@ export default function Analytics() {
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
-          <CardHeader><CardTitle>Répartition par pays</CardTitle></CardHeader>
+          <CardHeader><CardTitle>{t('analytics.byCountry')}</CardTitle></CardHeader>
           <CardContent>
             <DistList data={Object.entries(countries.data ?? {}).slice(0, 12)} />
           </CardContent>
         </Card>
         <Card>
-          <CardHeader><CardTitle>Répartition par provider</CardTitle></CardHeader>
+          <CardHeader><CardTitle>{t('analytics.byProvider')}</CardTitle></CardHeader>
           <CardContent>
             <DistList data={Object.entries(pool.data?.by_provider ?? {})} />
           </CardContent>
         </Card>
         <Card>
-          <CardHeader><CardTitle>Répartition par protocole</CardTitle></CardHeader>
+          <CardHeader><CardTitle>{t('analytics.byProtocol')}</CardTitle></CardHeader>
           <CardContent>
             <DistList data={Object.entries(pool.data?.by_protocol ?? {})} />
           </CardContent>
         </Card>
         <Card>
-          <CardHeader><CardTitle>Distribution de latence</CardTitle></CardHeader>
+          <CardHeader><CardTitle>{t('analytics.latencyDistribution')}</CardTitle></CardHeader>
           <CardContent>
             <LatencyBars data={latency.data ?? []} />
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Flame className="h-5 w-5 text-orange-500" />
+              {t('analytics.topDomainsToday')}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <TopDomainsList data={live.data?.today_summary?.top_domains ?? []} />
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Users className="h-5 w-5 text-primary" />
+              {t('analytics.activeAccounts')}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="overflow-x-auto">
+            <ActiveAccountsTable rows={activeAccounts.data ?? []} t={t} />
           </CardContent>
         </Card>
       </div>
@@ -122,15 +172,41 @@ export default function Analytics() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Trophy className="h-5 w-5 text-amber-500" />
-            Top proxies (7 derniers jours)
+            {t('analytics.topProxies')}
           </CardTitle>
         </CardHeader>
         <CardContent className="overflow-x-auto">
-          <TopProxiesTable rows={reports.data?.pool?.top_proxies ?? []} />
+          <TopProxiesTable rows={reports.data?.pool?.top_proxies ?? []} t={t} />
         </CardContent>
       </Card>
 
       <AddonPageBar />
+    </div>
+  );
+}
+
+function LiveStrip({ live, sysHealth }: { live: any; sysHealth: any }) {
+  const t = useT();
+  const items = [
+    { icon: Zap, label: t('analytics.activeThreads'), value: live?.live?.active_threads ?? '—', color: 'text-primary' },
+    { icon: Clock, label: t('analytics.activeSessions'), value: live?.live?.active_sessions ?? '—', color: 'text-primary' },
+    { icon: ArrowUp, label: t('analytics.todayVolume'), value: live?.today_summary ? formatBytes(live.today_summary.total_gb * 1024 ** 3) : '—', color: 'text-emerald-500' },
+    { icon: ArrowDown, label: t('analytics.todayRequests'), value: live?.today_summary?.total_requests?.toLocaleString?.() ?? '—', color: 'text-emerald-500' },
+    { icon: Cpu, label: t('analytics.cpuLoad'), value: sysHealth ? `${sysHealth.host.cpuLoadPct}%` : '—', color: sysHealth?.host?.cpuLoadPct > 80 ? 'text-destructive' : 'text-muted-foreground' },
+    { icon: MemoryStick, label: t('analytics.ramUsed'), value: sysHealth ? `${sysHealth.process.rssMb} Mo` : '—', color: 'text-muted-foreground' },
+    { icon: Database, label: t('analytics.dbLatency'), value: sysHealth?.db?.latencyMs != null ? `${sysHealth.db.latencyMs}ms` : '—', color: sysHealth?.db?.latencyMs > 200 ? 'text-destructive' : 'text-muted-foreground' },
+  ];
+  return (
+    <div className="grid grid-cols-2 gap-3 rounded-xl border bg-card p-4 sm:grid-cols-4 lg:grid-cols-7">
+      {items.map((it) => (
+        <div key={it.label} className="flex items-center gap-2 min-w-0">
+          <it.icon className={cn('h-4 w-4 shrink-0', it.color)} />
+          <div className="min-w-0">
+            <div className="text-sm font-semibold truncate">{it.value}</div>
+            <div className="text-[10px] text-muted-foreground truncate">{it.label}</div>
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -173,6 +249,64 @@ function DistList({ data }: { data: [string, any][] }) {
   );
 }
 
+function TopDomainsList({ data }: { data: { hostname: string; requests: number }[] }) {
+  const t = useT();
+  if (!data.length) return <p className="text-sm text-muted-foreground text-center py-6">{t('analytics.noDataYet')}</p>;
+  const max = Math.max(...data.map((d) => d.requests), 1);
+  return (
+    <div className="space-y-2">
+      {data.map((d) => (
+        <div key={d.hostname} className="space-y-1">
+          <div className="flex justify-between text-sm">
+            <span className="truncate font-mono text-xs">{d.hostname}</span>
+            <span className="text-muted-foreground shrink-0 ml-2">{d.requests.toLocaleString()} req</span>
+          </div>
+          <div className="h-1.5 w-full rounded-full bg-muted">
+            <div className="h-1.5 rounded-full bg-orange-500 transition-all" style={{ width: `${(d.requests / max) * 100}%` }} />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ActiveAccountsTable({ rows, t }: { rows: any[]; t: (k: any) => string }) {
+  if (!rows.length) return <p className="text-sm text-muted-foreground text-center py-6">{t('analytics.noActiveAccounts')}</p>;
+  return (
+    <table className="w-full text-sm">
+      <thead className="bg-muted/50">
+        <tr>
+          <th className="px-3 py-2 text-left font-medium">{t('sub.label')}</th>
+          <th className="px-3 py-2 text-right font-medium">{t('analytics.threads')}</th>
+          <th className="px-3 py-2 text-right font-medium">↑</th>
+          <th className="px-3 py-2 text-right font-medium">↓</th>
+          <th className="px-3 py-2 text-right font-medium">{t('sub.trafficLimit')}</th>
+        </tr>
+      </thead>
+      <tbody className="divide-y divide-border">
+        {rows.slice(0, 12).map((a: any) => (
+          <tr key={a.username} className="hover:bg-muted/30 transition-colors">
+            <td className="px-3 py-2">
+              <div className="font-medium truncate max-w-[140px]">{a.label}</div>
+              <div className="text-[10px] text-muted-foreground font-mono truncate max-w-[140px]">{a.username}</div>
+            </td>
+            <td className="px-3 py-2 text-right">
+              <span className="px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-primary/10 text-primary">
+                {a.threads}{a.threadsLimit ? `/${a.threadsLimit}` : ''}
+              </span>
+            </td>
+            <td className="px-3 py-2 text-right font-mono text-xs text-emerald-600 dark:text-emerald-400">{formatBytes(a.sentBps)}/s</td>
+            <td className="px-3 py-2 text-right font-mono text-xs text-blue-600 dark:text-blue-400">{formatBytes(a.receivedBps)}/s</td>
+            <td className="px-3 py-2 text-right text-xs text-muted-foreground">
+              {a.totalGb ? `${a.usedGb?.toFixed?.(1) ?? 0}/${a.totalGb} Go` : '∞'}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
 function LatencyBars({ data }: { data: { bucket: string; count: number }[] }) {
   if (!data.length) return <p className="text-sm text-muted-foreground text-center py-6">—</p>;
   const max = Math.max(...data.map((d) => d.count), 1);
@@ -194,8 +328,8 @@ function LatencyBars({ data }: { data: { bucket: string; count: number }[] }) {
   );
 }
 
-function TrendChart({ data }: { data: any[] }) {
-  if (!data.length) return <p className="text-sm text-muted-foreground text-center py-10">Pas encore de données historiques.</p>;
+function TrendChart({ data, t }: { data: any[]; t: (k: any) => string }) {
+  if (!data.length) return <p className="text-sm text-muted-foreground text-center py-10">{t('analytics.noHistoryYet')}</p>;
   const height = 160;
   const width = 100;
   const maxTotal = Math.max(...data.map((d) => d.total), 1);
@@ -226,27 +360,26 @@ function TrendChart({ data }: { data: any[] }) {
         <polyline points={pathFor('working')} fill="none" stroke="hsl(var(--primary))" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
       </svg>
       <div className="flex items-center gap-4 text-xs text-muted-foreground">
-        <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-primary" /> Fonctionnels</span>
-        <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-muted-foreground" /> Total pool</span>
+        <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-primary" /> {t('analytics.workingLower')}</span>
+        <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-muted-foreground" /> {t('analytics.totalPoolLower')}</span>
         <span className="ml-auto">{new Date(data[0].createdAt).toLocaleString()} → {new Date(data[data.length - 1].createdAt).toLocaleString()}</span>
       </div>
     </div>
   );
 }
 
-function TopProxiesTable({ rows }: { rows: any[] }) {
-  const t = useT();
+function TopProxiesTable({ rows, t }: { rows: any[]; t: (k: any) => string }) {
   if (!rows.length) return <p className="text-sm text-muted-foreground text-center py-6">—</p>;
   return (
     <table className="w-full text-sm">
       <thead className="bg-muted/50">
         <tr>
-          <th className="px-3 py-2 text-left font-medium">Proxy</th>
-          <th className="px-3 py-2 text-left font-medium">Pays</th>
-          <th className="px-3 py-2 text-left font-medium">Provider</th>
-          <th className="px-3 py-2 text-right font-medium">Latence</th>
-          <th className="px-3 py-2 text-right font-medium">Taux succès</th>
-          <th className="px-3 py-2 text-right font-medium">Statut</th>
+          <th className="px-3 py-2 text-left font-medium">{t('analytics.proxy')}</th>
+          <th className="px-3 py-2 text-left font-medium">{t('sub.country')}</th>
+          <th className="px-3 py-2 text-left font-medium">{t('reports.provider')}</th>
+          <th className="px-3 py-2 text-right font-medium">{t('analytics.latency')}</th>
+          <th className="px-3 py-2 text-right font-medium">{t('analytics.successRate')}</th>
+          <th className="px-3 py-2 text-right font-medium">{t('sub.blocked')}</th>
         </tr>
       </thead>
       <tbody className="divide-y divide-border">
@@ -259,7 +392,7 @@ function TopProxiesTable({ rows }: { rows: any[] }) {
             <td className="px-3 py-2 text-right">{p.success_rate != null ? `${p.success_rate}%` : '—'}</td>
             <td className="px-3 py-2 text-right">
               <span className={cn('px-2 py-0.5 rounded-full text-[10px] font-medium', p.is_working ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-400' : 'bg-destructive/10 text-destructive')}>
-                {p.is_working ? 'actif' : 'hors ligne'}
+                {p.is_working ? t('analytics.statusActive') : t('analytics.statusOffline')}
               </span>
             </td>
           </tr>
