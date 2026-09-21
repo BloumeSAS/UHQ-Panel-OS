@@ -546,6 +546,8 @@ const fr: Language = {
     'checker.noLogs': '[Aucun journal disponible pour le moment]',
 
     'reports.requests': 'Requêtes',
+    'reports.total': 'total',
+    'reports.exportFailed': 'Échec de l\'export.',
     'reports.limit': 'Limite',
     'reports.status': 'Statut',
     'reports.active': 'actives',

@@ -546,6 +546,8 @@ const en: Language = {
     'checker.noLogs': '[No logs available at the moment]',
 
     'reports.requests': 'Requests',
+    'reports.total': 'total',
+    'reports.exportFailed': 'Export failed.',
     'reports.limit': 'Limit',
     'reports.status': 'Status',
     'reports.active': 'active',

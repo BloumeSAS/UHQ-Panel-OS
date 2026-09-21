@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Activity, Database, Users, TrendingUp, Globe2, Boxes, ArrowUp, ArrowDown, FileDown } from 'lucide-react';
+import { Activity, Database, Users, TrendingUp, Globe2, Boxes, ArrowUp, ArrowDown, FileDown, ImageDown, Loader2 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { Card, CardContent, CardHeader, CardTitle, Button, Table, THead, TBody, TR, TH, TD, Badge } from '@/components/ui';
+import { toast } from '@/lib/toast';
 
 type Period = 'day' | 'week' | 'month' | 'year' | 'all';
 
@@ -66,6 +67,8 @@ const PERIODS: { key: Period; labelKey: string }[] = [
 export default function Reports() {
   const t = useT();
   const [period, setPeriod] = useState<Period>('week');
+  const dashboardRef = useRef<HTMLDivElement>(null);
+  const [exporting, setExporting] = useState<'png' | 'pdf' | null>(null);
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['reports', period],
@@ -89,7 +92,39 @@ export default function Reports() {
     a.click();
   };
 
-  const exportPdf = () => window.print();
+  // Même mécanisme que l'export Analytics (html2canvas + jsPDF, chargés à la
+  // demande) — remplace l'ancien `window.print()`, qui dépendait d'une
+  // feuille de style d'impression peu entretenue et du rendu du navigateur.
+  const exportDashboard = async (kind: 'png' | 'pdf') => {
+    if (!dashboardRef.current) return;
+    setExporting(kind);
+    try {
+      const html2canvas = (await import('html2canvas')).default;
+      const canvas = await html2canvas(dashboardRef.current, {
+        backgroundColor: getComputedStyle(document.body).backgroundColor || '#ffffff',
+        scale: 2,
+        useCORS: true,
+      });
+      const filename = `uhq-report-${period}-${new Date().toISOString().slice(0, 10)}`;
+      if (kind === 'png') {
+        const a = document.createElement('a');
+        a.href = canvas.toDataURL('image/png');
+        a.download = `${filename}.png`;
+        a.click();
+      } else {
+        const { jsPDF } = await import('jspdf');
+        const pageWidth = 210;
+        const imgHeight = (canvas.height * pageWidth) / canvas.width;
+        const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: [pageWidth, Math.max(imgHeight, 297)] });
+        pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, pageWidth, imgHeight);
+        pdf.save(`${filename}.pdf`);
+      }
+    } catch {
+      toast.error(t('reports.exportFailed'));
+    } finally {
+      setExporting(null);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -109,8 +144,13 @@ export default function Reports() {
           <Button variant="outline" size="sm" onClick={exportJson} disabled={!data}>
             {t('common.download')} JSON
           </Button>
-          <Button variant="outline" size="sm" onClick={exportPdf} disabled={!data} className="print:hidden">
-            <FileDown className="h-3.5 w-3.5 mr-1.5" /> Exporter en PDF
+          <Button variant="outline" size="sm" onClick={() => exportDashboard('png')} disabled={!data || !!exporting}>
+            {exporting === 'png' ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <ImageDown className="h-3.5 w-3.5 mr-1.5" />}
+            PNG
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => exportDashboard('pdf')} disabled={!data || !!exporting}>
+            {exporting === 'pdf' ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <FileDown className="h-3.5 w-3.5 mr-1.5" />}
+            PDF
           </Button>
         </div>
       </div>
@@ -118,7 +158,7 @@ export default function Reports() {
       {isLoading && <p className="text-muted-foreground">{t('app.loading')}</p>}
 
       {data && (
-        <>
+        <div ref={dashboardRef} className="space-y-6 bg-background">
           {/* KPIs */}
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <StatCard
@@ -172,7 +212,7 @@ export default function Reports() {
                 {data.traffic.daily.length === 0 ? (
                   <p className="text-sm text-muted-foreground">{t('reports.noData')}</p>
                 ) : (
-                  <BarList items={data.traffic.daily.map((d) => ({ label: d.date, value: d.gb }))} />
+                  <DailyTrafficChart data={data.traffic.daily} />
                 )}
               </CardContent>
             </Card>
@@ -330,7 +370,7 @@ export default function Reports() {
               </Table>
             </CardContent>
           </Card>
-        </>
+        </div>
       )}
     </div>
   );
@@ -423,6 +463,42 @@ function CalendarHeatmap({ data }: { data: Array<{ date: string; gb: number; req
         <div className="h-3 w-3 rounded-sm bg-primary/75" />
         <div className="h-3 w-3 rounded-sm bg-primary" />
         <span>Plus</span>
+      </div>
+    </div>
+  );
+}
+
+/** Courbe de trafic quotidien (Go), remplace l'ancienne liste de barres — plus lisible pour repérer une tendance. */
+function DailyTrafficChart({ data }: { data: Array<{ date: string; gb: number; requests: number }> }) {
+  const t = useT();
+  const height = 160;
+  const width = 100;
+  const maxGb = Math.max(...data.map((d) => d.gb), 0.001);
+  const totalGb = data.reduce((a, d) => a + d.gb, 0);
+  const totalReq = data.reduce((a, d) => a + d.requests, 0);
+
+  const points = data.map((d, i) => {
+    const x = (i / Math.max(data.length - 1, 1)) * width;
+    const y = height - (d.gb / maxGb) * height;
+    return `${x},${y}`;
+  }).join(' ');
+
+  return (
+    <div className="space-y-2">
+      <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-40 overflow-visible" preserveAspectRatio="none">
+        <defs>
+          <linearGradient id="dailyTrafficGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity="0.3" />
+            <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        <polygon points={`0,${height} ${points} ${width},${height}`} fill="url(#dailyTrafficGrad)" />
+        <polyline points={points} fill="none" stroke="hsl(var(--primary))" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
+      </svg>
+      <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
+        <span>{totalGb.toFixed(2)} Go {t('reports.total')}</span>
+        <span>{totalReq.toLocaleString()} {t('reports.requests')}</span>
+        <span className="ml-auto">{data[0].date} → {data[data.length - 1].date}</span>
       </div>
     </div>
   );
