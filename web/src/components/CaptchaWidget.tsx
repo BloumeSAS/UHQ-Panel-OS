@@ -71,7 +71,21 @@ export function CaptchaWidget({ provider, siteKey, onVerify, onExpire, capEndpoi
     el.setAttribute('data-cap-api-endpoint', endpoint);
     el.addEventListener('solve', (e: any) => {
       const token: string = e.detail?.token ?? '';
-      if (token) onVerify(token);
+      if (!token) return;
+      onVerify(token);
+      // Le web component CAP retombe parfois dans un état "à refaire" après
+      // avoir émis `solve` (ré-affiche sa checkbox comme si rien n'avait été
+      // résolu), alors que le token déjà capturé ici reste valide — le login
+      // fonctionne malgré ce message trompeur. On fige l'UI sur notre propre
+      // confirmation dès que le token est reçu, pour ne plus exposer l'état
+      // interne (parfois incohérent) du widget une fois la résolution faite.
+      if (containerRef.current) {
+        containerRef.current.innerHTML = '';
+        const check = document.createElement('div');
+        check.className = 'flex items-center gap-2 rounded-md border border-input bg-muted/40 px-3 py-2 text-sm text-muted-foreground';
+        check.textContent = '✓ Vérification réussie';
+        containerRef.current.appendChild(check);
+      }
     });
     containerRef.current.appendChild(el);
     capWidgetRef.current = el;
