@@ -313,6 +313,13 @@ model ProxyPool {
   // coller à la convention attendue par certains fournisseurs résidentiels
   // (ex. "{user}-country-{country}") sans toucher au code.
   fallbackCountryFormat String?
+  // Anti-VPN : si activé, toute connexion dont l'IP cliente est identifiée
+  // comme VPN/hébergeur (heuristique sur l'organisation ASN, base DB-IP
+  // Lite — cf. VpnDetectionService) est refusée ET l'IP est bannie
+  // immédiatement (même mécanisme que l'auto-ban proxyAuth, table
+  // BannedIp). Vérifié après authentification, sur la pool EFFECTIVE de la
+  // connexion (port dédié prioritaire sur `user.pool`, cf. handleClient).
+  antiVpnEnabled Boolean @default(false)
 }
 
 model BackendProxy {
