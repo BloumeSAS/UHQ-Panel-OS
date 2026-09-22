@@ -41,6 +41,11 @@ export class CreatePoolDto {
   @IsBoolean()
   checkerEnabled?: boolean;
 
+  @ApiPropertyOptional({ description: "Si activé, toute IP cliente identifiée VPN/hébergeur (heuristique DB-IP Lite) est refusée ET bannie 24h sur cette pool. Défaut false." })
+  @IsOptional()
+  @IsBoolean()
+  antiVpnEnabled?: boolean;
+
   @ApiPropertyOptional({ example: 'FR,DE,US,GB', description: 'Pays simulés (codes ISO 2 lettres, virgules), ajoutés aux vraies stats de category-stats. Indépendant de alwaysOnline. Aucune limite sur le nombre de pays.' })
   @IsOptional()
   @IsString()
@@ -106,6 +111,11 @@ export class UpdatePoolDto {
   @IsOptional()
   @IsBoolean()
   checkerEnabled?: boolean;
+
+  @ApiPropertyOptional({ description: "Si activé, toute IP cliente identifiée VPN/hébergeur (heuristique DB-IP Lite) est refusée ET bannie 24h sur cette pool. Défaut false." })
+  @IsOptional()
+  @IsBoolean()
+  antiVpnEnabled?: boolean;
 
   @ApiPropertyOptional({ example: 'FR,DE,US,GB', description: 'Pays simulés (codes ISO 2 lettres, virgules), ajoutés aux vraies stats de category-stats (null = retire). Indépendant de alwaysOnline. Aucune limite sur le nombre de pays.' })
   @IsOptional()
