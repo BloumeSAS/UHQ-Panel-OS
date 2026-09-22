@@ -76,6 +76,15 @@ function ipToBigInt(ip: string): bigint | null {
 
 /** Résultat mis en cache par IP — évite de re-taper l'API à chaque connexion d'un même client. */
 const API_CACHE_TTL_MS = 6 * 3600_000;
+// Filet de sécurité anti-fuite mémoire : sans plafond, une IP unique par
+// entrée jamais purgée fait grossir le tas indéfiniment sur toute la
+// journée dès qu'une pool anti-VPN encaisse du trafic depuis beaucoup
+// d'IP différentes (typiquement : un abus automatisé qui tourne
+// justement via des IP de VPN/proxy en rotation — le pire cas est donc
+// aussi le plus probable). Purge périodique (`sweep`) + plafond dur en
+// dernier recours si la purge n'a pas suffi entre deux passages.
+const API_CACHE_SWEEP_MS = 10 * 60_000;
+const API_CACHE_MAX_ENTRIES = 20_000;
 
 @Injectable()
 export class VpnDetectionService {
@@ -85,7 +94,30 @@ export class VpnDetectionService {
   private loadingPromise: Promise<void> | null = null;
   private readonly apiCache = new Map<string, { vpn: boolean; expires: number }>();
 
-  constructor(private readonly settings: SettingsService) {}
+  constructor(private readonly settings: SettingsService) {
+    setInterval(() => this.sweepApiCache(), API_CACHE_SWEEP_MS).unref();
+  }
+
+  private sweepApiCache(): void {
+    const now = Date.now();
+    for (const [ip, entry] of this.apiCache) {
+      if (entry.expires <= now) this.apiCache.delete(ip);
+    }
+    // Filet de sécurité : même après la purge des entrées expirées, un pic
+    // de trafic depuis énormément d'IP distinctes en peu de temps peut
+    // dépasser le plafond avant la prochaine purge — on tronque alors les
+    // entrées les plus anciennes (Map conserve l'ordre d'insertion).
+    if (this.apiCache.size > API_CACHE_MAX_ENTRIES) {
+      const excess = this.apiCache.size - API_CACHE_MAX_ENTRIES;
+      const it = this.apiCache.keys();
+      for (let i = 0; i < excess; i++) {
+        const next = it.next();
+        if (next.done) break;
+        this.apiCache.delete(next.value);
+      }
+      this.logger.warn(`Cache anti-VPN : plafond de ${API_CACHE_MAX_ENTRIES} entrées atteint, ${excess} plus anciennes retirées.`);
+    }
+  }
 
   /**
    * true si `ip` est un VPN/proxy. Deux signaux combinés (OR) :
@@ -121,7 +153,13 @@ export class VpnDetectionService {
         headersTimeout: 5000,
         bodyTimeout: 5000,
       });
-      if (statusCode < 200 || statusCode >= 300) return null;
+      if (statusCode < 200 || statusCode >= 300) {
+        // Toujours consommer le corps même sur erreur — undici garde sinon
+        // la réponse (et la socket keep-alive sous-jacente) en mémoire tant
+        // qu'elle n'est pas drainée.
+        await body.dump().catch(() => {});
+        return null;
+      }
       const json: any = await body.json();
       if (json?.status !== 'ok') return null;
       const entry = json[ip];
