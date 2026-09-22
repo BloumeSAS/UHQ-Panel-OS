@@ -5,6 +5,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as zlib from 'zlib';
 import * as readline from 'readline';
+import { SettingsService } from '../../config/settings.service';
 
 interface AsnRange {
   /** IP de départ de la plage, encodée en entier (v4 : 32 bits, v6 : 128 bits). */
@@ -73,25 +74,77 @@ function ipToBigInt(ip: string): bigint | null {
   return BigInt((parts[0] << 24) + (parts[1] << 16) + (parts[2] << 8) + parts[3]) & 0xffffffffn;
 }
 
+/** Résultat mis en cache par IP — évite de re-taper l'API à chaque connexion d'un même client. */
+const API_CACHE_TTL_MS = 6 * 3600_000;
+
 @Injectable()
 export class VpnDetectionService {
   private readonly logger = new Logger(VpnDetectionService.name);
   private ranges: AsnRange[] = [];
   private loaded = false;
   private loadingPromise: Promise<void> | null = null;
+  private readonly apiCache = new Map<string, { vpn: boolean; expires: number }>();
+
+  constructor(private readonly settings: SettingsService) {}
 
   /**
-   * true si `ip` appartient à une plage identifiée hébergeur/VPN. Charge la
-   * base au premier appel (fichier déjà présent sur disque → quasi
-   * instantané ; sinon télécharge — voir `ensureLoaded`). Ne bloque jamais
-   * indéfiniment : une base absente/corrompue => "non VPN" (fail-open, pour
-   * ne jamais bannir tout le monde si DB-IP est injoignable).
+   * true si `ip` est un VPN/proxy. Deux signaux combinés (OR) :
+   *  1. proxycheck.io — UNE requête réseau par IP (résultat mis en cache
+   *     `API_CACHE_TTL_MS`), service dédié à la détection VPN/proxy en
+   *     temps réel, bien plus fiable que l'heuristique ASN seule (repérait
+   *     "146.70.55.196" mais ratait "212.119.33.19", un VPN non hébergé
+   *     chez un hébergeur reconnaissable par son nom ASN).
+   *  2. La base ASN locale DB-IP Lite (`checkAsnRanges`, gratuite, déjà en
+   *     mémoire, zéro latence réseau) — gardée en complément : filet de
+   *     sécurité si proxycheck.io est indisponible/quota dépassé, et
+   *     détecte aussi certains hébergeurs que proxycheck.io ne classe pas
+   *     "VPN" à proprement parler.
+   * Fail-open sur les deux : si aucun des deux signaux ne peut trancher
+   * (API injoignable ET base ASN indisponible), l'IP n'est PAS bloquée.
    */
   async isVpn(ip: string): Promise<boolean> {
+    if (await this.checkAsnRanges(ip)) return true;
+    const api = await this.checkApi(ip);
+    return api === true;
+  }
+
+  /** Vérifie via proxycheck.io (gratuit sans clé, quota plus large avec une clé — réglage `vpnCheckApiKey`). */
+  private async checkApi(ip: string): Promise<boolean | null> {
+    const cached = this.apiCache.get(ip);
+    if (cached && cached.expires > Date.now()) return cached.vpn;
+
+    try {
+      const apiKey = this.settings.get('vpnCheckApiKey');
+      const url = `https://proxycheck.io/v2/${encodeURIComponent(ip)}?vpn=1&asn=0${apiKey ? `&key=${encodeURIComponent(apiKey)}` : ''}`;
+      const { statusCode, body } = await request(url, {
+        method: 'GET',
+        headersTimeout: 5000,
+        bodyTimeout: 5000,
+      });
+      if (statusCode < 200 || statusCode >= 300) return null;
+      const json: any = await body.json();
+      if (json?.status !== 'ok') return null;
+      const entry = json[ip];
+      const vpn = entry?.proxy === 'yes';
+      this.apiCache.set(ip, { vpn, expires: Date.now() + API_CACHE_TTL_MS });
+      return vpn;
+    } catch (e) {
+      this.logger.debug(`Vérification proxycheck.io indisponible pour ${ip} : ${e}`);
+      return null;
+    }
+  }
+
+  /**
+   * true si `ip` appartient à une plage identifiée hébergeur/VPN dans la
+   * base ASN locale. Charge la base au premier appel (fichier déjà présent
+   * sur disque → quasi instantané ; sinon télécharge — voir `ensureLoaded`).
+   * Fail-open : une base absente/corrompue => "non VPN", jamais bloquant.
+   */
+  private async checkAsnRanges(ip: string): Promise<boolean> {
     try {
       await this.ensureLoaded();
     } catch (e) {
-      this.logger.warn(`Base ASN indisponible, vérification anti-VPN ignorée pour cette requête : ${e}`);
+      this.logger.warn(`Base ASN indisponible, vérification locale ignorée pour cette requête : ${e}`);
       return false;
     }
     if (!this.ranges.length) return false;
