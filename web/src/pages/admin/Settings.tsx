@@ -15,18 +15,31 @@ import { cn } from '@/lib/utils';
 import { toast } from '@/lib/toast';
 
 // ── Tabs definition ──────────────────────────────────────────────────────────
+// `group` regroupe visuellement les onglets dans la sidebar (voir SETTINGS_GROUPS
+// ci-dessous) ; `descKey` alimente le chapeau affiché en tête de chaque panneau
+// ET le sous-texte sous le libellé dans la sidebar — un onglet = un peu plus
+// de contexte que juste une icône + un mot.
 const TABS = [
-  { key: 'dashboard', icon: BarChart3, labelKey: 'settings.dashboard' },
-  { key: 'general',  icon: Globe,   labelKey: 'settings.general' },
-  { key: 'security', icon: ShieldCheck, labelKey: 'settings.security' },
-  { key: 'theme',    icon: Palette, labelKey: 'settings.theme' },
-  { key: 'proxy',    icon: Server,  labelKey: 'settings.proxy' },
-  { key: 'scraper',  icon: Radio,   labelKey: 'settings.scraper' },
-  { key: 'smtp',     icon: Mail,    labelKey: 'settings.smtp' },
-  { key: 'captcha',  icon: Shield,  labelKey: 'settings.captcha' },
-  { key: 'webhooks', icon: Bell,    labelKey: 'settings.webhooks' },
-  { key: 'backups',  icon: Database, labelKey: 'settings.backups' },
-  { key: 'apikey',   icon: Key,     labelKey: 'settings.apiKey' },
+  { key: 'dashboard', icon: BarChart3, labelKey: 'settings.dashboard', descKey: 'settings.dashboardDesc', group: 'overview' },
+  { key: 'general',  icon: Globe,   labelKey: 'settings.general', descKey: 'settings.generalDesc', group: 'general' },
+  { key: 'theme',    icon: Palette, labelKey: 'settings.theme', descKey: 'settings.themeDesc', group: 'general' },
+  { key: 'security', icon: ShieldCheck, labelKey: 'settings.security', descKey: 'settings.securityDesc', group: 'security' },
+  { key: 'captcha',  icon: Shield,  labelKey: 'settings.captcha', descKey: 'settings.captchaDesc', group: 'security' },
+  { key: 'apikey',   icon: Key,     labelKey: 'settings.apiKey', descKey: 'settings.apiKeyDesc', group: 'security' },
+  { key: 'proxy',    icon: Server,  labelKey: 'settings.proxy', descKey: 'settings.proxyDesc', group: 'engine' },
+  { key: 'scraper',  icon: Radio,   labelKey: 'settings.scraper', descKey: 'settings.scraperDesc', group: 'engine' },
+  { key: 'smtp',     icon: Mail,    labelKey: 'settings.smtp', descKey: 'settings.smtpDesc', group: 'comms' },
+  { key: 'webhooks', icon: Bell,    labelKey: 'settings.webhooks', descKey: 'settings.webhooksDesc', group: 'comms' },
+  { key: 'backups',  icon: Database, labelKey: 'settings.backups', descKey: 'settings.backupsDesc', group: 'system' },
+] as const;
+
+const SETTINGS_GROUPS = [
+  { key: 'overview', labelKey: 'settings.groupOverview' },
+  { key: 'general',  labelKey: 'settings.groupGeneral' },
+  { key: 'security', labelKey: 'settings.groupSecurity' },
+  { key: 'engine',   labelKey: 'settings.groupEngine' },
+  { key: 'comms',    labelKey: 'settings.groupComms' },
+  { key: 'system',   labelKey: 'settings.groupSystem' },
 ] as const;
 
 // Défaut "Claude" (tweakcn tangerine) — sert de base d'édition et de fallback reset.
@@ -252,28 +265,67 @@ export default function Settings() {
         <p className="text-sm text-muted-foreground mt-0.5">{t('settings.savedSubtitle')}</p>
       </div>
 
-      {/* ── Tab bar ── */}
-      <div className="flex gap-1 overflow-x-auto border-b pb-0 mb-6 scrollbar-none">
-        {TABS.map(({ key, icon: Icon, labelKey }) => (
-          <button
-            key={key}
-            type="button"
-            onClick={() => setTab(key)}
-            className={cn(
-              'flex items-center gap-1.5 whitespace-nowrap px-3 py-2 text-sm font-medium rounded-t-md border-b-2 transition-colors',
-              tab === key
-                ? 'border-primary text-primary bg-primary/5'
-                : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50',
-            )}
-          >
-            <Icon className="h-3.5 w-3.5 shrink-0" />
-            {t(labelKey) === labelKey ? labelKey : t(labelKey)}
-          </button>
-        ))}
-      </div>
+      {/* ── Corps : sidebar de navigation + panneau actif ── */}
+      <div className="flex flex-col md:flex-row gap-6 items-start">
 
-      {/* ── Panels ── */}
-      <div className="space-y-5">
+        {/* ── Sidebar (deuxième niveau de navigation, propre à Settings) ── */}
+        <nav className="w-full md:w-64 shrink-0 md:sticky md:top-4 space-y-5 overflow-x-auto md:overflow-visible">
+          {SETTINGS_GROUPS.map((group) => {
+            const items = TABS.filter((tItem) => tItem.group === group.key);
+            if (!items.length) return null;
+            return (
+              <div key={group.key} className="space-y-1">
+                <p className="px-2.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">
+                  {t(group.labelKey)}
+                </p>
+                <div className="flex md:flex-col gap-1">
+                  {items.map(({ key, icon: Icon, labelKey, descKey }) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => setTab(key)}
+                      className={cn(
+                        'flex items-start gap-2.5 whitespace-nowrap md:whitespace-normal rounded-md px-2.5 py-2 text-left text-sm transition-colors',
+                        tab === key
+                          ? 'bg-primary/10 text-primary font-medium'
+                          : 'text-muted-foreground hover:text-foreground hover:bg-muted/60',
+                      )}
+                    >
+                      <Icon className="h-4 w-4 shrink-0 mt-0.5" />
+                      <span className="min-w-0">
+                        <span className="block leading-tight">{t(labelKey)}</span>
+                        <span className="hidden md:block text-[11px] leading-snug text-muted-foreground/70 mt-0.5">
+                          {t(descKey)}
+                        </span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </nav>
+
+        {/* ── Panneau actif ── */}
+        <div className="flex-1 min-w-0 space-y-5">
+
+        {/* ── Chapeau de section (icône + titre + description) ── */}
+        {(() => {
+          const active = TABS.find((tItem) => tItem.key === tab);
+          if (!active) return null;
+          const ActiveIcon = active.icon;
+          return (
+            <div className="flex items-start gap-3 pb-1">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <ActiveIcon className="h-4.5 w-4.5" />
+              </div>
+              <div className="min-w-0">
+                <h2 className="text-lg font-semibold leading-tight">{t(active.labelKey)}</h2>
+                <p className="text-sm text-muted-foreground mt-0.5">{t(active.descKey)}</p>
+              </div>
+            </div>
+          );
+        })()}
 
         {/* ────── TABLEAU DE BORD (STATS) ────── */}
         {tab === 'dashboard' && <DbStatsCard />}
@@ -891,11 +943,12 @@ export default function Settings() {
           </>
         )}
 
-      </div>
+        {/* ── Save bottom (dans la colonne de contenu, pas sous la sidebar) ── */}
+        <div className="flex justify-end pt-4">
+          <Button type="submit">{t('common.save')}</Button>
+        </div>
 
-      {/* ── Save bottom ── */}
-      <div className="flex justify-end pt-8">
-        <Button type="submit">{t('common.save')}</Button>
+        </div>
       </div>
 
     </form>
