@@ -38,6 +38,7 @@ interface ProxyPool {
   domain: string | null;
   alwaysOnline: boolean;
   checkerEnabled: boolean;
+  antiVpnEnabled: boolean;
   fakeCountries: string | null;
   fakePriorityCountries: string | null;
   fakeIpCountMin: number | null;
@@ -171,6 +172,15 @@ export default function ProxyPools() {
                           {t('pools.checkerDisabled')}
                         </Badge>
                       )}
+                      {pool.antiVpnEnabled && (
+                        <Badge
+                          variant="secondary"
+                          className="bg-red-100 text-red-800 dark:bg-red-950/30 dark:text-red-400 text-[10px]"
+                          title={t('pools.antiVpnHint')}
+                        >
+                          {t('pools.antiVpn')}
+                        </Badge>
+                      )}
                       {!!fakeIpTotal(pool) && (
                         <Badge
                           variant="secondary"
@@ -256,6 +266,7 @@ const EMPTY_POOL_FORM = {
   name: '', description: '', color: '#6366f1', port: '', domain: '',
   alwaysOnline: false,
   checkerEnabled: true,
+  antiVpnEnabled: false,
   fakeCountries: '',
   fakePriorityCountries: '',
   fakeIpMode: 'fixed' as 'fixed' | 'random',
@@ -288,6 +299,7 @@ function CreateDialog({ onCreated }: { onCreated: () => void }) {
         domain: form.domain || undefined,
         alwaysOnline: form.alwaysOnline,
         checkerEnabled: form.checkerEnabled,
+        antiVpnEnabled: form.antiVpnEnabled,
         fakeCountries: form.fakeCountries || undefined,
         fakePriorityCountries: form.fakePriorityCountries || undefined,
         fakeIpCountMin: fakeMin ? Number(fakeMin) : undefined,
@@ -331,6 +343,7 @@ function EditDialog({ pool, onClose, onSaved }: { pool: ProxyPool; onClose: () =
     domain: pool.domain ?? '',
     alwaysOnline: pool.alwaysOnline,
     checkerEnabled: pool.checkerEnabled,
+    antiVpnEnabled: pool.antiVpnEnabled,
     fakeCountries: pool.fakeCountries ?? '',
     fakePriorityCountries: pool.fakePriorityCountries ?? '',
     fakeIpMode: (isRandom ? 'random' : 'fixed') as 'fixed' | 'random',
@@ -367,6 +380,7 @@ function EditDialog({ pool, onClose, onSaved }: { pool: ProxyPool; onClose: () =
         domain: form.domain || null,
         alwaysOnline: form.alwaysOnline,
         checkerEnabled: form.checkerEnabled,
+        antiVpnEnabled: form.antiVpnEnabled,
         fakeCountries: form.fakeCountries || null,
         fakePriorityCountries: form.fakePriorityCountries || null,
         fakeIpCountMin: fakeMin ? Number(fakeMin) : null,
@@ -407,7 +421,7 @@ function PoolForm({
 }: {
   form: {
     name: string; description: string; color: string; port: string; domain: string;
-    alwaysOnline: boolean; checkerEnabled: boolean; fakeCountries: string; fakePriorityCountries: string; fakeIpMode: 'fixed' | 'random';
+    alwaysOnline: boolean; checkerEnabled: boolean; antiVpnEnabled: boolean; fakeCountries: string; fakePriorityCountries: string; fakeIpMode: 'fixed' | 'random';
     fakeIpFixed: string; fakeIpMin: string; fakeIpMax: string;
     fakeIpRotateEnabled: boolean; fakeIpRotateSeconds: string;
     fallbackCountryFormat: string;
@@ -496,6 +510,14 @@ function PoolForm({
           <p className="text-xs text-muted-foreground mt-0.5 leading-snug">{t('pools.checkerEnabledHint')}</p>
         </div>
         <Switch checked={form.checkerEnabled} onCheckedChange={(v) => set('checkerEnabled', v)} />
+      </div>
+
+      <div className="flex items-center justify-between rounded-lg border border-red-200 dark:border-red-900/40 bg-red-50/50 dark:bg-red-950/10 px-4 py-3 gap-4">
+        <div className="min-w-0">
+          <p className="text-sm font-medium">{t('pools.antiVpn')}</p>
+          <p className="text-xs text-muted-foreground mt-0.5 leading-snug">{t('pools.antiVpnHint')}</p>
+        </div>
+        <Switch checked={form.antiVpnEnabled} onCheckedChange={(v) => set('antiVpnEnabled', v)} />
       </div>
 
       <div className="space-y-1.5">

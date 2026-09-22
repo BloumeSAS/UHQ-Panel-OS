@@ -866,6 +866,8 @@ const fr: Language = {
     'pools.checkerEnabled': 'Checker actif',
     'pools.checkerEnabledHint': "Si désactivé, le cycle automatique du checker ignore complètement cette pool (aucun test, statut figé). Le bouton \"Tester\" manuel continue de fonctionner.",
     'pools.checkerDisabled': 'Checker désactivé',
+    'pools.antiVpn': 'Anti-VPN',
+    'pools.antiVpnHint': "Refuse et bannit 24h toute IP cliente identifiée VPN/hébergeur (heuristique sur la base gratuite DB-IP Lite — organisation ASN de l'IP). Approximatif : peut laisser passer un VPN discret ou bloquer par erreur un petit FAI mal classé.",
     'pools.fakeCountries': 'Pays affichés (simulés)',
     'pools.fakeCountriesPlaceholder': 'ex: FR,DE,US,GB',
     'pools.fakeCountriesHint': 'Codes pays ISO 2 lettres séparés par des virgules, autant que vous voulez — AJOUTÉS aux vraies stats de cette pool dans l\'API legacy (category-stats). Chaque pays listé a son propre nombre d\'IP (pas un total partagé). Indépendant de "Toujours en ligne" : fonctionne même sans l\'activer.',
