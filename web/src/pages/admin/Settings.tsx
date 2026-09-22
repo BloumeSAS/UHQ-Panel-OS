@@ -109,6 +109,7 @@ export default function Settings() {
     'slackWebhookUrl',
     'bloumechatWebhookUrl',
     'backupS3SecretKey',
+    'vpnCheckApiKey',
   ];
 
   const save = async (e: React.FormEvent) => {
@@ -367,6 +368,16 @@ export default function Settings() {
                 </F>
               </Grid>
             )}
+
+            <Separator label={t('settings.vpnProtection')} />
+            <Grid>
+              <F label={t('settings.vpnBanDurationHours')} hint={t('settings.vpnBanDurationHoursHint')}>
+                <Input value={form.vpnBanDurationHours ?? ''} onChange={(e) => set('vpnBanDurationHours', e.target.value)} placeholder="24" />
+              </F>
+              <F label={t('settings.vpnCheckApiKey')} hint={t('settings.vpnCheckApiKeyHint')}>
+                <SecretField k="vpnCheckApiKey" form={form} set={set} placeholder="proxycheck.io (optionnel)" />
+              </F>
+            </Grid>
 
             <Separator label={t('settings.retention')} />
             <Grid>
