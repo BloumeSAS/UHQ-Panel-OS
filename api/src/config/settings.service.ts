@@ -70,6 +70,15 @@ export const SETTING_DEFS = {
   proxyAuthFailBanThreshold: { def: '15', env: undefined, secret: false },
   proxyAuthFailBanWindowSec: { def: '60', env: undefined, secret: false },
   proxyAuthAutoBanDurationHours: { def: '24', env: undefined, secret: false },
+  // Anti-VPN par pool (ProxyPool.antiVpnEnabled) — durée du ban déclenché par
+  // une détection VPN, configurable séparément du ban anti-brute-force
+  // ci-dessus (déclencheur différent : une seule détection positive suffit,
+  // pas un seuil de tentatives). `vpnCheckApiKey` est optionnelle : sans
+  // elle, VpnDetectionService interroge proxycheck.io sans authentification
+  // (quota gratuit réduit) — une clé (gratuite sur proxycheck.io) augmente
+  // ce quota.
+  vpnBanDurationHours: { def: '24', env: undefined, secret: false },
+  vpnCheckApiKey: { def: '', env: undefined, secret: true },
   scraperProxy: { def: '', env: 'SCRAPER_PROXY', secret: true },
   groqApiKey: { def: '', env: 'GROQ_API_KEY', secret: true },
   // Clé API de l'API legacy /api/v1 — générée au setup, régénérable depuis le panel.

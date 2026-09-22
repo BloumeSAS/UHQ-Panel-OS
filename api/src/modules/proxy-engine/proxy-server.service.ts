@@ -430,13 +430,15 @@ export class ProxyServerService implements OnModuleDestroy {
    * Ban immédiat (pas de compteur/fenêtre — une seule détection VPN positive
    * suffit) déclenché par l'option "Anti-VPN" d'une pool. Même table que les
    * autres auto-bans (BannedIp, visible/révocable depuis IP bannies) — durée
-   * fixe de 24h : l'heuristique ASN (cf. VpnDetectionService) n'est pas
-   * infaillible, un ban permanent exposerait trop aux faux positifs.
+   * configurable (`vpnBanDurationHours`, Paramètres → Sécurité, défaut 24h) :
+   * la détection (proxycheck.io + heuristique ASN, cf. VpnDetectionService)
+   * n'est pas infaillible, un ban permanent exposerait trop aux faux positifs.
    */
   private async banVpnIp(ip: string, poolName: string): Promise<void> {
     if (!ip || this.bannedIpSet.has(ip)) return;
     try {
-      const expiresAt = new Date(Date.now() + 24 * 3600_000);
+      const durationHours = this.settings.getPositiveNumber('vpnBanDurationHours') || 24;
+      const expiresAt = new Date(Date.now() + durationHours * 3600_000);
       const reason = `Auto-ban : VPN détecté (anti-VPN activé sur la pool "${poolName}")`;
       await this.prisma.bannedIp.upsert({
         where: { ip },
@@ -444,7 +446,7 @@ export class ProxyServerService implements OnModuleDestroy {
         update: { reason, expiresAt, createdBy: 'auto' },
       });
       this.invalidateBanCache();
-      void this.notificationService.notifyVpnAutoBan(ip, poolName);
+      void this.notificationService.notifyVpnAutoBan(ip, poolName, durationHours);
     } catch (e) {
       this.logger.error(`Échec de l'auto-ban VPN pour ${ip}: ${e}`);
     }

@@ -131,6 +131,8 @@ export class UpdateSettingsDto {
   @ApiPropertyOptional() @IsOptional() @IsString() proxyAuthFailBanThreshold?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() proxyAuthFailBanWindowSec?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() proxyAuthAutoBanDurationHours?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() vpnBanDurationHours?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() vpnCheckApiKey?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() scraperProxy?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() groqApiKey?: string;
   // SMTP
@@ -273,6 +275,7 @@ export const REVEALABLE_SECRETS = [
   'slackWebhookUrl',
   'bloumechatWebhookUrl',
   'backupS3SecretKey',
+  'vpnCheckApiKey',
 ] as const;
 
 export class RevealSettingDto {

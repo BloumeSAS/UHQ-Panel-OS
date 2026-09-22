@@ -70,11 +70,11 @@ export class NotificationService {
    * "Anti-VPN" d'une pool — in-app uniquement, même raisonnement que
    * `notifyProxyAuthAutoBan` (peut se déclencher souvent, l'inbox suffit).
    */
-  async notifyVpnAutoBan(ip: string, poolName: string): Promise<void> {
+  async notifyVpnAutoBan(ip: string, poolName: string, durationHours: number): Promise<void> {
     await this.createInApp({
       type: 'warning',
       title: '🛡️ IP bannie automatiquement (VPN)',
-      message: `${ip} a été bannie 24h — VPN détecté sur la pool "${poolName}" (anti-VPN activé).`,
+      message: `${ip} a été bannie ${durationHours}h — VPN détecté sur la pool "${poolName}" (anti-VPN activé).`,
       link: '/banned-ips',
     });
   }
