@@ -10,6 +10,7 @@ import { randomString, isDomainBlocked } from '../../common/utils/proxy-format';
 import { allowedPortRange } from '../../common/utils/port-validation';
 import { NotificationService } from '../notifications/notification.service';
 import { RateLimiterService } from '../../common/rate-limiter.service';
+import { VpnDetectionService } from './vpn-detection.service';
 import {
   performHandshake,
   tcpConnect,
@@ -80,6 +81,8 @@ export class ProxyServerService implements OnModuleDestroy {
   private readonly poolPortMap = new Map<string, number>();
   /** Pools "Toujours en ligne" : un échec réel de connexion ne doit jamais les marquer KO (le checker les force déjà à isWorking=true, cf. checker.service.ts). */
   private readonly alwaysOnlinePoolSet = new Set<string>();
+  /** Pools "Anti-VPN" : toute IP cliente identifiée VPN/hébergeur (cf. VpnDetectionService) est rejetée + bannie sur ces pools. */
+  private readonly antiVpnPoolSet = new Set<string>();
   /**
    * nom de pool → gabarit de username pour le fallback résidentiel
    * (ex. "{user}-country-{country}"). Absent = format par défaut du moteur
@@ -133,6 +136,7 @@ export class ProxyServerService implements OnModuleDestroy {
     private readonly settings: SettingsService,
     private readonly notificationService: NotificationService,
     private readonly rateLimiter: RateLimiterService,
+    private readonly vpnDetection: VpnDetectionService,
   ) {}
 
   // ===== Lifecycle =====================================================
@@ -232,7 +236,7 @@ export class ProxyServerService implements OnModuleDestroy {
     if (this.syncing) return;
     this.syncing = true;
     try {
-      const [pools, users, alwaysOnlinePools, fallbackFormatPools] = await Promise.all([
+      const [pools, users, alwaysOnlinePools, fallbackFormatPools, antiVpnPools] = await Promise.all([
         this.prisma.proxyPool.findMany({ where: { port: { not: null } } }),
         this.prisma.userProxy.findMany({ where: { port: { not: null } } }),
         this.prisma.proxyPool.findMany({ where: { alwaysOnline: true }, select: { name: true } }),
@@ -243,6 +247,7 @@ export class ProxyServerService implements OnModuleDestroy {
           where: { fallbackCountryFormat: { not: null } },
           select: { name: true, fallbackCountryFormat: true },
         }),
+        this.prisma.proxyPool.findMany({ where: { antiVpnEnabled: true }, select: { name: true } }),
       ]);
       this.portPoolMap.clear();
       this.poolPortMap.clear();
@@ -256,6 +261,8 @@ export class ProxyServerService implements OnModuleDestroy {
       for (const p of alwaysOnlinePools) this.alwaysOnlinePoolSet.add(p.name);
       this.poolFallbackFormatMap.clear();
       for (const p of fallbackFormatPools) if (p.fallbackCountryFormat) this.poolFallbackFormatMap.set(p.name, p.fallbackCountryFormat);
+      this.antiVpnPoolSet.clear();
+      for (const p of antiVpnPools) this.antiVpnPoolSet.add(p.name);
 
       const desired = new Set<number>([
         this.port,
@@ -416,6 +423,30 @@ export class ProxyServerService implements OnModuleDestroy {
       void this.notificationService.notifyProxyAuthAutoBan(ip, threshold, windowSec, durationHours);
     } catch (e) {
       this.logger.error(`Échec de l'auto-ban pour ${ip}: ${e}`);
+    }
+  }
+
+  /**
+   * Ban immédiat (pas de compteur/fenêtre — une seule détection VPN positive
+   * suffit) déclenché par l'option "Anti-VPN" d'une pool. Même table que les
+   * autres auto-bans (BannedIp, visible/révocable depuis IP bannies) — durée
+   * fixe de 24h : l'heuristique ASN (cf. VpnDetectionService) n'est pas
+   * infaillible, un ban permanent exposerait trop aux faux positifs.
+   */
+  private async banVpnIp(ip: string, poolName: string): Promise<void> {
+    if (!ip || this.bannedIpSet.has(ip)) return;
+    try {
+      const expiresAt = new Date(Date.now() + 24 * 3600_000);
+      const reason = `Auto-ban : VPN détecté (anti-VPN activé sur la pool "${poolName}")`;
+      await this.prisma.bannedIp.upsert({
+        where: { ip },
+        create: { ip, reason, expiresAt, createdBy: 'auto' },
+        update: { reason, expiresAt, createdBy: 'auto' },
+      });
+      this.invalidateBanCache();
+      void this.notificationService.notifyVpnAutoBan(ip, poolName);
+    } catch (e) {
+      this.logger.error(`Échec de l'auto-ban VPN pour ${ip}: ${e}`);
     }
   }
 
@@ -634,6 +665,26 @@ export class ProxyServerService implements OnModuleDestroy {
         }
       }
 
+      // Port dédié à une pool : prioritaire sur le pool par défaut du compte.
+      const effectivePool = this.portPoolMap.get(boundPort) ?? user.pool ?? null;
+
+      // --- Anti-VPN : si la pool effective a l'option activée, toute IP
+      // cliente identifiée VPN/hébergeur est rejetée ET bannie immédiatement
+      // (même table que l'auto-ban proxyAuth — voir `banVpnIp`). Vérifié
+      // après l'auth (on connaît déjà le compte/la pool ciblée) mais avant
+      // le comptage de threads, pour ne jamais compter un slot sur une
+      // connexion qui sera de toute façon rejetée.
+      if (effectivePool && this.antiVpnPoolSet.has(effectivePool)) {
+        const vpn = await this.vpnDetection.isVpn(clientIp);
+        if (vpn) {
+          this.logger.warn(`VPN detected for ${clientIp} on pool "${effectivePool}" — rejecting + banning`);
+          void this.banVpnIp(clientIp, effectivePool);
+          client.write('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\nVPN detected.\r\n');
+          client.end();
+          return;
+        }
+      }
+
       const userTtlSec = user.stickySessionTtl ?? 1800;
       const sessionKey = sessionId ? `${username}:${sessionId}` : null;
 
@@ -661,9 +712,6 @@ export class ProxyServerService implements OnModuleDestroy {
       threadKey = username; // counted — finally must release exactly this slot
 
       if (!requestedCountry) requestedCountry = user.countryFilter ?? null;
-
-      // Port dédié à une pool : prioritaire sur le pool par défaut du compte.
-      const effectivePool = this.portPoolMap.get(boundPort) ?? user.pool ?? null;
 
       // Liste privée d'upstreams du sous-utilisateur (si renseignée), sinon pool partagé.
       const customRaw =

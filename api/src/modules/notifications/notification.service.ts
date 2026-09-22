@@ -65,6 +65,20 @@ export class NotificationService {
     });
   }
 
+  /**
+   * Alerte bannissement automatique d'une IP détectée VPN par l'option
+   * "Anti-VPN" d'une pool — in-app uniquement, même raisonnement que
+   * `notifyProxyAuthAutoBan` (peut se déclencher souvent, l'inbox suffit).
+   */
+  async notifyVpnAutoBan(ip: string, poolName: string): Promise<void> {
+    await this.createInApp({
+      type: 'warning',
+      title: '🛡️ IP bannie automatiquement (VPN)',
+      message: `${ip} a été bannie 24h — VPN détecté sur la pool "${poolName}" (anti-VPN activé).`,
+      link: '/banned-ips',
+    });
+  }
+
   /** Purge quotidienne des notifications in-app plus vieilles que notificationRetentionDays. */
   @Cron(CronExpression.EVERY_DAY_AT_3AM)
   async cleanupOldNotifications(): Promise<void> {
