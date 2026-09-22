@@ -15,7 +15,21 @@ export class NotificationService {
     private readonly settings: SettingsService,
     private readonly prisma: PrismaService,
     private readonly mail: MailService,
-  ) {}
+  ) {
+    // Pré-existant, repéré en vérifiant les autres caches mémoire clé→IP/URL
+    // pendant l'investigation de la fuite anti-VPN (v2.4.38) : une entrée par
+    // URL de proxy jamais purgée, sur un pool qui peut compter des centaines
+    // de milliers de proxies avec un fort taux de renouvellement (scraper).
+    // Même correctif que `RateLimiterService`/`VpnDetectionService.apiCache`.
+    setInterval(() => this.sweepProxyDeadCache(), 60 * 60_000).unref();
+  }
+
+  private sweepProxyDeadCache(): void {
+    const cutoff = Date.now() - 60 * 60_000; // au-delà du cooldown, l'entrée ne sert plus à rien
+    for (const [url, lastAlert] of this.proxyDeadCache) {
+      if (lastAlert < cutoff) this.proxyDeadCache.delete(url);
+    }
+  }
 
   /**
    * Alerte connexion depuis une IP jamais vue pour ce compte (in-app +
