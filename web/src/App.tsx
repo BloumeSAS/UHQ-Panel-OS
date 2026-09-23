@@ -27,7 +27,6 @@ import SecurityPage from '@/pages/user/Security';
 import ApiKeysPage from '@/pages/user/ApiKeys';
 import ProfilePage from '@/pages/Profile';
 import ProxyPools from '@/pages/admin/ProxyPools';
-import Extensions from '@/pages/admin/Extensions';
 import Addons from '@/pages/admin/Addons';
 import AddonDocs from '@/pages/admin/AddonDocs';
 import AddonIframe from '@/pages/AddonIframe';
@@ -114,7 +113,6 @@ function AppRoutes() {
       <Route path="/pool" element={<Protected roles={['ADMIN', 'SUPPORT']}><Pool /></Protected>} />
       <Route path="/analytics" element={<Protected roles={['ADMIN', 'SUPPORT']}><Analytics /></Protected>} />
       <Route path="/proxy-pools" element={<Protected admin><ProxyPools /></Protected>} />
-      <Route path="/extensions" element={<Protected admin><Extensions /></Protected>} />
       <Route path="/scraper" element={<Protected admin><Scraper /></Protected>} />
       <Route path="/checker" element={<Protected admin><Checker /></Protected>} />
       <Route path="/logs" element={<Protected roles={['ADMIN', 'SUPPORT']}><Logs /></Protected>} />
