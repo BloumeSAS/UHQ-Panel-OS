@@ -13,6 +13,7 @@ import { RingBufferLogger } from './modules/logs/ring-buffer.logger';
 import { applyDatabaseEnv } from './database/db-config';
 import { translateValidationErrors } from './common/utils/i18n';
 import { RequestIdInterceptor } from './common/interceptors/request-id.interceptor';
+import { resolveEnabledExtensions } from './modules/extensions/resolve-enabled-extensions';
 
 // Filet de sécurité : un incident isolé (ex. moteur Prisma d'un test de
 // connexion DB) ne doit JAMAIS tuer le process et couper l'API.
@@ -28,7 +29,18 @@ async function bootstrap() {
   // Nest n'instancie PrismaClient. Démarre même sans base configurée.
   const db = applyDatabaseEnv();
 
-  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+  // Extensions à activer sur CE démarrage — lu en DB avant que Nest n'assemble
+  // son graphe de modules (une extension (dés)activée depuis le panel n'a
+  // effet qu'au redémarrage suivant, cf. ExtensionsService.setEnabled). Sans
+  // base configurée/joignable, aucune extension n'est chargée (fail-safe :
+  // repli sur le comportement minimal plutôt que de planter le boot).
+  const enabledExtensions = await resolveEnabledExtensions(db.configured);
+  (global as any).__UHQ_ACTIVE_EXTENSIONS__ = new Set(enabledExtensions);
+  if (enabledExtensions.length) {
+    Logger.log(`Extensions actives : ${enabledExtensions.join(', ')}`, 'Bootstrap');
+  }
+
+  const app = await NestFactory.create<NestExpressApplication>(AppModule.forRoot(enabledExtensions), {
     // Logger custom : conserve les logs en mémoire pour le flux SSE du panel.
     logger: new RingBufferLogger(),
     bodyParser: false,
