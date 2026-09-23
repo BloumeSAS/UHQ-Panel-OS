@@ -2,7 +2,7 @@
   {
     "name": "Wallet",
     "slug": "wallet",
-    "version": "1.1.4",
+    "version": "1.1.5",
     "description": "Système de portefeuille par compte proxy. Rechargement de solde, paiements et historique des transactions.",
     "icon": "Wallet",
     "free": true,
@@ -23,7 +23,7 @@
   {
     "name": "Orders",
     "slug": "orders",
-    "version": "1.2.2",
+    "version": "1.2.3",
     "description": "Boutique interne — commandes payées via Wallet. Livraison automatique de comptes proxy après paiement.",
     "icon": "ShoppingCart",
     "free": true,
