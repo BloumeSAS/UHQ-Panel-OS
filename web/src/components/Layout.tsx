@@ -30,6 +30,7 @@ import {
   Layers,
   Rows3,
   Rows4,
+  Blocks,
 } from 'lucide-react';
 import * as LucideIcons from 'lucide-react';
 import { useAuth } from '@/lib/auth';
@@ -171,6 +172,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       items: [
         { to: '/addons-manage', label: t('nav.addons'), icon: Puzzle },
         { to: '/addon-docs', label: t('nav.addonDocs'), icon: BookOpen },
+        { to: '/extensions', label: t('nav.extensions'), icon: Blocks },
         { to: '/settings', label: t('nav.settings'), icon: Settings },
       ],
     },

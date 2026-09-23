@@ -646,6 +646,22 @@ const fr: Language = {
     'checker.proxies': 'Proxies',
     'about.site': 'Site',
 
+    // Modules internes (extensions embarquées dans l'image Docker, activables/désactivables — distinct des Addons ci-dessous, qui connectent un service EXTERNE)
+    'nav.extensions': 'Modules',
+    'extensions.title': 'Modules du panel',
+    'extensions.subtitle': "Modules optionnels déjà présents dans l'image Docker — activer ou désactiver redémarre le serveur pour appliquer le changement.",
+    'extensions.none': 'Aucun module disponible pour le moment.',
+    'extensions.active': 'Actif',
+    'extensions.pendingRestart': 'Redémarrage requis',
+    'extensions.enabledToast': 'Module activé.',
+    'extensions.disabledToast': 'Module désactivé.',
+    'extensions.restartingTitle': 'Redémarrage du serveur…',
+    'extensions.restartingBody': "Le changement est enregistré. Le serveur redémarre pour le prendre en compte — le proxy (port 990) et le panel seront brièvement indisponibles.",
+    'extensions.restartingElapsed': 'Depuis {sec}s…',
+    'extensions.restartingWarning': 'Ne fermez pas cette page.',
+    'extensions.prometheusMetrics': 'Export Prometheus',
+    'extensions.prometheusMetricsDesc': "Expose /metrics (format Prometheus) avec les statistiques du moteur proxy et du process — threads actifs, sessions, proxies fonctionnels, mémoire, charge CPU. Protégé par la clé API (X-API-Key).",
+
     // Addons translations
     'nav.addons': 'Extensions',
     'nav.addonDocs': 'Guide développeur',
@@ -815,6 +831,8 @@ const fr: Language = {
     'audit.actions.auth.2fa-disable': '2FA désactivée',
     'audit.actions.auth.2fa-recovery-codes-regenerate': 'Codes de récupération 2FA régénérés',
     'audit.actions.banned-ip.create': 'IP bannie(s)',
+    'audit.actions.extension.enable': 'Module activé',
+    'audit.actions.extension.disable': 'Module désactivé',
     'audit.actions.banned-ip.delete': 'IP débannie',
     'audit.actions.banned-ip.delete-many': 'IP débannies (masse)',
     'audit.actions.notifications.purge': 'Notifications purgées',

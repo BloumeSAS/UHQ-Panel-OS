@@ -646,6 +646,22 @@ const en: Language = {
     'checker.proxies': 'Proxies',
     'about.site': 'Site',
 
+    // Internal modules (extensions bundled in the Docker image, toggleable — distinct from Addons below, which connect an EXTERNAL service)
+    'nav.extensions': 'Extensions',
+    'extensions.title': 'Panel extensions',
+    'extensions.subtitle': "Optional modules already bundled in the Docker image — enabling or disabling one restarts the server to apply the change.",
+    'extensions.none': 'No extension available yet.',
+    'extensions.active': 'Active',
+    'extensions.pendingRestart': 'Restart required',
+    'extensions.enabledToast': 'Extension enabled.',
+    'extensions.disabledToast': 'Extension disabled.',
+    'extensions.restartingTitle': 'Restarting the server…',
+    'extensions.restartingBody': 'The change is saved. The server is restarting to apply it — the proxy (port 990) and the panel will be briefly unavailable.',
+    'extensions.restartingElapsed': 'For {sec}s…',
+    'extensions.restartingWarning': "Don't close this page.",
+    'extensions.prometheusMetrics': 'Prometheus export',
+    'extensions.prometheusMetricsDesc': 'Exposes /metrics (Prometheus format) with proxy engine and process stats — active threads, sessions, working proxies, memory, CPU load. Protected by the API key (X-API-Key).',
+
     // Addons translations
     'nav.addons': 'Addons',
     'nav.addonDocs': 'Developer Guide',
@@ -815,6 +831,8 @@ const en: Language = {
     'audit.actions.auth.2fa-disable': '2FA disabled',
     'audit.actions.auth.2fa-recovery-codes-regenerate': '2FA recovery codes regenerated',
     'audit.actions.banned-ip.create': 'IP(s) banned',
+    'audit.actions.extension.enable': 'Extension enabled',
+    'audit.actions.extension.disable': 'Extension disabled',
     'audit.actions.banned-ip.delete': 'IP unbanned',
     'audit.actions.banned-ip.delete-many': 'IPs unbanned (bulk)',
     'audit.actions.notifications.purge': 'Notifications purged',
