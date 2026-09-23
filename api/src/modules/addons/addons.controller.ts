@@ -7,13 +7,20 @@ import {
   Patch,
   Post,
   Query,
+  Req,
+  UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import type { Request } from 'express';
+import * as bcrypt from 'bcryptjs';
+import { fetch } from 'undici';
 import { JwtAuthGuard, JwtUser } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { PrismaService } from '../../database/prisma.service';
+import { t } from '../../common/utils/i18n';
 import { AddonsService } from './addons.service';
 import { BundledAddonsService } from './bundled-addons.service';
 import { AddAddonDto, UpdateAddonDto } from './dto/addon.dto';
@@ -27,6 +34,7 @@ export class AddonsController {
   constructor(
     private readonly service: AddonsService,
     private readonly bundled: BundledAddonsService,
+    private readonly prisma: PrismaService,
   ) {}
 
   /**
@@ -175,5 +183,37 @@ export class AddonsController {
   async deactivateBundled(@Param('slug') slug: string) {
     await this.bundled.deactivate(slug);
     return { status: 'success' };
+  }
+
+  /**
+   * Révèle en clair un secret stocké par un addon embarqué (ex. clé secrète
+   * Stripe), après confirmation du mot de passe du compte panel courant —
+   * même garde que PanelSettingsController.reveal. L'appel server-to-server
+   * vers le port interne de l'addon (127.0.0.1, jamais exposé publiquement)
+   * réutilise le JWT de la requête courante pour passer son propre contrôle admin.
+   */
+  @Post('bundled/:slug/payments/reveal')
+  @UseGuards(RolesGuard)
+  @Roles('ADMIN')
+  @ApiOperation({ summary: 'Révèle un secret de passerelle de paiement d\'un addon embarqué' })
+  async revealPaymentSecret(
+    @Param('slug') slug: string,
+    @Body() dto: { key: string; password: string },
+    @CurrentUser() me: JwtUser,
+    @Req() req: Request,
+  ) {
+    const user = await this.prisma.panelUser.findUnique({ where: { id: me.id } });
+    if (!user || !(await bcrypt.compare(dto.password, user.passwordHash))) {
+      throw new UnauthorizedException(t('errors.invalidPassword'));
+    }
+    const port = this.bundled.runningPort(slug);
+    if (!port) throw new UnauthorizedException('Addon non actif');
+    const auth = req.headers['authorization'] ?? '';
+    const res = await fetch(
+      `http://127.0.0.1:${port}/api/payments/settings/reveal?key=${encodeURIComponent(dto.key)}`,
+      { headers: { authorization: auth as string } },
+    );
+    const json = (await res.json()) as { value?: string };
+    return { status: 'success', value: json.value ?? '' };
   }
 }

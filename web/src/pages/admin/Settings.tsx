@@ -4,8 +4,10 @@ import {
   Copy, Eye, EyeOff, RefreshCw, Send,
   Globe, Server, Radio, Shield, ShieldCheck, Mail, Key,
   Bell, Database, Trash2, Download, Upload, Palette, RotateCcw, BarChart3,
+  Puzzle, ShoppingCart,
 } from 'lucide-react';
 import { api, apiError } from '@/lib/api';
+import { addonApi } from '@/lib/addonApi';
 import { useT, useI18n } from '@/lib/i18n';
 import { useSite } from '@/lib/site';
 import { useTheme } from '@/lib/theme';
@@ -31,6 +33,7 @@ const TABS = [
   { key: 'smtp',     icon: Mail,    labelKey: 'settings.smtp', descKey: 'settings.smtpDesc', group: 'comms' },
   { key: 'webhooks', icon: Bell,    labelKey: 'settings.webhooks', descKey: 'settings.webhooksDesc', group: 'comms' },
   { key: 'backups',  icon: Database, labelKey: 'settings.backups', descKey: 'settings.backupsDesc', group: 'system' },
+  { key: 'extensions', icon: Puzzle, labelKey: 'settings.extensions', descKey: 'settings.extensionsDesc', group: 'extensions' },
 ] as const;
 
 const SETTINGS_GROUPS = [
@@ -40,6 +43,7 @@ const SETTINGS_GROUPS = [
   { key: 'engine',   labelKey: 'settings.groupEngine' },
   { key: 'comms',    labelKey: 'settings.groupComms' },
   { key: 'system',   labelKey: 'settings.groupSystem' },
+  { key: 'extensions', labelKey: 'settings.groupExtensions' },
 ] as const;
 
 // Défaut "Claude" (tweakcn tangerine) — sert de base d'édition et de fallback reset.
@@ -943,10 +947,15 @@ export default function Settings() {
           </>
         )}
 
+        {/* ────── EXTENSIONS (réglages par addon embarqué) ────── */}
+        {tab === 'extensions' && <ExtensionsTab />}
+
         {/* ── Save bottom (dans la colonne de contenu, pas sous la sidebar) ── */}
-        <div className="flex justify-end pt-4">
-          <Button type="submit">{t('common.save')}</Button>
-        </div>
+        {tab !== 'extensions' && (
+          <div className="flex justify-end pt-4">
+            <Button type="submit">{t('common.save')}</Button>
+          </div>
+        )}
 
         </div>
       </div>
@@ -1549,6 +1558,230 @@ function ApiKeyCard() {
       <Button type="button" variant="destructive" size="sm" disabled={busy} onClick={regenerate}>
         <RefreshCw className="h-3.5 w-3.5" /><span className="ml-1.5">{t('common.regenerate')}</span>
       </Button>
+    </div>
+  );
+}
+
+// ── Extensions (réglages par addon embarqué) ─────────────────────────────────
+// Regroupe, par addon, des réglages qui vivaient auparavant dans la page
+// admin de l'addon lui-même (ex. passerelles de paiement Orders) — cohérent
+// avec le reste du panel (Général/Sécurité/…), et permet le même mécanisme
+// de secret masqué + révélation par mot de passe que SecretField.
+
+function ExtensionsTab() {
+  const t = useT();
+  const { data: addons } = useQuery({
+    queryKey: ['addons-all'],
+    queryFn: async () => (await api.get('/addons/all')).data.data as any[],
+  });
+
+  const ordersActive = (addons ?? []).some((a) => a.id === 'orders' && a.enabled);
+  const anyExtension = ordersActive; // futurs addons : ajouter leur condition ici.
+
+  return (
+    <div className="space-y-5">
+      {!anyExtension && (
+        <p className="text-sm text-muted-foreground">{t('settings.extensionsEmpty')}</p>
+      )}
+      {ordersActive && (
+        <div className="rounded-lg border p-4 space-y-4">
+          <div className="flex items-center gap-2.5">
+            <ShoppingCart className="h-4 w-4 text-primary" />
+            <h3 className="text-sm font-semibold">{t('settings.extOrdersTitle')}</h3>
+          </div>
+          <OrdersPaymentSettingsCard />
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface OrdersPaymentSettings {
+  stripeEnabled: boolean;
+  stripeSecretKey: string;
+  stripePublishableKey: string;
+  stripeWebhookSecret: string;
+  nowpaymentsEnabled: boolean;
+  nowpaymentsApiKey: string;
+  nowpaymentsIpnSecret: string;
+}
+
+const EMPTY_ORDERS_PAYMENT_SETTINGS: OrdersPaymentSettings = {
+  stripeEnabled: false, stripeSecretKey: '', stripePublishableKey: '', stripeWebhookSecret: '',
+  nowpaymentsEnabled: false, nowpaymentsApiKey: '', nowpaymentsIpnSecret: '',
+};
+
+function OrdersPaymentSettingsCard() {
+  const t = useT();
+  const [settings, setSettings] = useState<OrdersPaymentSettings>(EMPTY_ORDERS_PAYMENT_SETTINGS);
+  const [loaded, setLoaded] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    addonApi.get('/orders/api/payments/settings')
+      .then(({ data }) => { setSettings(data); setLoaded(true); })
+      .catch((e) => toast.error(apiError(e)));
+  }, []);
+
+  const set = (k: keyof OrdersPaymentSettings, v: string | boolean) => setSettings((s) => ({ ...s, [k]: v }));
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      const { data } = await addonApi.post('/orders/api/payments/settings', settings);
+      setSettings(data);
+      toast.success(t('settings.saved'));
+    } catch (e) {
+      toast.error(apiError(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!loaded) return <p className="text-sm text-muted-foreground">{t('app.loading')}</p>;
+
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-muted-foreground">{t('settings.extOrdersHint')}</p>
+
+      {/* Stripe */}
+      <div className="rounded-md border bg-muted/20 p-3 space-y-3">
+        <div className="flex items-center justify-between">
+          <Label className="text-sm font-medium">{t('settings.extPayWithCard')} (Stripe)</Label>
+          <Switch checked={settings.stripeEnabled} onCheckedChange={(v) => set('stripeEnabled', v)} />
+        </div>
+        <F label={t('settings.extStripePublishable')}>
+          <Input value={settings.stripePublishableKey} onChange={(e) => set('stripePublishableKey', e.target.value)} placeholder="pk_live_…" />
+        </F>
+        <F label={t('settings.extStripeSecret')}>
+          <AddonSecretField slug="orders" k="stripeSecretKey" value={settings.stripeSecretKey} set={(v) => set('stripeSecretKey', v)} placeholder="sk_live_…" />
+        </F>
+        <F label={t('settings.extStripeWebhookSecret')}>
+          <AddonSecretField slug="orders" k="stripeWebhookSecret" value={settings.stripeWebhookSecret} set={(v) => set('stripeWebhookSecret', v)} placeholder="whsec_…" />
+          <AddonWebhookUrlHint slug="orders" path="api/payments/stripe/webhook" label={t('settings.extStripeWebhookHint')} />
+        </F>
+      </div>
+
+      {/* NOWPayments */}
+      <div className="rounded-md border bg-muted/20 p-3 space-y-3">
+        <div className="flex items-center justify-between">
+          <Label className="text-sm font-medium">{t('settings.extPayWithCrypto')} (NOWPayments)</Label>
+          <Switch checked={settings.nowpaymentsEnabled} onCheckedChange={(v) => set('nowpaymentsEnabled', v)} />
+        </div>
+        <F label={t('settings.extNowpaymentsKey')}>
+          <AddonSecretField slug="orders" k="nowpaymentsApiKey" value={settings.nowpaymentsApiKey} set={(v) => set('nowpaymentsApiKey', v)} />
+        </F>
+        <F label={t('settings.extNowpaymentsIpn')}>
+          <AddonSecretField slug="orders" k="nowpaymentsIpnSecret" value={settings.nowpaymentsIpnSecret} set={(v) => set('nowpaymentsIpnSecret', v)} />
+          <AddonWebhookUrlHint slug="orders" path="api/payments/nowpayments/webhook" label={t('settings.extNowpaymentsIpnHint')} />
+        </F>
+      </div>
+
+      <div className="flex justify-end">
+        <Button type="button" onClick={save} disabled={saving}>{t('common.save')}</Button>
+      </div>
+    </div>
+  );
+}
+
+/** URL de webhook réelle, calculée depuis l'origine du panel — copiable en un clic. */
+function AddonWebhookUrlHint({ slug, path, label }: { slug: string; path: string; label: string }) {
+  const t = useT();
+  const [copied, setCopied] = useState(false);
+  const url = `${window.location.origin}/addon-proxy/${slug}/${path}`;
+  const copy = () => {
+    navigator.clipboard?.writeText(url).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); });
+  };
+  return (
+    <p className="text-xs text-muted-foreground mt-1">
+      {label}{' '}
+      <code className="rounded bg-muted px-1 py-0.5 text-[11px]">{url}</code>{' '}
+      <button type="button" onClick={copy} className="underline underline-offset-2 hover:text-foreground">
+        {copied ? t('common.copied') : t('common.copy')}
+      </button>
+    </p>
+  );
+}
+
+/**
+ * Comme SecretField (panel), mais la valeur est stockée par l'addon lui-même :
+ * la révélation passe par POST /addons/bundled/:slug/payments/reveal (panel),
+ * qui vérifie le mot de passe puis relaie server-to-server vers l'addon.
+ */
+function AddonSecretField({
+  slug, k, value, set, placeholder,
+}: {
+  slug: string; k: string; value: string; set: (v: string) => void; placeholder?: string;
+}) {
+  const t = useT();
+  const [revealed, setRevealed] = useState(false);
+  const [prompting, setPrompting] = useState(false);
+  const [pwd, setPwd] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const isMasked = /^•+$/.test(value);
+
+  const toggle = () => {
+    if (revealed) { setRevealed(false); return; }
+    if (isMasked) { setPwd(''); setPrompting(true); return; }
+    setRevealed(true);
+  };
+
+  const confirmReveal = async () => {
+    if (!pwd || busy) return;
+    setBusy(true);
+    try {
+      const { data } = await api.post(`/addons/bundled/${slug}/payments/reveal`, { key: k, password: pwd });
+      set(data.value ?? '');
+      setRevealed(true);
+      setPrompting(false);
+      setPwd('');
+    } catch (e) {
+      toast.error(apiError(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div>
+      <div className="relative">
+        <Input
+          type={revealed ? 'text' : 'password'}
+          value={value}
+          onChange={(e) => { set(e.target.value); setRevealed(true); }}
+          placeholder={placeholder}
+          className="pr-9"
+          autoComplete="off"
+        />
+        <button
+          type="button"
+          onClick={toggle}
+          tabIndex={-1}
+          className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+        >
+          {revealed ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+        </button>
+      </div>
+      {prompting && (
+        <div className="mt-2 flex flex-wrap items-center gap-2 rounded-md border bg-muted/20 p-2">
+          <Input
+            type="password"
+            autoFocus
+            value={pwd}
+            onChange={(e) => setPwd(e.target.value)}
+            placeholder={t('settings.confirmPasswordPlaceholder')}
+            className="h-8 max-w-[220px] text-xs"
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); confirmReveal(); } }}
+          />
+          <Button type="button" size="sm" disabled={busy || !pwd} onClick={confirmReveal}>
+            {t('common.confirm')}
+          </Button>
+          <Button type="button" size="sm" variant="outline" onClick={() => { setPrompting(false); setPwd(''); }}>
+            {t('common.cancel')}
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,6 +1,6 @@
 {
   "name": "uhq-panel-os",
-  "version": "2.4.46",
+  "version": "2.4.47",
   "description": "UHQ Panel OS — Panel principal",
   "private": true,
   "scripts": {
