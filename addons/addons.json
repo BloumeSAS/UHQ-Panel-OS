@@ -23,7 +23,7 @@
   {
     "name": "Orders",
     "slug": "orders",
-    "version": "1.1.3",
+    "version": "1.2.1",
     "description": "Boutique interne — commandes payées via Wallet. Livraison automatique de comptes proxy après paiement.",
     "icon": "ShoppingCart",
     "free": true,
