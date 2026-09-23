@@ -11,6 +11,12 @@ import { bundledAddonDir, isBundleAvailable, loadOfficialAddons, OfficialAddonEn
 const READY_TIMEOUT_MS = 30_000;
 const READY_POLL_MS = 500;
 
+// eslint-disable-next-line no-control-regex
+const ANSI_REGEX = /\x1b\[[0-9;]*[a-zA-Z]/g;
+function stripAnsi(s: string): string {
+  return s.replace(ANSI_REGEX, '');
+}
+
 export interface BundledAddonStatus {
   slug: string;
   available: boolean; // build présent dans CETTE image
@@ -150,6 +156,13 @@ export class BundledAddonsService implements OnModuleDestroy {
       DB_PATH: join(dataDir, `${entry.slug}-data.json`),
       PANEL_URL: `http://127.0.0.1:${process.env.API_PORT ?? 8000}`,
       PANEL_API_KEY: this.settings.get('apiKey') || '',
+      // L'addon embarqué a son propre Logger NestJS, qui colore sa sortie par
+      // défaut — utile dans un vrai terminal, illisible une fois réinjecté
+      // tel quel dans le journal du panel (codes ANSI bruts). NO_COLOR est le
+      // standard reconnu par la quasi-totalité des libs de couleur term (dont
+      // celle utilisée par Nest) ; la sortie est aussi nettoyée en filet de
+      // sécurité ci-dessous au cas où une lib l'ignorerait.
+      NO_COLOR: '1',
       ...(entry.extraEnv ?? {}),
     };
 
@@ -158,8 +171,18 @@ export class BundledAddonsService implements OnModuleDestroy {
       env,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
-    child.stdout?.on('data', (d) => this.logger.log(`[${entry.slug}] ${d.toString().trim()}`));
-    child.stderr?.on('data', (d) => this.logger.warn(`[${entry.slug}] ${d.toString().trim()}`));
+    const forwardLines = (data: Buffer, log: (line: string) => void) => {
+      // Un chunk `data` peut contenir plusieurs lignes (Node ne garantit pas
+      // l'alignement sur les retours à la ligne) — sans ce découpage, tout un
+      // paragraphe de log NestJS (banner ASCII compris) atterrissait comme
+      // une seule entrée géante et illisible dans le journal du panel.
+      for (const line of stripAnsi(data.toString()).split('\n')) {
+        const trimmed = line.trim();
+        if (trimmed) log(`[${entry.slug}] ${trimmed}`);
+      }
+    };
+    child.stdout?.on('data', (d) => forwardLines(d, (l) => this.logger.log(l)));
+    child.stderr?.on('data', (d) => forwardLines(d, (l) => this.logger.warn(l)));
     child.on('exit', (code) => {
       this.logger.warn(`Addon embarqué "${entry.slug}" arrêté (code ${code}).`);
       this.processes.delete(entry.slug);
