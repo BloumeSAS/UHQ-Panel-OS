@@ -1,9 +1,11 @@
 # syntax=docker/dockerfile:1.6
 # ---------------------------------------------------------------
 # UHQ Panel OS — multi-stage Dockerfile (image unique)
-# Stage 1 (web-builder): build le panel React (web/ → web/dist)
-# Stage 2 (builder)    : install deps, generate Prisma client, build TS
-# Stage 3 (runner)     : runtime Alpine minimal (API + proxy + panel statique)
+# Stage 1 (web-builder)   : build le panel React (web/ → web/dist)
+# Stage 2 (addons-builder): clone + build les addons officiels "embarqués"
+#                           (ceux qui déclarent bundlePort dans addons.json)
+# Stage 3 (builder)       : install deps, generate Prisma client, build TS
+# Stage 4 (runner)        : runtime Alpine minimal (API + proxy + panel + addons)
 # ---------------------------------------------------------------
 
 # ----- Stage 1 : panel React ------------------------------------
@@ -15,7 +17,18 @@ COPY web/ ./
 RUN npm run build
 
 
-# ----- Stage 2 : backend NestJS (dossier api/) ------------------
+# ----- Stage 2 : addons officiels embarqués ("bundlePort" dans addons.json) --
+# Ajouter un futur addon officiel embarqué = ajouter une entrée avec
+# "bundlePort" + "repository" dans addons/addons.json — RIEN à changer ici,
+# le script boucle dynamiquement sur ce fichier (voir addons/build-bundled.sh).
+FROM node:20-alpine AS addons-builder
+RUN apk add --no-cache git jq
+WORKDIR /addons-build
+COPY addons/addons.json addons/build-bundled.sh ./
+RUN chmod +x build-bundled.sh && ./build-bundled.sh
+
+
+# ----- Stage 3 : backend NestJS (dossier api/) ------------------
 FROM node:20-alpine AS builder
 WORKDIR /app
 
@@ -40,7 +53,7 @@ RUN npm run build
 RUN npm prune --production --legacy-peer-deps
 
 
-# ----- Stage 3 : runner -----------------------------------------
+# ----- Stage 4 : runner -----------------------------------------
 FROM node:20-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
@@ -66,6 +79,15 @@ COPY --from=builder --chown=app:app /app/static ./static
 COPY --from=builder --chown=app:app /app/package*.json ./
 # Panel React buildé — servi en statique par NestJS (ServeStaticModule → web/dist).
 COPY --from=web-builder --chown=app:app /web/dist ./web/dist
+
+# Registre + addons officiels embarqués (out/<slug>/ pour chaque entrée avec
+# bundlePort — vide si aucun n'en déclare). Lus par BundledAddonsService pour
+# savoir ce qui est réellement disponible à activer dans CETTE image.
+COPY --from=addons-builder --chown=app:app /addons-build/addons.json ./addons/addons.json
+COPY --from=addons-builder --chown=app:app /addons-build/out ./addons/bundled
+# Dossier de données des addons embarqués (fichiers wallet-data.json etc.),
+# persistant via le même volume /app/data que le panel.
+RUN mkdir -p /app/data/addons && chown app:app /app/data/addons
 
 USER app
 

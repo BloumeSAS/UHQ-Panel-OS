@@ -17,7 +17,8 @@
       "Historique des transactions",
       "Recharge manuelle (admin)",
       "API interne pour autres addons"
-    ]
+    ],
+    "bundlePort": 3101
   },
   {
     "name": "Orders",
@@ -38,6 +39,8 @@
       "Paiement via addon Wallet",
       "Livraison automatique de comptes proxy",
       "Révocation des accès à l'annulation"
-    ]
+    ],
+    "bundlePort": 3102,
+    "extraEnv": { "WALLET_URL": "http://127.0.0.1:3101" }
   }
 ]
