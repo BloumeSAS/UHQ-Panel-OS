@@ -134,7 +134,20 @@ function buildIframeUrl(
     user?: any;
   },
 ): string {
-  const url = new URL(pagePath, baseUrl);
+  // `page.path` des manifests officiels commence par "/" (ex. "/", "/admin")
+  // — `new URL(pagePath, baseUrl)` traiterait ça comme une URL absolue et
+  // REMPLACERAIT tout le chemin de `baseUrl` au lieu de s'y ajouter. Pour un
+  // addon externe (baseUrl sans chemin, ex. https://wallet.example.com) ça
+  // ne se voyait pas. Pour un addon officiel EMBARQUÉ (baseUrl relatif
+  // `/addon-proxy/<slug>`, même origine que le panel via le proxy interne
+  // — cf. BundledAddonsService côté API), ça effacerait ce préfixe. On
+  // construit donc explicitement `<origin><basePath><pagePath>` en AJOUTANT
+  // plutôt qu'en remplaçant, ce qui est correct dans les deux cas.
+  const isAbsolute = /^https?:\/\//i.test(baseUrl);
+  const origin = isAbsolute ? new URL(baseUrl).origin : window.location.origin;
+  const basePath = (isAbsolute ? new URL(baseUrl).pathname : baseUrl).replace(/\/+$/, '');
+  const suffix = pagePath.startsWith('/') ? pagePath : `/${pagePath}`;
+  const url = new URL(`${basePath}${suffix}`, origin);
 
   // Contexte panel (langue + thème)
   if (opts.lang) url.searchParams.set('lang', opts.lang);

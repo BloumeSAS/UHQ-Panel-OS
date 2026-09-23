@@ -138,8 +138,16 @@ function buildWidgetUrl(
     context: Record<string, string>;
   },
 ): string {
-  const base = baseUrl.replace(/\/+$/, '');
-  const url = new URL(widgetPath.startsWith('/') ? widgetPath : '/' + widgetPath, base + '/');
+  // Un addon officiel EMBARQUÉ a un baseUrl relatif (`/addon-proxy/<slug>`,
+  // même origine que le panel — cf. BundledAddonsService côté API) : `new
+  // URL()` exige une base absolue, et un `widgetPath` commençant par "/"
+  // remplacerait tout le chemin de `base` au lieu de s'y ajouter. On
+  // construit donc explicitement `<origin><basePath><widgetPath>`.
+  const isAbsolute = /^https?:\/\//i.test(baseUrl);
+  const origin = isAbsolute ? new URL(baseUrl).origin : window.location.origin;
+  const basePath = (isAbsolute ? new URL(baseUrl).pathname : baseUrl).replace(/\/+$/, '');
+  const suffix = widgetPath.startsWith('/') ? widgetPath : `/${widgetPath}`;
+  const url = new URL(`${basePath}${suffix}`, origin);
 
   url.searchParams.set('lang', opts.lang);
   url.searchParams.set('theme', opts.theme);

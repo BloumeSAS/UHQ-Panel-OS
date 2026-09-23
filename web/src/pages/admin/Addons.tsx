@@ -566,22 +566,67 @@ interface RegistryAddon {
   features?: string[];
 }
 
+interface BundledStatus {
+  slug: string;
+  available: boolean;
+  running: boolean;
+  port: number | null;
+  missingDependency: string | null;
+}
+
 function RegistrySection({ installedUrls }: { installedUrls: string[] }) {
   const t = useT();
+  const qc = useQueryClient();
+  const [activatingSlug, setActivatingSlug] = useState<string | null>(null);
+  const [activateError, setActivateError] = useState<{ slug: string; message: string } | null>(null);
 
-  const REGISTRY_URL =
-    'https://raw.githubusercontent.com/BloumeSAS/UHQ-Panel-OS/refs/heads/main/addons/addons.json';
-
+  // Source unique : `addons/addons.json`, lu côté serveur (copié dans
+  // l'image au build) — remplace l'ancien fetch direct GitHub raw, qui
+  // dépendait du réseau et ne pouvait de toute façon pas savoir quels
+  // addons sont réellement embarqués dans CETTE image.
   const { data, isLoading } = useQuery({
     queryKey: ['addon-registry'],
-    queryFn: async () => {
-      const res = await fetch(REGISTRY_URL);
-      if (!res.ok) throw new Error('Registry unreachable');
-      return res.json() as Promise<RegistryAddon[]>;
-    },
-    staleTime: 10 * 60 * 1000,
-    retry: 1,
+    queryFn: async () => (await api.get('/addons/registry')).data.data as RegistryAddon[],
+    staleTime: 5 * 60 * 1000,
   });
+
+  const { data: bundled } = useQuery({
+    queryKey: ['addons-bundled'],
+    queryFn: async () => (await api.get('/addons/bundled')).data.data as BundledStatus[],
+    refetchInterval: activatingSlug ? 2000 : 30_000,
+  });
+
+  const invalidateAll = () => {
+    qc.invalidateQueries({ queryKey: ['addons-bundled'] });
+    qc.invalidateQueries({ queryKey: ['addons-all'] });
+    qc.invalidateQueries({ queryKey: ['addons'] });
+  };
+
+  const activate = async (slug: string) => {
+    setActivatingSlug(slug);
+    setActivateError(null);
+    try {
+      await api.post(`/addons/bundled/${slug}/activate`, undefined, { timeout: 35_000 });
+      invalidateAll();
+    } catch (err) {
+      setActivateError({ slug, message: apiError(err) });
+    } finally {
+      setActivatingSlug(null);
+    }
+  };
+
+  const deactivate = async (slug: string) => {
+    setActivatingSlug(slug);
+    setActivateError(null);
+    try {
+      await api.post(`/addons/bundled/${slug}/deactivate`);
+      invalidateAll();
+    } catch (err) {
+      setActivateError({ slug, message: apiError(err) });
+    } finally {
+      setActivatingSlug(null);
+    }
+  };
 
   if (isLoading || !data?.length) return null;
 
@@ -658,21 +703,57 @@ function RegistrySection({ installedUrls }: { installedUrls: string[] }) {
                   )}
                 </div>
 
+                {/* Erreur activation/désactivation */}
+                {activateError?.slug === addon.slug && (
+                  <div className="flex items-start gap-2 rounded-md bg-destructive/10 border border-destructive/30 p-2 text-xs text-destructive">
+                    <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                    <span>{activateError.message}</span>
+                  </div>
+                )}
+
                 {/* Actions */}
                 <div className="flex gap-2 pt-1">
-                  {addon.repository && (
-                    <a
-                      href={addon.repository}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex-1"
-                    >
-                      <Button variant="outline" size="sm" className="w-full text-xs gap-1.5">
-                        <Github className="h-3.5 w-3.5" />
-                        {t('addons.deployBtn')}
-                      </Button>
-                    </a>
-                  )}
+                  {(() => {
+                    const status = bundled?.find((b) => b.slug === addon.slug);
+                    const isBusy = activatingSlug === addon.slug;
+                    if (status?.available) {
+                      // Embarqué dans CETTE image : bouton Activer/Désactiver
+                      // qui démarre/arrête le processus directement, sans
+                      // redémarrage du panel — connexion automatique une fois prêt.
+                      const blockedBy = !status.running ? status.missingDependency : null;
+                      return (
+                        <Button
+                          size="sm"
+                          variant={status.running ? 'outline' : 'default'}
+                          className="flex-1 text-xs gap-1.5"
+                          disabled={isBusy || !!blockedBy}
+                          title={blockedBy ? `${t('addons.requires')} : ${blockedBy}` : undefined}
+                          onClick={() => (status.running ? deactivate(addon.slug) : activate(addon.slug))}
+                        >
+                          {isBusy
+                            ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            : status.running
+                              ? <CheckCircle2 className="h-3.5 w-3.5" />
+                              : <Sparkles className="h-3.5 w-3.5" />}
+                          {isBusy
+                            ? t('addons.activating')
+                            : status.running
+                              ? t('addons.deactivateBtn')
+                              : t('addons.activateBtn')}
+                        </Button>
+                      );
+                    }
+                    // Pas embarqué dans cette image (registre déclaré sans build, ou
+                    // ajouté sans reconstruire l'image) : repli sur le déploiement manuel.
+                    return addon.repository ? (
+                      <a href={addon.repository} target="_blank" rel="noopener noreferrer" className="flex-1">
+                        <Button variant="outline" size="sm" className="w-full text-xs gap-1.5">
+                          <Github className="h-3.5 w-3.5" />
+                          {t('addons.deployBtn')}
+                        </Button>
+                      </a>
+                    ) : null;
+                  })()}
                   {addon.homepage && (
                     <a
                       href={addon.homepage}

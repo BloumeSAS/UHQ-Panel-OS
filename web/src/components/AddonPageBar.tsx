@@ -130,11 +130,15 @@ function buildUrl(
     page?: string;
   },
 ): string {
-  const base = baseUrl.replace(/\/+$/, '');
-  const url = new URL(
-    widgetPath.startsWith('/') ? widgetPath : '/' + widgetPath,
-    base + '/',
-  );
+  // Cf. AddonWidgetSlot.tsx / AddonIframe.tsx : un addon officiel EMBARQUÉ a
+  // un baseUrl relatif (`/addon-proxy/<slug>`) — on ajoute explicitement le
+  // chemin plutôt que de le remplacer (`new URL(pagePath, base)` ferait
+  // disparaître le préfixe si `pagePath` commence par "/").
+  const isAbsolute = /^https?:\/\//i.test(baseUrl);
+  const origin = isAbsolute ? new URL(baseUrl).origin : window.location.origin;
+  const basePath = (isAbsolute ? new URL(baseUrl).pathname : baseUrl).replace(/\/+$/, '');
+  const suffix = widgetPath.startsWith('/') ? widgetPath : `/${widgetPath}`;
+  const url = new URL(`${basePath}${suffix}`, origin);
 
   url.searchParams.set('lang', opts.lang);
   url.searchParams.set('theme', opts.theme);
