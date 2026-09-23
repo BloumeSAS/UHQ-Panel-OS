@@ -227,22 +227,35 @@ export function Layout({ children }: { children: React.ReactNode }) {
   }, [addons, mergeAddonTranslations]);
 
   // ─── Addons externes : nav items générés depuis le manifest ──────────────
+  // Une page peut se déclarer `primary: true` — pour un compte USER (pas
+  // admin/support), elle est épinglée directement sous "Mes proxies" au
+  // lieu d'atterrir dans la section générique "Extensions" plus bas dans
+  // la sidebar (ex. la Boutique de l'addon Orders : un accès aussi central
+  // que "Mes proxies" mérite une place aussi visible, pas noyé avec les
+  // pages d'admin des autres addons).
+  const isRegularUser = user?.role !== 'ADMIN' && user?.role !== 'SUPPORT';
+  const primaryUserAddonNav: NavItem[] = [];
   const addonNav: NavItem[] = (addons ?? [])
     .filter((a: any) => a.enabled && a.manifest)
     .flatMap((a: any) => {
       const pages: any[] = a.manifest?.pages ?? [];
       const isAdmin = user?.role === 'ADMIN';
       return pages
-        .filter((p: any) => p.showInNavbar !== false && (!p.adminOnly || isAdmin))
+        .filter((p: any) => (p.showInNavbar !== false || (isRegularUser && p.primary)) && (!p.adminOnly || isAdmin))
         .map((p: any) => {
           const IconComponent = (LucideIcons as any)[p.icon ?? a.manifest?.icon ?? 'Puzzle'];
-          return {
+          const item: NavItem = {
             to: `/addons/${a.id}/${encodeURIComponent(p.path)}`,
             label: t(p.label),
             icon: IconComponent || Puzzle,
           };
+          if (isRegularUser && p.primary) primaryUserAddonNav.push(item);
+          return item;
         });
-    });
+    })
+    // Une page épinglée en "primary" pour un USER ne doit pas ALSO
+    // apparaître dans la section Extensions générique (doublon).
+    .filter((item) => !(isRegularUser && primaryUserAddonNav.some((p) => p.to === item.to)));
 
   // ─── Slots topbar : items injectés dans le dropdown en haut à droite ────────
   const addonTopbarSlots: TopbarSlotItem[] = (addons ?? [])
@@ -269,7 +282,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
   const baseSections =
     user?.role === 'ADMIN' ? adminSections : user?.role === 'SUPPORT' ? supportSections : userSections;
-  const sections: NavSection[] = [...baseSections];
+  const sections: NavSection[] = baseSections.map((s) => ({ ...s, items: [...s.items] }));
+  if (isRegularUser && primaryUserAddonNav.length > 0) {
+    // sections[0] = { items: [{ to: '/', label: 'Mes proxies', ... }] } pour
+    // un USER — voir userSections plus haut.
+    sections[0].items.push(...primaryUserAddonNav);
+  }
   if (addonNav.length > 0) {
     // Inséré juste avant la dernière section ("Compte") plutôt qu'à la fin,
     // pour ne pas se retrouver après des entrées purement personnelles.
