@@ -9,6 +9,7 @@ import { fetch } from 'undici';
 import { PrismaService } from '../../database/prisma.service';
 import { AddAddonDto, UpdateAddonDto } from './dto/addon.dto';
 import { AddonManifest } from './addon-manifest.types';
+import { loadOfficialAddons } from './official-addons-registry';
 
 const MANIFEST_PATH = '/uhq-manifest.json';
 const FETCH_TIMEOUT_MS = 6_000;
@@ -30,9 +31,19 @@ export class AddonsService {
 
   /**
    * Télécharge et valide le manifest depuis <baseUrl>/uhq-manifest.json.
+   *
+   * `baseUrl` d'un addon officiel embarqué (cf. BundledAddonsService) est
+   * stocké sous forme relative `/addon-proxy/<slug>` (c'est ce que le
+   * NAVIGATEUR doit utiliser — même origine que le panel, via le port déjà
+   * exposé). `fetch()` (undici) exige une URL absolue : on la retraduit ici
+   * vers `http://127.0.0.1:<bundlePort>`, le SEUL endroit qui a besoin d'y
+   * accéder directement. Si le process embarqué n'est pas démarré, la
+   * connexion échoue naturellement (`manifestError` réaliste), sans logique
+   * spéciale "est-il démarré" à maintenir ici.
    */
   async fetchManifest(baseUrl: string): Promise<AddonManifest> {
-    const url = `${baseUrl.replace(/\/+$/, '')}${MANIFEST_PATH}`;
+    const resolvedBaseUrl = this.resolveBundledBaseUrl(baseUrl);
+    const url = `${resolvedBaseUrl.replace(/\/+$/, '')}${MANIFEST_PATH}`;
     let raw: unknown;
     try {
       const res = await fetch(url, {
@@ -58,6 +69,14 @@ export class AddonsService {
     }
 
     return manifest;
+  }
+
+  private resolveBundledBaseUrl(baseUrl: string): string {
+    const m = /^\/addon-proxy\/([a-z0-9-]+)\/?$/i.exec(baseUrl);
+    if (!m) return baseUrl;
+    const entry = loadOfficialAddons().find((e) => e.slug === m[1]);
+    if (!entry?.bundlePort) return baseUrl;
+    return `http://127.0.0.1:${entry.bundlePort}`;
   }
 
   // ─── CRUD ─────────────────────────────────────────────────────────────────

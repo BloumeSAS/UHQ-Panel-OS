@@ -15,14 +15,19 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { AddonsService } from './addons.service';
+import { BundledAddonsService } from './bundled-addons.service';
 import { AddAddonDto, UpdateAddonDto } from './dto/addon.dto';
+import { loadOfficialAddons } from './official-addons-registry';
 
 @ApiTags('panel-addons')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard)
 @Controller('api/panel/addons')
 export class AddonsController {
-  constructor(private readonly service: AddonsService) {}
+  constructor(
+    private readonly service: AddonsService,
+    private readonly bundled: BundledAddonsService,
+  ) {}
 
   /**
    * Liste les addons actifs avec leur manifest (filtré selon le rôle).
@@ -124,58 +129,51 @@ export class AddonsController {
   }
 
   /**
-   * Registre des extensions officielles gratuites publiées par Bloume SAS.
-   * Permet au panel d'afficher la liste des addons disponibles à déployer.
+   * Registre des extensions officielles gratuites publiées par Bloume SAS —
+   * lu depuis `addons/addons.json` (source unique, copiée dans l'image au
+   * build). Ajouter un futur addon officiel = ajouter une entrée à ce
+   * fichier, il apparaît ici automatiquement, sans toucher ce contrôleur.
    */
   @Get('registry')
   @UseGuards(RolesGuard)
   @Roles('ADMIN')
   @ApiOperation({ summary: 'Registre des extensions officielles gratuites' })
   registry() {
-    return { status: 'success', data: ADDON_REGISTRY };
+    return { status: 'success', data: loadOfficialAddons() };
+  }
+
+  /**
+   * État des addons officiels "embarqués" (build présent dans CETTE image,
+   * cf. addons/build-bundled.sh) : disponible / en cours d'exécution / port.
+   */
+  @Get('bundled')
+  @UseGuards(RolesGuard)
+  @Roles('ADMIN')
+  @ApiOperation({ summary: 'État des addons officiels embarqués (disponibilité + exécution)' })
+  async bundledStatus() {
+    return { status: 'success', data: await this.bundled.status() };
+  }
+
+  /**
+   * Démarre (si besoin) un addon officiel embarqué et le connecte
+   * automatiquement — pas de redémarrage du panel, juste le lancement d'un
+   * processus enfant + un poll jusqu'à ce qu'il réponde.
+   */
+  @Post('bundled/:slug/activate')
+  @UseGuards(RolesGuard)
+  @Roles('ADMIN')
+  @ApiOperation({ summary: 'Active un addon officiel embarqué' })
+  async activateBundled(@Param('slug') slug: string) {
+    const data = await this.bundled.activate(slug);
+    return { status: 'success', data };
+  }
+
+  @Post('bundled/:slug/deactivate')
+  @UseGuards(RolesGuard)
+  @Roles('ADMIN')
+  @ApiOperation({ summary: 'Désactive un addon officiel embarqué' })
+  async deactivateBundled(@Param('slug') slug: string) {
+    await this.bundled.deactivate(slug);
+    return { status: 'success' };
   }
 }
-
-const ADDON_REGISTRY = [
-  {
-    name: 'Wallet',
-    slug: 'wallet',
-    version: '1.1.0',
-    description: 'Système de portefeuille par compte proxy. Rechargement de solde, paiements et historique des transactions.',
-    icon: 'Wallet',
-    free: true,
-    official: true,
-    license: 'MIT',
-    author: { name: 'Bloume SAS', url: 'https://bloume.fr' },
-    repository: 'https://github.com/BloumeSAS/UHQ-Addon-Wallet',
-    homepage: 'https://uhq-panel-os-docs.bloume.fr/addons/official/wallet',
-    tags: ['payments', 'wallet', 'balance'],
-    features: [
-      'Solde par compte proxy',
-      'Historique des transactions',
-      'Recharge manuelle (admin)',
-      'API interne pour autres addons',
-    ],
-  },
-  {
-    name: 'Orders',
-    slug: 'orders',
-    version: '1.1.0',
-    description: "Boutique interne — commandes payées via Wallet. Livraison automatique de comptes proxy après paiement.",
-    icon: 'ShoppingCart',
-    free: true,
-    official: true,
-    license: 'MIT',
-    author: { name: 'Bloume SAS', url: 'https://bloume.fr' },
-    repository: 'https://github.com/BloumeSAS/UHQ-Addon-Orders',
-    homepage: 'https://uhq-panel-os-docs.bloume.fr/addons/official/orders',
-    tags: ['store', 'orders', 'delivery', 'proxy'],
-    requires: ['wallet'],
-    features: [
-      'Catalogue produits avec stock',
-      'Paiement via addon Wallet',
-      'Livraison automatique de comptes proxy',
-      'Révocation des accès à l\'annulation',
-    ],
-  },
-];

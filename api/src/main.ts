@@ -8,6 +8,7 @@ import { json, urlencoded } from 'express';
 import { join } from 'path';
 import { AppModule } from './app.module';
 import { ProxyServerService } from './modules/proxy-engine/proxy-server.service';
+import { BundledAddonsService } from './modules/addons/bundled-addons.service';
 import { PrismaService } from './database/prisma.service';
 import { RingBufferLogger } from './modules/logs/ring-buffer.logger';
 import { applyDatabaseEnv } from './database/db-config';
@@ -90,6 +91,13 @@ async function bootstrap() {
   if (db.configured && prisma.isConnected) {
     const proxyServer = app.get(ProxyServerService);
     await proxyServer.start();
+
+    // Relance les addons officiels embarqués qui étaient activés avant ce
+    // redémarrage (cf. BundledAddonsService) — non-bloquant, ne doit jamais
+    // empêcher le panel lui-même de démarrer.
+    app.get(BundledAddonsService)
+      .restoreOnBoot()
+      .catch((e) => Logger.error(`Échec de la relance des addons embarqués : ${e}`, 'Bootstrap'));
   } else {
     Logger.warn(
       'Base de données non configurée — moteur proxy en pause. Ouvrez le panel pour terminer la configuration.',

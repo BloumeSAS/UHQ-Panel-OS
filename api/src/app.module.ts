@@ -7,6 +7,7 @@ import * as dotenv from 'dotenv';
 dotenv.config();
 
 import { I18nMiddleware } from './common/utils/i18n';
+import { AddonProxyMiddleware } from './modules/addons/addon-proxy.middleware';
 
 // --- Infra transverse -------------------------------------------------------
 import { PrismaModule } from './database/prisma.module';
@@ -88,10 +89,11 @@ function resolveWebDist(): string {
     V1ApiModule,
     ProxyPoolsModule,
     BannedIpsModule,
-    // Panel React statique (SPA). API, /docs et /static exclus du fallback.
+    // Panel React statique (SPA). API, /docs, /static et /addon-proxy
+    // (addons officiels embarqués, cf. BundledAddonsService) exclus du fallback.
     ServeStaticModule.forRoot({
       rootPath: resolveWebDist(),
-      exclude: ['/api/(.*)', '/docs', '/docs/(.*)', '/static/(.*)'],
+      exclude: ['/api/(.*)', '/docs', '/docs/(.*)', '/static/(.*)', '/addon-proxy/(.*)'],
       serveStaticOptions: { fallthrough: true },
     }),
   ],
@@ -100,5 +102,8 @@ function resolveWebDist(): string {
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
     consumer.apply(I18nMiddleware).forRoutes('*');
+    // Doit passer AVANT le fallback SPA — un reverse-proxy brut (streaming,
+    // pas de body-parsing), voir AddonProxyMiddleware.
+    consumer.apply(AddonProxyMiddleware).forRoutes('addon-proxy/*');
   }
 }
