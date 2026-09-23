@@ -52,6 +52,17 @@ export class CommonController {
     };
   }
 
+  /** Liste les catégories (ProxyPool) — utilisé par ex. pour peupler un sélecteur de catégorie. */
+  @Get('pools')
+  @Scopes('read:pool')
+  async pools() {
+    const pools = await this.prisma.proxyPool.findMany({
+      orderBy: { name: 'asc' },
+      select: { name: true, antiVpnEnabled: true },
+    });
+    return { status: 'success', data: pools };
+  }
+
   @Get('available_count')
   @Scopes('read:pool')
   async availableCount() {
