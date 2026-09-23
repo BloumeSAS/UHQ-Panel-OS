@@ -1,4 +1,4 @@
-import { DynamicModule, MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
+import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ServeStaticModule } from '@nestjs/serve-static';
 import { existsSync } from 'fs';
@@ -39,8 +39,6 @@ import { AuditModule } from './modules/audit/audit.module';
 import { InvitationsModule } from './modules/invitations/invitations.module';
 import { ProxyPoolsModule } from './modules/proxy-pools/proxy-pools.module';
 import { BannedIpsModule } from './modules/banned-ips/banned-ips.module';
-import { ExtensionsModule } from './modules/extensions/extensions.module';
-import { EXTENSION_MODULES } from './modules/extensions/extension-modules';
 
 /**
  * Localise le panel React buildé (web/dist). Ordre :
@@ -90,35 +88,16 @@ function resolveWebDist(): string {
     V1ApiModule,
     ProxyPoolsModule,
     BannedIpsModule,
-    ExtensionsModule,
-    // Panel React statique (SPA). API, /docs, /static et /metrics (extension
-    // prometheus-metrics, si active) exclus du fallback.
+    // Panel React statique (SPA). API, /docs et /static exclus du fallback.
     ServeStaticModule.forRoot({
       rootPath: resolveWebDist(),
-      exclude: ['/api/(.*)', '/docs', '/docs/(.*)', '/static/(.*)', '/metrics'],
+      exclude: ['/api/(.*)', '/docs', '/docs/(.*)', '/static/(.*)'],
       serveStaticOptions: { fallthrough: true },
     }),
   ],
   controllers: [HealthController],
 })
 export class AppModule implements NestModule {
-  /**
-   * Point d'entrée réel utilisé par `main.ts` — `enabledExtensionKeys` est
-   * résolu en DB AVANT `NestFactory.create` (une extension activée n'a
-   * d'effet qu'au redémarrage suivant, cf. `ExtensionsService.setEnabled`).
-   * Les modules d'extension activés sont ajoutés aux imports déjà déclarés
-   * ci-dessus par le décorateur `@Module()` — NestJS fusionne les deux.
-   */
-  static forRoot(enabledExtensionKeys: string[]): DynamicModule {
-    const extraImports = enabledExtensionKeys
-      .map((key) => EXTENSION_MODULES[key])
-      .filter((mod): mod is NonNullable<typeof mod> => !!mod);
-    return {
-      module: AppModule,
-      imports: extraImports,
-    };
-  }
-
   configure(consumer: MiddlewareConsumer) {
     consumer.apply(I18nMiddleware).forRoutes('*');
   }
