@@ -7,7 +7,6 @@ import * as dotenv from 'dotenv';
 dotenv.config();
 
 import { I18nMiddleware } from './common/utils/i18n';
-import { AddonProxyMiddleware } from './modules/addons/addon-proxy.middleware';
 
 // --- Infra transverse -------------------------------------------------------
 import { PrismaModule } from './database/prisma.module';
@@ -102,8 +101,11 @@ function resolveWebDist(): string {
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
     consumer.apply(I18nMiddleware).forRoutes('*');
-    // Doit passer AVANT le fallback SPA — un reverse-proxy brut (streaming,
-    // pas de body-parsing), voir AddonProxyMiddleware.
-    consumer.apply(AddonProxyMiddleware).forRoutes('addon-proxy/*');
+    // AddonProxyMiddleware n'est PAS enregistré ici : un NestMiddleware
+    // appliqué via MiddlewareConsumer/forRoutes n'était jamais invoqué pour
+    // /addon-proxy/* en local (vérifié à coups de logs qui ne s'affichaient
+    // jamais, quel que soit le pattern de route essayé), cause exacte non
+    // identifiée. Monté directement en Express natif dans main.ts à la
+    // place — vérifié fonctionnel.
   }
 }

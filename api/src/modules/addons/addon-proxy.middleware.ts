@@ -1,4 +1,4 @@
-import { Injectable, NestMiddleware } from '@nestjs/common';
+import { Injectable, Logger, NestMiddleware } from '@nestjs/common';
 import { Request, Response, NextFunction } from 'express';
 import * as http from 'http';
 import { loadOfficialAddons } from './official-addons-registry';
@@ -18,6 +18,7 @@ import { loadOfficialAddons } from './official-addons-registry';
  */
 @Injectable()
 export class AddonProxyMiddleware implements NestMiddleware {
+  private readonly logger = new Logger(AddonProxyMiddleware.name);
   use(req: Request, res: Response, next: NextFunction): void {
     const match = /^\/addon-proxy\/([a-z0-9-]+)(\/.*)?$/i.exec(req.path);
     if (!match) return next();
@@ -45,7 +46,8 @@ export class AddonProxyMiddleware implements NestMiddleware {
         proxyRes.pipe(res);
       },
     );
-    proxyReq.on('error', () => {
+    proxyReq.on('error', (e) => {
+      this.logger.warn(`Addon "${slug}" injoignable sur 127.0.0.1:${entry.bundlePort} : ${e.message}`);
       if (!res.headersSent) {
         res.status(502).json({ status: 'error', message: `Addon "${slug}" injoignable (pas démarré ?).` });
       }

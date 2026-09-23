@@ -9,6 +9,7 @@ import { join } from 'path';
 import { AppModule } from './app.module';
 import { ProxyServerService } from './modules/proxy-engine/proxy-server.service';
 import { BundledAddonsService } from './modules/addons/bundled-addons.service';
+import { AddonProxyMiddleware } from './modules/addons/addon-proxy.middleware';
 import { PrismaService } from './database/prisma.service';
 import { RingBufferLogger } from './modules/logs/ring-buffer.logger';
 import { applyDatabaseEnv } from './database/db-config';
@@ -43,6 +44,21 @@ async function bootstrap() {
   // DERNIER hop ajouté par le reverse proxy réel, en ignorant toute valeur
   // que le client aurait tenté d'injecter en amont dans la chaîne.
   app.set('trust proxy', 1);
+
+  // Reverse-proxy des addons officiels embarqués — DOIT être monté AVANT
+  // les body-parsers ci-dessous : il faut le flux brut de la requête pour le
+  // streamer tel quel vers le process interne (upload, JSON, peu importe),
+  // sinon express.json()/urlencoded() le consommerait en premier et
+  // `req.pipe(proxyReq)` recevrait un stream déjà vidé.
+  //
+  // Monté ici (Express natif, `app.use()`) et PAS via NestJS
+  // `MiddlewareConsumer`/`AppModule.configure()` : testé en local, un
+  // NestMiddleware appliqué via `consumer.apply(...).forRoutes(...)` n'était
+  // jamais invoqué pour cette route (confirmé par des logs qui ne
+  // s'affichaient jamais), cause exacte non identifiée — cette approche
+  // directe, elle, fonctionne de façon vérifiée.
+  const addonProxy = new AddonProxyMiddleware();
+  app.use((req: any, res: any, next: any) => addonProxy.use(req, res, next));
 
   // Body-parser par défaut de Nest = 100kb → "entity too large" dès qu'on
   // importe une grosse liste de proxies manuellement depuis le panel.
