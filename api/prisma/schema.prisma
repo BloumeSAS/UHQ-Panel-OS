@@ -453,3 +453,17 @@ model Addon {
   // true = une nouvelle version a été détectée lors du dernier refresh
   hasUpdate     Boolean   @default(false)
 }
+
+// Extension interne : module optionnel déjà présent dans l'image Docker
+// (code compilé, jamais téléchargé à la volée) mais chargé dans le graphe
+// NestJS seulement si `enabled`. La liste des extensions disponibles vit en
+// dur dans le code (`extensions/extension-registry.ts`) — cette table ne
+// stocke que l'état ON/OFF choisi par l'admin. Contrairement à `Setting`,
+// un changement ici n'a effet qu'après redémarrage du process (cf.
+// `ExtensionsService.setEnabled` + résolution au boot dans `main.ts`),
+// puisque les modules NestJS sont assemblés une seule fois au démarrage.
+model Extension {
+  key       String   @id
+  enabled   Boolean  @default(false)
+  updatedAt DateTime @updatedAt
+}
