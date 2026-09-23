@@ -35,7 +35,17 @@ jq -c '.[] | select(.bundlePort != null)' addons.json | while IFS= read -r entry
     cd "src-$slug"
     npm install --prefix api --no-audit --no-fund --legacy-peer-deps
     npm install --prefix web --no-audit --no-fund --legacy-peer-deps
-    npm run build --prefix web
+    # --base : les addons officiels sont buildés pour être servis à la
+    # racine de leur propre domaine (déploiement séparé) ; embarqués, ils
+    # sont servis sous /addon-proxy/<slug>/ (même origine que le panel).
+    # Sans cet override, les assets JS/CSS générés en chemins absolus
+    # ("/assets/xxx.js") seraient demandés à la racine DU PANEL au lieu
+    # d'être proxifiés — MIME "text/html" (fallback SPA du panel) au lieu
+    # de JS, page blanche. `npm run build -- <args>` ajoute ces args à la
+    # fin de la commande du script — fonctionne tant que `vite build` est
+    # la dernière commande du script "build" (convention des addons
+    # officiels Bloume SAS : "tsc && vite build").
+    npm run build --prefix web -- --base="/addon-proxy/$slug/"
     npm run build --prefix api
     npm prune --prefix api --production --legacy-peer-deps
   )
