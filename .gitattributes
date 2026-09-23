@@ -1,0 +1,4 @@
+# Force LF for shell scripts — Windows checkouts with core.autocrlf=true
+# would otherwise convert these to CRLF, breaking the shebang line when a
+# Linux Docker build stage runs them (cf. addons/build-bundled.sh).
+*.sh text eol=lf
