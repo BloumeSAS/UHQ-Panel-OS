@@ -108,6 +108,18 @@ async function bootstrap() {
       // ressource cross-origin (script Scalar sur jsdelivr, captcha…) pose
       // elle-même un en-tête CORP — `require-corp` cassait ces chargements.
       crossOriginEmbedderPolicy: { policy: 'credentialless' },
+      // `strict-origin-when-cross-origin` plutôt que le défaut helmet
+      // `no-referrer` : les addons officiels embarqués (Wallet, Orders)
+      // appellent leur propre API en chemin absolu (`fetch('/api/x')`,
+      // conçus pour un déploiement externe classique) — AddonProxyMiddleware
+      // les route correctement UNIQUEMENT via l'en-tête Referer (même
+      // origine, cf. addon-proxy.middleware.ts). `no-referrer` supprimait ce
+      // header pour TOUTE requête, y compris ces appels same-origin, cassant
+      // silencieusement les addons embarqués ("Cannot GET /api/...").
+      // `strict-origin-when-cross-origin` envoie l'URL complète en same-origin
+      // (ce dont le proxy a besoin) et seulement l'origine en cross-origin —
+      // c'est aussi la valeur par défaut moderne des navigateurs.
+      referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
     }),
   );
 
@@ -175,7 +187,7 @@ async function bootstrap() {
   await app.listen(apiPort, '0.0.0.0');
   Logger.log(`API listening on :${apiPort}`, 'Bootstrap');
   // Build marker — bump this string on every deploy you want to confirm is live.
-  Logger.log('BUILD MARKER: panel-os-v2.4.61', 'Bootstrap');
+  Logger.log('BUILD MARKER: panel-os-v2.4.62', 'Bootstrap');
 
   // Le moteur proxy TCP n'a de sens qu'avec une base connectée (auth des
   // sous-utilisateurs). On ne le démarre donc pas tant que la base n'est pas
