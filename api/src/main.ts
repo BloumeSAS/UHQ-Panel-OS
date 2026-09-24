@@ -4,6 +4,7 @@ import { Logger, ValidationPipe } from '@nestjs/common';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { WsAdapter } from '@nestjs/platform-ws';
+import helmet from 'helmet';
 import { json, urlencoded } from 'express';
 import { join } from 'path';
 import { AppModule } from './app.module';
@@ -44,6 +45,55 @@ async function bootstrap() {
   // DERNIER hop ajouté par le reverse proxy réel, en ignorant toute valeur
   // que le client aurait tenté d'injecter en amont dans la chaîne.
   app.set('trust proxy', 1);
+
+  // En-têtes de sécurité HTTP (X-Frame-Options, X-Content-Type-Options,
+  // Referrer-Policy, COOP/CORP, CSP…) — absents jusqu'ici (signalé par un
+  // scan nuclei, tous en sévérité "info" : pas d'exploitation directe, mais
+  // de la défense en profondeur qui manquait). CSP construite à la main
+  // (pas les défauts helmet) pour coller aux besoins réels du panel :
+  //   - script-src : 'unsafe-inline' requis par /docs (Scalar est initialisé
+  //     via un <script> inline, cf. DocsController) ; cdn.jsdelivr.net pour
+  //     le script Scalar lui-même.
+  //   - style-src : 'unsafe-inline' requis par les innombrables `style={{}}`
+  //     React du panel (pas de refonte réaliste vers un CSS 100% externe).
+  //   - connect-src / frame-src : domaines des providers captcha (CAP,
+  //     hCaptcha, reCAPTCHA, Turnstile) — un CAP auto-hébergé ailleurs que
+  //     cap.trycap.dev devra élargir `connect-src` ici.
+  //   - img-src : flagcdn.com (drapeaux pays, Pool/Analytics).
+  app.use(
+    helmet({
+      contentSecurityPolicy: {
+        directives: {
+          defaultSrc: ["'self'"],
+          scriptSrc: ["'self'", "'unsafe-inline'", 'https://cdn.jsdelivr.net'],
+          styleSrc: ["'self'", "'unsafe-inline'", 'https://cdn.jsdelivr.net'],
+          imgSrc: ["'self'", 'data:', 'https://flagcdn.com', 'https://cdn.jsdelivr.net'],
+          fontSrc: ["'self'", 'data:', 'https://cdn.jsdelivr.net'],
+          connectSrc: [
+            "'self'",
+            'https://cdn.jsdelivr.net',
+            'https://cap.trycap.dev',
+            'https://hcaptcha.com',
+            'https://*.hcaptcha.com',
+            'https://www.google.com',
+            'https://challenges.cloudflare.com',
+          ],
+          frameSrc: [
+            "'self'",
+            'https://www.google.com',
+            'https://challenges.cloudflare.com',
+            'https://*.hcaptcha.com',
+          ],
+          objectSrc: ["'none'"],
+          baseUri: ["'self'"],
+          frameAncestors: ["'self'"],
+        },
+      },
+      // Désactivé : bloquerait le chargement du script Scalar (cdn.jsdelivr.net)
+      // sur /docs, qui ne pose pas systématiquement les en-têtes CORP requis.
+      crossOriginEmbedderPolicy: false,
+    }),
+  );
 
   // Reverse-proxy des addons officiels embarqués — DOIT être monté AVANT
   // les body-parsers ci-dessous : il faut le flux brut de la requête pour le
@@ -98,7 +148,7 @@ async function bootstrap() {
   await app.listen(apiPort, '0.0.0.0');
   Logger.log(`API listening on :${apiPort}`, 'Bootstrap');
   // Build marker — bump this string on every deploy you want to confirm is live.
-  Logger.log('BUILD MARKER: panel-os-v2.4.59', 'Bootstrap');
+  Logger.log('BUILD MARKER: panel-os-v2.4.60', 'Bootstrap');
 
   // Le moteur proxy TCP n'a de sens qu'avec une base connectée (auth des
   // sous-utilisateurs). On ne le démarre donc pas tant que la base n'est pas
