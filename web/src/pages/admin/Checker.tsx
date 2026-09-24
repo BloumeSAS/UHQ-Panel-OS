@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Play, Pause, Trash2, Activity, ShieldCheck, ShieldAlert, Globe } from 'lucide-react';
+import { Play, Pause, Trash2, Activity, ShieldCheck, ShieldAlert, Globe, Square, PlayCircle } from 'lucide-react';
 import { api, apiError, getToken } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { Badge, Button, Card, CardContent, Table, TBody, TD, TH, THead, TR } from '@/components/ui';
@@ -15,6 +15,7 @@ interface LogEntry {
 
 interface CheckerStatus {
   running: boolean;
+  loopEnabled: boolean;
   total: number;
   processed: number;
   progress: number;
@@ -79,6 +80,14 @@ export default function Checker() {
   // Run Mutation
   const runMutation = useMutation({
     mutationFn: async () => await api.post('/checker/run'),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['checker-status'] });
+      refetch();
+    },
+  });
+
+  const loopMutation = useMutation({
+    mutationFn: async (action: 'start' | 'stop') => await api.post(`/checker/${action}`),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['checker-status'] });
       refetch();
@@ -166,22 +175,49 @@ export default function Checker() {
                   <span className="text-lg font-bold">
                     {status?.running ? t('checker.running') : t('checker.idle')}
                   </span>
+                  <Badge variant={status?.loopEnabled ? 'default' : 'outline'} className="ml-1 text-[10px]">
+                    {status?.loopEnabled ? t('checker.loopOn') : t('checker.loopOff')}
+                  </Badge>
                 </div>
               </div>
 
-              <Button
-                onClick={() => runMutation.mutate()}
-                disabled={status?.running || runMutation.isPending}
-                className={cn(
-                  "relative overflow-hidden font-semibold transition-all duration-300",
-                  status?.running
-                    ? "bg-muted text-muted-foreground"
-                    : "bg-gradient-to-r from-primary to-violet-600 hover:from-primary/95 hover:to-violet-600/95 shadow-md shadow-primary/20 hover:shadow-lg hover:shadow-primary/30"
+              <div className="flex items-center gap-2">
+                {status?.loopEnabled ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => loopMutation.mutate('stop')}
+                    disabled={loopMutation.isPending}
+                    className="text-destructive border-destructive/50 hover:bg-destructive/10"
+                  >
+                    <Square className="h-3.5 w-3.5 mr-1.5" />
+                    {t('checker.stopLoop')}
+                  </Button>
+                ) : (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => loopMutation.mutate('start')}
+                    disabled={loopMutation.isPending}
+                  >
+                    <PlayCircle className="h-3.5 w-3.5 mr-1.5" />
+                    {t('checker.startLoop')}
+                  </Button>
                 )}
-              >
-                <Play className="h-4 w-4 mr-1.5" />
-                {t('checker.runNow')}
-              </Button>
+                <Button
+                  onClick={() => runMutation.mutate()}
+                  disabled={status?.running || runMutation.isPending}
+                  className={cn(
+                    "relative overflow-hidden font-semibold transition-all duration-300",
+                    status?.running
+                      ? "bg-muted text-muted-foreground"
+                      : "bg-gradient-to-r from-primary to-violet-600 hover:from-primary/95 hover:to-violet-600/95 shadow-md shadow-primary/20 hover:shadow-lg hover:shadow-primary/30"
+                  )}
+                >
+                  <Play className="h-4 w-4 mr-1.5" />
+                  {t('checker.runNow')}
+                </Button>
+              </div>
             </div>
 
             {status?.running && (

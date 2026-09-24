@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -21,9 +21,11 @@ export class BannedIpsController {
   ) {}
 
   @Get()
-  async list() {
-    const data = await this.bannedIps.list();
-    return { status: 'success', data };
+  async list(@Query('page') page?: string, @Query('pageSize') pageSize?: string, @Query('q') q?: string) {
+    const p = Math.max(1, parseInt(page ?? '1', 10) || 1);
+    const ps = Math.min(100, Math.max(1, parseInt(pageSize ?? '25', 10) || 25));
+    const result = await this.bannedIps.list(p, ps, q);
+    return { status: 'success', ...result };
   }
 
   /** Bannit une ou plusieurs IP en un seul appel (bannissement en masse). */

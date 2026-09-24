@@ -42,6 +42,15 @@ export const SETTING_DEFS = {
   checkerTimeout: { def: '5', env: 'CHECKER_TIMEOUT', secret: false },
   skipDeadProxies: { def: 'true', env: undefined, secret: false },
   deadProxyMaxRetries: { def: '3', env: undefined, secret: false },
+  // Si désactivé, le checker reste inerte au démarrage du conteneur — un
+  // "Démarrer" manuel (page Checker) ou un simple "Lancer un cycle" reste
+  // toujours possible. Utile pour un déploiement où l'admin veut valider la
+  // config (settings, pools) avant de lancer 150k vérifications.
+  checkerAutoStartEnabled: { def: 'true', env: undefined, secret: false },
+  // Priorise les proxies au pays inconnu (jamais vérifié avec succès, ou
+  // probe pays échouée) en tête de chaque cycle — utile après un import en
+  // masse pour résorber rapidement le "Unknown" affiché dans Pool/Analytics.
+  checkerPrioritizeUnknownCountry: { def: 'false', env: undefined, secret: false },
   // Rétention de la table AuditLog (mois) — contrairement au ring buffer de
   // logs (2000 entrées) et aux fichiers (30 jours), cette table grossissait
   // indéfiniment. Nettoyage quotidien via AuditService.

@@ -6,6 +6,7 @@ import { useT } from '@/lib/i18n';
 import { useAuth } from '@/lib/auth';
 import { Button, Card, CardContent, CardHeader, CardTitle } from '@/components/ui';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/dialog';
+import { Markdown } from '@/components/Markdown';
 
 interface Release {
   tag: string;
@@ -153,9 +154,7 @@ export default function About() {
                       {new Date(r.publishedAt).toLocaleDateString()}
                     </span>
                   </div>
-                  {r.body && (
-                    <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground leading-relaxed">{r.body}</p>
-                  )}
+                  {r.body && <Markdown className="mt-1">{r.body}</Markdown>}
                 </li>
               ))}
             </ol>

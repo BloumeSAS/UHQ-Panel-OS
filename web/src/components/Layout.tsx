@@ -152,6 +152,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
         { to: '/users', label: t('nav.users'), icon: Users },
         { to: '/pool', label: t('nav.pool'), icon: Server },
         { to: '/proxy-pools', label: t('nav.proxyPools'), icon: Layers },
+      ],
+    },
+    {
+      label: t('nav.sectionSourcing'),
+      items: [
         { to: '/scraper', label: t('nav.scraper'), icon: Radar },
         { to: '/checker', label: t('nav.checker'), icon: Activity },
         { to: '/banned-ips', label: t('nav.bannedIps'), icon: ShieldBan },

@@ -44,6 +44,12 @@ export class CheckerService implements OnModuleInit {
   private lastRunTimestamp: Date | null = null;
   private lastRunDurationMs = 0;
   private lastRunProcessed = 0;
+  // Boucle automatique (indépendante de `running`, qui ne couvre qu'un cycle) :
+  // `loopEnabled` piloté par start()/stop() ; `loopActive` évite de lancer
+  // deux boucles en parallèle si start() est appelé pendant qu'une boucle
+  // existe déjà (ex. double-clic).
+  private loopEnabled = false;
+  private loopActive = false;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -53,7 +59,34 @@ export class CheckerService implements OnModuleInit {
   ) {}
 
   onModuleInit(): void {
-    setTimeout(() => this.startBackgroundLoop(), 60_000);
+    // Si désactivé, le checker reste inerte au boot — déclenchable manuellement
+    // depuis /checker (bouton "Démarrer") ou un cycle ponctuel ("Lancer un cycle").
+    if (!this.settings.getBool('checkerAutoStartEnabled')) {
+      this.logger.log('Démarrage automatique du checker désactivé (Paramètres → Moteur proxy).');
+      return;
+    }
+    setTimeout(() => this.start(), 60_000);
+  }
+
+  /** Démarre la boucle automatique (no-op si déjà active). */
+  start(): void {
+    if (this.loopActive) return;
+    this.loopEnabled = true;
+    this.startBackgroundLoop();
+  }
+
+  /**
+   * Arrête la boucle automatique — n'interrompt PAS un cycle en cours
+   * (`runOnce` continue jusqu'à son terme naturel, cf. commentaire sur
+   * `running`), seulement la planification du prochain. "Lancer un cycle"
+   * reste utilisable même boucle arrêtée.
+   */
+  stop(): void {
+    this.loopEnabled = false;
+  }
+
+  isLoopEnabled(): boolean {
+    return this.loopEnabled;
   }
 
   async runOnce(): Promise<void> {
@@ -105,20 +138,46 @@ export class CheckerService implements OnModuleInit {
       if (skipDead) {
         andConditions.push({ OR: [{ isWorking: true }, { failCount: { lt: maxRetries } }] });
       }
-      const rawCandidates = await this.prisma.backendProxy.findMany({
-        where: { AND: andConditions },
-        orderBy: { lastChecked: 'asc' },
-        take: 150_000,
-        // Ne charger QUE les colonnes réellement relues côté JS pendant le
-        // cycle (id/url/ip/port/protocol). Les ~15 autres colonnes de
-        // BackendProxy (failCount, country, averageLatency, successCount,
-        // failureCount, isWorking, pool, provider, archived…) ne sont jamais
-        // lues ici — les mises à jour les touchent en SQL (updateMany /
-        // $executeRawUnsafe), pas depuis ces objets. Les tirer pour 150k
-        // lignes ne fait que gonfler la RAM : sélection ciblée ≈ ÷3 sur
-        // l'empreinte du lot de candidats.
-        select: { id: true, url: true, ip: true, port: true, protocol: true },
-      });
+      // Ne charger QUE les colonnes réellement relues côté JS pendant le
+      // cycle (id/url/ip/port/protocol). Les ~15 autres colonnes de
+      // BackendProxy (failCount, country, averageLatency, successCount,
+      // failureCount, isWorking, pool, provider, archived…) ne sont jamais
+      // lues ici — les mises à jour les touchent en SQL (updateMany /
+      // $executeRawUnsafe), pas depuis ces objets. Les tirer pour 150k
+      // lignes ne fait que gonfler la RAM : sélection ciblée ≈ ÷3 sur
+      // l'empreinte du lot de candidats.
+      const CANDIDATE_SELECT = { id: true, url: true, ip: true, port: true, protocol: true } as const;
+      const CANDIDATE_TAKE = 150_000;
+      let rawCandidates: Array<{ id: string; url: string; ip: string; port: number; protocol: string }>;
+      if (this.settings.getBool('checkerPrioritizeUnknownCountry')) {
+        // Deux requêtes plutôt qu'un ORDER BY "nulls first" : reste correct
+        // quelle que soit la version de Prisma, et le plan requête est trivial
+        // (deux scans indexés) — pas besoin de finesse ici pour 150k lignes max.
+        const unknownWhere = { AND: [...andConditions, { OR: [{ country: null }, { country: '' }] }] };
+        const unknownRows = await this.prisma.backendProxy.findMany({
+          where: unknownWhere,
+          orderBy: { lastChecked: 'asc' },
+          take: CANDIDATE_TAKE,
+          select: CANDIDATE_SELECT,
+        });
+        const remaining = CANDIDATE_TAKE - unknownRows.length;
+        const knownRows = remaining > 0
+          ? await this.prisma.backendProxy.findMany({
+              where: { AND: [...andConditions, { AND: [{ country: { not: null } }, { country: { not: '' } }] }] },
+              orderBy: { lastChecked: 'asc' },
+              take: remaining,
+              select: CANDIDATE_SELECT,
+            })
+          : [];
+        rawCandidates = [...unknownRows, ...knownRows];
+      } else {
+        rawCandidates = await this.prisma.backendProxy.findMany({
+          where: { AND: andConditions },
+          orderBy: { lastChecked: 'asc' },
+          take: CANDIDATE_TAKE,
+          select: CANDIDATE_SELECT,
+        });
+      }
 
       // Hygiène : une ligne scrapée malformée (ex. export Tor "ExitAddress
       // <ip> <date>" sans port réel) peut avoir glissé en base avant le
@@ -514,20 +573,27 @@ export class CheckerService implements OnModuleInit {
   }
 
   private async startBackgroundLoop(): Promise<void> {
-    while (true) {
-      try {
-        await this.runOnce();
-      } catch (e) {
-        this.logger.error(`Checker cycle error: ${e}`);
+    this.loopActive = true;
+    try {
+      while (this.loopEnabled) {
+        try {
+          await this.runOnce();
+        } catch (e) {
+          this.logger.error(`Checker cycle error: ${e}`);
+        }
+        if (!this.loopEnabled) break;
+        this.logger.log(`Sleeping ${this.intervalSec}s before next check cycle`);
+        await new Promise((r) => setTimeout(r, this.intervalSec * 1000));
       }
-      this.logger.log(`Sleeping ${this.intervalSec}s before next check cycle`);
-      await new Promise((r) => setTimeout(r, this.intervalSec * 1000));
+    } finally {
+      this.loopActive = false;
     }
   }
 
   getStatus() {
     return {
       running: this.running,
+      loopEnabled: this.loopEnabled,
       total: this.totalCount,
       processed: this.processedCount,
       progress: this.totalCount > 0 ? Math.round((this.processedCount / this.totalCount) * 1000) / 10 : 0,

@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2, FlaskConical, Play, Pencil, Layers, CheckSquare, Square, Wand2, RotateCcw, AlertTriangle } from 'lucide-react';
+import { Plus, Trash2, FlaskConical, Play, Pencil, Layers, CheckSquare, Square, Wand2, RotateCcw, AlertTriangle, Search, ChevronLeft, ChevronRight } from 'lucide-react';
 import { api, apiError } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import {
@@ -61,14 +61,28 @@ export default function Scraper() {
 
   const [editing, setEditing] = useState<Source | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 25;
+
+  const filtered = (data ?? []).filter((s) => {
+    const q = search.trim().toLowerCase();
+    if (!q) return true;
+    return s.name.toLowerCase().includes(q) || s.url.toLowerCase().includes(q);
+  });
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const paged = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
   const toggleSelect = (id: string) =>
     setSelected((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const toggleAll = () => {
-    const ids = data?.map((s) => s.id) ?? [];
+    const ids = paged.map((s) => s.id);
     setSelected(ids.length > 0 && ids.every((id) => selected.has(id)) ? new Set() : new Set(ids));
   };
-  const allSelected = (data?.length ?? 0) > 0 && (data ?? []).every((s) => selected.has(s.id));
+  const allSelected = paged.length > 0 && paged.every((s) => selected.has(s.id));
+
+  useEffect(() => { setPage(1); }, [search]);
 
   const bulkDelete = async () => {
     const n = selected.size;
@@ -150,6 +164,16 @@ export default function Scraper() {
         <div className="rounded-md border bg-muted/40 p-3 text-sm font-mono">{testResult}</div>
       )}
 
+      <div className="relative max-w-sm">
+        <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder={t('scraper.searchPlaceholder')}
+          className="pl-8"
+        />
+      </div>
+
       <Card>
         <CardContent className="p-0">
           <Table>
@@ -169,7 +193,7 @@ export default function Scraper() {
               </TR>
             </THead>
             <TBody>
-              {data?.map((s) => (
+              {paged.map((s) => (
                 <TR key={s.id}>
                   <TD>
                     <button onClick={() => toggleSelect(s.id)} className="flex items-center justify-center">
@@ -231,13 +255,32 @@ export default function Scraper() {
                   </TD>
                 </TR>
               ))}
-              {!data?.length && (
-                <TR><TD colSpan={7} className="py-8 text-center text-muted-foreground">{t('common.none')}</TD></TR>
+              {!paged.length && (
+                <TR><TD colSpan={7} className="py-8 text-center text-muted-foreground">{search ? t('common.noResults') : t('common.none')}</TD></TR>
               )}
             </TBody>
           </Table>
         </CardContent>
       </Card>
+
+      {filtered.length > 0 && (
+        <div className="flex items-center justify-between">
+          <p className="text-xs text-muted-foreground">
+            {t('scraper.totalCount').replace('{n}', String(filtered.length))}
+          </p>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" disabled={safePage === 1} onClick={() => setPage((p) => p - 1)} className="h-8 gap-1">
+              <ChevronLeft className="h-3.5 w-3.5" /> {t('common.previous')}
+            </Button>
+            <span className="text-xs text-muted-foreground">
+              {t('common.page')} <span className="font-semibold">{safePage}</span> / {totalPages}
+            </span>
+            <Button variant="outline" size="sm" disabled={safePage >= totalPages} onClick={() => setPage((p) => p + 1)} className="h-8 gap-1">
+              {t('common.next')} <ChevronRight className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        </div>
+      )}
       {editing && (
         <EditDialog source={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); invalidate(); }} />
       )}

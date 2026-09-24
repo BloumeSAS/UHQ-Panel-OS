@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ShieldBan, Trash2, Plus, CheckSquare, Square } from 'lucide-react';
+import { ShieldBan, Trash2, Plus, CheckSquare, Square, Search, ChevronLeft, ChevronRight } from 'lucide-react';
 import { api, apiError } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import {
@@ -35,11 +35,28 @@ export default function BannedIps() {
   const [reason, setReason] = useState('');
   const [expiresAt, setExpiresAt] = useState('');
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const PAGE_SIZE = 25;
+  const [page, setPage] = useState(1);
+  const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
 
-  const { data } = useQuery({
-    queryKey: ['banned-ips'],
-    queryFn: async () => (await api.get('/banned-ips')).data.data as BannedIp[],
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(t);
+  }, [search]);
+  useEffect(() => { setPage(1); }, [debouncedSearch]);
+
+  const { data: result } = useQuery({
+    queryKey: ['banned-ips', page, debouncedSearch],
+    queryFn: async () =>
+      (await api.get('/banned-ips', { params: { page, pageSize: PAGE_SIZE, q: debouncedSearch || undefined } })).data as {
+        data: BannedIp[];
+        total: number;
+      },
   });
+  const data = result?.data;
+  const total = result?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ['banned-ips'] });
 
@@ -159,6 +176,16 @@ export default function BannedIps() {
         </div>
       )}
 
+      <div className="relative max-w-sm">
+        <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder={t('bannedIps.searchPlaceholder')}
+          className="pl-8"
+        />
+      </div>
+
       <Card className="overflow-hidden">
         <CardContent className="p-0">
           <Table>
@@ -223,6 +250,25 @@ export default function BannedIps() {
           </Table>
         </CardContent>
       </Card>
+
+      {total > 0 && (
+        <div className="flex items-center justify-between">
+          <p className="text-xs text-muted-foreground">
+            {t('bannedIps.totalCount').replace('{n}', String(total))}
+          </p>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" disabled={page === 1} onClick={() => setPage((p) => p - 1)} className="h-8 gap-1">
+              <ChevronLeft className="h-3.5 w-3.5" /> {t('common.previous')}
+            </Button>
+            <span className="text-xs text-muted-foreground">
+              {t('common.page')} <span className="font-semibold">{page}</span> / {totalPages}
+            </span>
+            <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)} className="h-8 gap-1">
+              {t('common.next')} <ChevronRight className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

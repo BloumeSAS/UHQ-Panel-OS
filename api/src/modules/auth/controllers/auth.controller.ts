@@ -21,6 +21,7 @@ import type { JwtUser } from '../../../common/guards/jwt-auth.guard';
 import { LoginDto, Login2faDto, RegisterDto, SetupDto, ForgotPasswordDto, ResetPasswordDto } from '../../../common/dto/panel.dto';
 import { t } from '../../../common/utils/i18n';
 import { verifyCaptcha, type CaptchaProvider } from '../../../common/utils/captcha.util';
+import { getClientIp } from '../../../common/utils/client-ip';
 import { MailService } from '../../mail/mail.service';
 import { RateLimiterService } from '../../../common/rate-limiter.service';
 import { authenticator } from '@otplib/preset-default';
@@ -45,13 +46,11 @@ export class PanelAuthController {
     private readonly rateLimiter: RateLimiterService,
   ) {}
 
-  // `req.ip` (Express) respecte le réglage `trust proxy` posé dans main.ts
-  // (1 hop = Traefik/Coolify) : contrairement à un parsing manuel de
-  // `X-Forwarded-For`, un client ne peut pas y injecter une IP arbitraire
-  // pour contourner le rate-limit — Express ignore tout ce qui précède le
-  // dernier hop réellement ajouté par le reverse proxy de confiance.
+  // Cf. common/utils/client-ip.ts : priorise CF-Connecting-IP (Cloudflare)
+  // avant le calcul Express `req.ip` (`trust proxy`, 1 seul hop — insuffisant
+  // dès que Cloudflare est aussi devant le reverse proxy applicatif).
   private clientIp(req: any): string {
-    return req.ip ?? req.socket?.remoteAddress ?? 'unknown';
+    return getClientIp(req);
   }
 
   /** Lecture publique : pilote l'écran de démarrage du front. */

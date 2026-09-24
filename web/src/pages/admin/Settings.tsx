@@ -149,6 +149,8 @@ export default function Settings() {
         'backupDatabaseEnabled',
         'invitationsEnabled',
         'skipDeadProxies',
+        'checkerAutoStartEnabled',
+        'checkerPrioritizeUnknownCountry',
         'require2faForAdmins',
         'proxyAuthAutoBanEnabled',
       ])
@@ -521,6 +523,21 @@ export default function Settings() {
                 </F>
               </Grid>
             )}
+
+            <Separator label={t('settings.checkerBehavior')} />
+
+            <Row>
+              <Toggle
+                label={t('settings.checkerAutoStart')}
+                hint={t('settings.checkerAutoStartHint')}
+                k="checkerAutoStartEnabled" form={form} set={set}
+              />
+              <Toggle
+                label={t('settings.checkerPrioritizeUnknown')}
+                hint={t('settings.checkerPrioritizeUnknownHint')}
+                k="checkerPrioritizeUnknownCountry" form={form} set={set}
+              />
+            </Row>
 
             <Separator label={t('settings.integrations')} />
 

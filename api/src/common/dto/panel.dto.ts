@@ -120,6 +120,8 @@ export class UpdateSettingsDto {
   @ApiPropertyOptional() @IsOptional() @IsString() checkerTimeout?: string;
   @ApiPropertyOptional() @IsOptional() @IsBoolean() @Transform(({ value }) => value === undefined || value === null ? value : (value === 'true' || value === true)) skipDeadProxies?: boolean;
   @ApiPropertyOptional() @IsOptional() @IsString() deadProxyMaxRetries?: string;
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() @Transform(({ value }) => value === undefined || value === null ? value : (value === 'true' || value === true)) checkerAutoStartEnabled?: boolean;
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() @Transform(({ value }) => value === undefined || value === null ? value : (value === 'true' || value === true)) checkerPrioritizeUnknownCountry?: boolean;
   @ApiPropertyOptional() @IsOptional() @IsString() auditLogRetentionMonths?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() notificationRetentionDays?: string;
   @ApiPropertyOptional() @IsOptional() @IsBoolean() @Transform(({ value }) => value === undefined || value === null ? value : (value === 'true' || value === true)) require2faForAdmins?: boolean;

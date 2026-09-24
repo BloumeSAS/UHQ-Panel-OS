@@ -10,8 +10,26 @@ export class BannedIpsService {
     private readonly proxyServer: ProxyServerService,
   ) {}
 
-  async list() {
-    return this.prisma.bannedIp.findMany({ orderBy: { createdAt: 'desc' } });
+  /** Liste paginée, avec recherche optionnelle sur l'IP ou la raison. */
+  async list(page = 1, pageSize = 25, q?: string) {
+    const where = q?.trim()
+      ? {
+          OR: [
+            { ip: { contains: q.trim(), mode: 'insensitive' as const } },
+            { reason: { contains: q.trim(), mode: 'insensitive' as const } },
+          ],
+        }
+      : undefined;
+    const [data, total] = await Promise.all([
+      this.prisma.bannedIp.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+      this.prisma.bannedIp.count({ where }),
+    ]);
+    return { data, total, page, pageSize };
   }
 
   /** Bannit une ou plusieurs IP en une fois (upsert — re-bannir met à jour raison/expiration). */

@@ -55,6 +55,20 @@ export class CheckerController {
     return { status: 'success', message: 'Cycle de vérification déclenché' };
   }
 
+  /** Démarre la boucle automatique (cycles répétés selon l'intervalle configuré). */
+  @Post('start')
+  start() {
+    this.checker.start();
+    return { status: 'success' };
+  }
+
+  /** Arrête la boucle automatique — le cycle en cours va à son terme, mais aucun autre n'est planifié. */
+  @Post('stop')
+  stop() {
+    this.checker.stop();
+    return { status: 'success' };
+  }
+
   /** Test immédiat d'un seul proxy (bouton "Tester" du Pool) — ne dépend pas du cycle périodique. */
   @ApiParam({ name: 'id', description: 'ID du proxy dans le pool' })
   @Post('proxies/:id/check')
