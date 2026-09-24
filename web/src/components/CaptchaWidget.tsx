@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 
 export type CaptchaProvider = 'none' | 'hcaptcha' | 'recaptcha' | 'turnstile' | 'cap';
 
@@ -58,9 +58,22 @@ export function CaptchaWidget({ provider, siteKey, onVerify, onExpire, capEndpoi
   const widgetIdRef = useRef<any>(null);
   const mountedRef = useRef(true);
   const capWidgetRef = useRef<HTMLElement | null>(null);
+  // Une fois résolu, on affiche la confirmation depuis l'ÉTAT React (pas
+  // une simple manipulation du DOM) : le web component CAP retombe parfois
+  // dans un état "à refaire" après avoir émis `solve` (ré-affiche sa
+  // checkbox comme si rien n'avait été résolu), et un remontage du widget
+  // (effet ré-exécuté, re-render du parent, etc.) écrasait la confirmation
+  // qu'on avait injectée manuellement dans le DOM. En pilotant l'affichage
+  // par du state, la confirmation reste visible quoi qu'il arrive côté CAP
+  // — le token déjà capturé reste valide, seul l'AFFICHAGE du widget mentait.
+  const [capSolved, setCapSolved] = useState(false);
+  const capSolvedRef = useRef(false);
 
   // ── CAP (web component) ────────────────────────────────────────────────────
   const renderCap = useCallback(() => {
+    // Déjà résolu : ne pas re-générer le widget (qui réafficherait sa
+    // checkbox non cochée) — la confirmation React reste affichée telle quelle.
+    if (capSolvedRef.current) return;
     if (!containerRef.current || !mountedRef.current) return;
     containerRef.current.innerHTML = '';
 
@@ -73,19 +86,8 @@ export function CaptchaWidget({ provider, siteKey, onVerify, onExpire, capEndpoi
       const token: string = e.detail?.token ?? '';
       if (!token) return;
       onVerify(token);
-      // Le web component CAP retombe parfois dans un état "à refaire" après
-      // avoir émis `solve` (ré-affiche sa checkbox comme si rien n'avait été
-      // résolu), alors que le token déjà capturé ici reste valide — le login
-      // fonctionne malgré ce message trompeur. On fige l'UI sur notre propre
-      // confirmation dès que le token est reçu, pour ne plus exposer l'état
-      // interne (parfois incohérent) du widget une fois la résolution faite.
-      if (containerRef.current) {
-        containerRef.current.innerHTML = '';
-        const check = document.createElement('div');
-        check.className = 'flex items-center gap-2 rounded-md border border-input bg-muted/40 px-3 py-2 text-sm text-muted-foreground';
-        check.textContent = '✓ Vérification réussie';
-        containerRef.current.appendChild(check);
-      }
+      capSolvedRef.current = true;
+      if (mountedRef.current) setCapSolved(true);
     });
     containerRef.current.appendChild(el);
     capWidgetRef.current = el;
@@ -126,6 +128,10 @@ export function CaptchaWidget({ provider, siteKey, onVerify, onExpire, capEndpoi
 
   useEffect(() => {
     mountedRef.current = true;
+    // Nouveau cycle (montage, ou changement de provider/siteKey/endpoint) :
+    // on repart d'un captcha non résolu.
+    capSolvedRef.current = false;
+    setCapSolved(false);
     if (provider === 'none' || !siteKey) return;
 
     const src = SCRIPTS[provider];
@@ -165,6 +171,14 @@ export function CaptchaWidget({ provider, siteKey, onVerify, onExpire, capEndpoi
   }, [provider, siteKey, capEndpoint, renderCap, renderClassic, getApi]);
 
   if (provider === 'none' || !siteKey) return null;
+
+  if (provider === 'cap' && capSolved) {
+    return (
+      <div className="my-2 flex items-center gap-2 rounded-md border border-input bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+        ✓ Vérification réussie
+      </div>
+    );
+  }
 
   return <div ref={containerRef} className="my-2" />;
 }

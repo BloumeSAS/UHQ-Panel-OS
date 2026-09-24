@@ -2,7 +2,7 @@ import { useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import * as LucideIcons from 'lucide-react';
 import { Puzzle } from 'lucide-react';
-import { api } from '@/lib/api';
+import { api, getToken } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { useI18n } from '@/lib/i18n';
 import { useTheme } from '@/lib/theme';
@@ -145,7 +145,7 @@ function buildUrl(
   if (opts.page) url.searchParams.set('page', opts.page);
 
   if (opts.passJwt) {
-    const token = localStorage.getItem('token');
+    const token = getToken();
     if (token) url.searchParams.set('token', token);
   }
   if (opts.passUserInfo && opts.user) {
