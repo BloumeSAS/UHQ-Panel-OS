@@ -2,21 +2,29 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useT } from '@/lib/i18n';
-import { KeyRound, Plus, Trash2, Eye, EyeOff, Copy, Check, Shield } from 'lucide-react';
+import { useAuth } from '@/lib/auth';
+import { KeyRound, Plus, Trash2, Eye, EyeOff, Copy, Check, Shield, Info } from 'lucide-react';
 import { Button, Input, Card } from '@/components/ui';
 import { toast } from '@/lib/toast';
 
-const ALL_SCOPES = [
-  'read:proxies',
-  'write:proxies',
-  'read:stats',
-  'read:users',
-  'write:users',
-  'read:pool',
-];
+/**
+ * Portées disponibles. `write:proxies`/`read:proxies`/`read:stats` sont
+ * sûres pour un compte USER : les endpoints qu'elles déverrouillent
+ * (`/api/v1/me/*`, côté serveur) sont TOUJOURS filtrés par propriétaire
+ * — une clé USER ne peut jamais voir/modifier les comptes proxy d'un
+ * autre utilisateur. `read:pool` et `read:users`/`write:users` donnent
+ * une vue panel-wide (pool partagé, autres comptes) — réservées ADMIN,
+ * une clé USER ne pourrait de toute façon rien en faire (les routes
+ * correspondantes exigent la clé maître, pas une clé à portée réduite).
+ */
+const USER_SCOPES = ['read:proxies', 'write:proxies', 'read:stats'];
+const ADMIN_ONLY_SCOPES = ['read:pool', 'read:users', 'write:users'];
 
 export default function ApiKeysPage() {
   const t = useT();
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'ADMIN';
+  const ALL_SCOPES = isAdmin ? [...USER_SCOPES, ...ADMIN_ONLY_SCOPES] : USER_SCOPES;
   const queryClient = useQueryClient();
   const [showCreate, setShowCreate] = useState(false);
   const [newKey, setNewKey] = useState<string | null>(null);
@@ -95,6 +103,8 @@ export default function ApiKeysPage() {
           {t('apiKeys.create')}
         </Button>
       </div>
+
+      <ScopesDocs isAdmin={isAdmin} />
 
       {/* New key created — show only once */}
       {newKey && (
@@ -223,5 +233,63 @@ export default function ApiKeysPage() {
         ))}
       </div>
     </div>
+  );
+}
+
+function ScopesDocs({ isAdmin }: { isAdmin: boolean }) {
+  const t = useT();
+  const [open, setOpen] = useState(false);
+  const rows: { scope: string; descKey: string }[] = [
+    { scope: 'read:proxies', descKey: 'apiKeys.docReadProxies' },
+    { scope: 'write:proxies', descKey: 'apiKeys.docWriteProxies' },
+    { scope: 'read:stats', descKey: 'apiKeys.docReadStats' },
+    ...(isAdmin
+      ? [
+          { scope: 'read:pool', descKey: 'apiKeys.docReadPool' },
+          { scope: 'read:users', descKey: 'apiKeys.docReadUsers' },
+          { scope: 'write:users', descKey: 'apiKeys.docWriteUsers' },
+        ]
+      : []),
+  ];
+
+  return (
+    <Card className="p-4">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center justify-between text-left"
+      >
+        <span className="flex items-center gap-2 text-sm font-semibold">
+          <Info className="h-4 w-4 text-primary" />
+          {t('apiKeys.docsTitle')}
+        </span>
+        <span className="text-xs text-muted-foreground">{open ? t('common.hide') : t('common.show')}</span>
+      </button>
+      {open && (
+        <div className="mt-3 space-y-3 text-sm">
+          <p className="text-muted-foreground leading-relaxed">
+            {isAdmin ? t('apiKeys.docsIntroAdmin') : t('apiKeys.docsIntroUser')}
+          </p>
+          <div className="space-y-2">
+            {rows.map((r) => (
+              <div key={r.scope} className="flex items-start gap-2">
+                <code className="mt-0.5 shrink-0 rounded bg-accent px-1.5 py-0.5 font-mono text-[11px]">{r.scope}</code>
+                <p className="text-muted-foreground leading-relaxed">{t(r.descKey)}</p>
+              </div>
+            ))}
+          </div>
+          <p className="text-xs text-muted-foreground leading-relaxed border-t pt-2">
+            {t('apiKeys.docsEndpointHint')}{' '}
+            <code className="rounded bg-accent px-1 py-0.5 font-mono text-[11px]">/api/v1/me/*</code>
+            {isAdmin && (
+              <>
+                {' '}{t('apiKeys.docsEndpointHintAdmin')}{' '}
+                <code className="rounded bg-accent px-1 py-0.5 font-mono text-[11px]">/api/v1/sub-user/*</code>
+              </>
+            )}
+          </p>
+        </div>
+      )}
+    </Card>
   );
 }

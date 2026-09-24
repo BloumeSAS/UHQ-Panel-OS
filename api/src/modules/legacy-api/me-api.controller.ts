@@ -1,20 +1,29 @@
 import {
+  Body,
   Controller,
   Get,
+  HttpCode,
   HttpException,
   HttpStatus,
+  Post,
   Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBasicAuth, ApiQuery, ApiSecurity, ApiTags } from '@nestjs/swagger';
+import { ApiBasicAuth, ApiOperation, ApiQuery, ApiSecurity, ApiTags } from '@nestjs/swagger';
 import { ApiKeyGuard } from '../../common/guards/api-key.guard';
 import { Scopes } from '../../common/decorators/scopes.decorator';
 import { PrismaService } from '../../database/prisma.service';
 import { ProxyServerService } from '../proxy-engine/proxy-server.service';
-import { buildStickyList, formatSubUser } from '../../common/utils/proxy-format';
+import { buildStickyList, formatSubUser, normalizeDomain } from '../../common/utils/proxy-format';
 import { buildPoolEndpointMap, resolveConnectionEndpoint, resolveHostPortSync } from '../../common/utils/connection-endpoint';
 import { SettingsService } from '../../config/settings.service';
+import {
+  AllowedIpsAddDto,
+  BlockedDomainsAddDto,
+  BlockedDomainsRemoveDto,
+  BlockedDomainsSetDto,
+} from './dto';
 
 /**
  * Endpoints API v1 accessibles par clé API pour un simple USER.
@@ -142,5 +151,89 @@ export class MeApiController {
         threads_limit: user.threadsLimit,
       },
     };
+  }
+
+  // ─── Écriture, limitée aux proxies possédés par la clé courante ────────────
+  // Seule action de gestion accessible à une clé à portée réduite (pas de
+  // create/delete/limits — juste ce qu'un utilisateur doit pouvoir ajuster
+  // lui-même sur SES comptes : IP autorisées et domaines bloqués).
+
+  private async ownedProxy(userId: string, id: string) {
+    const user = await this.prisma.userProxy.findFirst({ where: { id, ownerId: userId } });
+    if (!user) throw new HttpException('Proxy introuvable ou non autorisé', HttpStatus.NOT_FOUND);
+    return user;
+  }
+
+  @ApiOperation({ summary: 'Ajoute des IPs à la liste blanche de VOTRE proxy (fusionne avec l\'existant).' })
+  @Post('proxies/allowed-ips/add')
+  @HttpCode(200)
+  @Scopes('write:proxies')
+  async addAllowedIps(@Req() req: any, @Body() dto: AllowedIpsAddDto) {
+    const userId = req.user?.id;
+    if (!userId) throw new HttpException('Context utilisateur manquant', HttpStatus.BAD_REQUEST);
+    const user = await this.ownedProxy(userId, dto.id);
+    const current = user.ipWhitelist && user.ipWhitelist !== '*' ? user.ipWhitelist.split(',') : [];
+    const merged = Array.from(new Set([...current, ...dto.ips]));
+    const updated = await this.prisma.userProxy.update({
+      where: { id: dto.id },
+      data: { ipWhitelist: merged.join(',') },
+    });
+    this.engine.invalidateUserCache(updated.username);
+    return { status: 'success', data: formatSubUser(updated) };
+  }
+
+  @ApiOperation({ summary: 'Ajoute des domaines à la liste des domaines bloqués de VOTRE proxy (fusionne avec l\'existant).' })
+  @Post('proxies/blocked-domains/add')
+  @HttpCode(200)
+  @Scopes('write:proxies')
+  async addBlockedDomains(@Req() req: any, @Body() dto: BlockedDomainsAddDto) {
+    const userId = req.user?.id;
+    if (!userId) throw new HttpException('Context utilisateur manquant', HttpStatus.BAD_REQUEST);
+    const user = await this.ownedProxy(userId, dto.id);
+    const current = user.blockedDomains ? user.blockedDomains.split(',') : [];
+    const incoming = dto.domains.map((d) => normalizeDomain(d)).filter(Boolean);
+    const merged = Array.from(new Set([...current, ...incoming]));
+    const updated = await this.prisma.userProxy.update({
+      where: { id: dto.id },
+      data: { blockedDomains: merged.join(',') },
+    });
+    this.engine.invalidateUserCache(updated.username);
+    return { status: 'success', data: formatSubUser(updated) };
+  }
+
+  @ApiOperation({ summary: 'Retire des domaines de la liste des domaines bloqués de VOTRE proxy.' })
+  @Post('proxies/blocked-domains/remove')
+  @HttpCode(200)
+  @Scopes('write:proxies')
+  async removeBlockedDomains(@Req() req: any, @Body() dto: BlockedDomainsRemoveDto) {
+    const userId = req.user?.id;
+    if (!userId) throw new HttpException('Context utilisateur manquant', HttpStatus.BAD_REQUEST);
+    const user = await this.ownedProxy(userId, dto.id);
+    const current = user.blockedDomains ? user.blockedDomains.split(',') : [];
+    const toRemove = new Set(dto.domains.map((d) => normalizeDomain(d)).filter(Boolean));
+    const remaining = current.filter((d) => !toRemove.has(d));
+    const updated = await this.prisma.userProxy.update({
+      where: { id: dto.id },
+      data: { blockedDomains: remaining.join(',') || null },
+    });
+    this.engine.invalidateUserCache(updated.username);
+    return { status: 'success', data: formatSubUser(updated) };
+  }
+
+  @ApiOperation({ summary: 'Remplace intégralement la liste des domaines bloqués de VOTRE proxy.' })
+  @Post('proxies/blocked-domains/set')
+  @HttpCode(200)
+  @Scopes('write:proxies')
+  async setBlockedDomains(@Req() req: any, @Body() dto: BlockedDomainsSetDto) {
+    const userId = req.user?.id;
+    if (!userId) throw new HttpException('Context utilisateur manquant', HttpStatus.BAD_REQUEST);
+    await this.ownedProxy(userId, dto.id);
+    const incoming = Array.from(new Set(dto.domains.map((d) => normalizeDomain(d)).filter(Boolean)));
+    const updated = await this.prisma.userProxy.update({
+      where: { id: dto.id },
+      data: { blockedDomains: incoming.join(',') || null },
+    });
+    this.engine.invalidateUserCache(updated.username);
+    return { status: 'success', data: formatSubUser(updated) };
   }
 }

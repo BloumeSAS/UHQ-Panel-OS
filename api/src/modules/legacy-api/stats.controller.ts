@@ -1,6 +1,7 @@
 import { Controller, Get, Param, Query, UseGuards } from '@nestjs/common';
 import { ApiBasicAuth, ApiParam, ApiQuery, ApiSecurity, ApiTags } from '@nestjs/swagger';
 import { ApiKeyGuard } from '../../common/guards/api-key.guard';
+import { MasterKeyGuard } from '../../common/guards/master-key.guard';
 import { Scopes } from '../../common/decorators/scopes.decorator';
 import { PrismaService } from '../../database/prisma.service';
 import { ProxyServerService } from '../proxy-engine/proxy-server.service';
@@ -21,11 +22,12 @@ function periodStart(period: Period): Date {
   }
 }
 
+/** Stats GLOBALES + par proxy_id arbitraire — clé maître uniquement (cf. /api/v1/me/proxies/stats pour l'équivalent self-service). */
 @ApiTags('legacy-stats')
 @ApiSecurity('x-api-key')
 @ApiBasicAuth()
 @Controller('api/v1/stats')
-@UseGuards(ApiKeyGuard)
+@UseGuards(ApiKeyGuard, MasterKeyGuard)
 export class StatsController {
   constructor(
     private readonly prisma: PrismaService,

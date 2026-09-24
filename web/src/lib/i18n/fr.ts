@@ -798,6 +798,17 @@ const fr: Language = {
     'apiKeys.created_label': 'Créée le',
     'apiKeys.expires': 'Expire le',
     'apiKeys.lastUsed': 'Dernière utilisation',
+    'apiKeys.docsTitle': 'Comment fonctionnent les scopes ?',
+    'apiKeys.docsIntroUser': "Une clé API vous permet d'automatiser l'accès à vos propres comptes proxy (script, monitoring…) sans partager votre mot de passe. Elle ne peut jamais voir ou modifier les comptes d'un autre utilisateur — c'est garanti côté serveur, pas seulement par les scopes que vous choisissez ici.",
+    'apiKeys.docsIntroAdmin': "Une clé API donne un accès limité (par scope) à l'API /api/v1, sans utiliser la clé maître globale. Pour un compte USER, l'accès reste toujours limité à ses propres comptes proxy, quels que soient les scopes cochés — seule une clé ADMIN peut avoir une portée panel-wide (pool partagé, tous les comptes).",
+    'apiKeys.docReadProxies': "Lire la liste et les détails de vos comptes proxy (identifiants, limites, stats de base).",
+    'apiKeys.docWriteProxies': "Modifier vos comptes proxy : ajouter des IPs autorisées, ajouter/retirer/remplacer les domaines bloqués. Ne permet pas de créer ou supprimer un compte, ni de changer ses limites.",
+    'apiKeys.docReadStats': "Lire votre solde de trafic consommé et vos statistiques d'usage.",
+    'apiKeys.docReadPool': "(Admin) Lire l'état global du pool de proxies partagé (stats, pays disponibles, liste des IPs upstream).",
+    'apiKeys.docReadUsers': "(Admin) Réservé aux futures intégrations — sans effet sur l'API actuelle.",
+    'apiKeys.docWriteUsers': "(Admin) Réservé aux futures intégrations — sans effet sur l'API actuelle.",
+    'apiKeys.docsEndpointHint': "Vos clés n'accèdent qu'à",
+    'apiKeys.docsEndpointHintAdmin': "— une clé ADMIN avec la clé API maître (Paramètres → Clé API) garde un accès complet, y compris",
 
     // ── Journal d\'audit ────────────────────────────────────────────────────
     'audit.title': 'Journal d\'audit',

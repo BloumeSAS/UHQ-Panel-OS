@@ -1,14 +1,16 @@
 import { Controller, Get, UseGuards } from '@nestjs/common';
 import { ApiBasicAuth, ApiSecurity, ApiTags } from '@nestjs/swagger';
 import { ApiKeyGuard } from '../../common/guards/api-key.guard';
+import { MasterKeyGuard } from '../../common/guards/master-key.guard';
 import { Scopes } from '../../common/decorators/scopes.decorator';
 import { PrismaService } from '../../database/prisma.service';
 
+/** Agrégat GLOBAL (tous les comptes) — clé maître uniquement, cf. /api/v1/me/balance pour l'équivalent self-service. */
 @ApiTags('legacy-user')
 @ApiSecurity('x-api-key')
 @ApiBasicAuth()
 @Controller('api/v1/user')
-@UseGuards(ApiKeyGuard)
+@UseGuards(ApiKeyGuard, MasterKeyGuard)
 export class UserController {
   constructor(private readonly prisma: PrismaService) {}
 

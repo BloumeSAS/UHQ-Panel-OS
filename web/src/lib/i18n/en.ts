@@ -798,6 +798,17 @@ const en: Language = {
     'apiKeys.created_label': 'Created',
     'apiKeys.expires': 'Expires',
     'apiKeys.lastUsed': 'Last used',
+    'apiKeys.docsTitle': 'How do scopes work?',
+    'apiKeys.docsIntroUser': "An API key lets you automate access to your own proxy accounts (script, monitoring…) without sharing your password. It can never see or change another user's accounts — that's guaranteed server-side, not just by the scopes you pick here.",
+    'apiKeys.docsIntroAdmin': "An API key grants limited (scoped) access to the /api/v1 API, without using the global master key. For a USER account, access always stays limited to their own proxy accounts regardless of the scopes checked — only an ADMIN key can have panel-wide scope (shared pool, all accounts).",
+    'apiKeys.docReadProxies': 'Read the list and details of your proxy accounts (credentials, limits, basic stats).',
+    'apiKeys.docWriteProxies': "Edit your proxy accounts: add allowed IPs, add/remove/replace blocked domains. Does not allow creating or deleting an account, or changing its limits.",
+    'apiKeys.docReadStats': 'Read your consumed traffic balance and usage statistics.',
+    'apiKeys.docReadPool': '(Admin) Read the global shared proxy pool state (stats, available countries, upstream IP list).',
+    'apiKeys.docReadUsers': '(Admin) Reserved for future integrations — no effect on the current API.',
+    'apiKeys.docWriteUsers': '(Admin) Reserved for future integrations — no effect on the current API.',
+    'apiKeys.docsEndpointHint': 'Your keys only reach',
+    'apiKeys.docsEndpointHintAdmin': '— an ADMIN key using the master API key (Settings → API Key) keeps full access, including',
 
     // ── Audit Log ─────────────────────────────────────────────────────────
     'audit.title': 'Audit Log',

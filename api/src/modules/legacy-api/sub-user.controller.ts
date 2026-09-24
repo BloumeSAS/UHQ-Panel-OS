@@ -10,6 +10,7 @@ import {
 } from '@nestjs/common';
 import { ApiBasicAuth, ApiOperation, ApiQuery, ApiSecurity, ApiTags } from '@nestjs/swagger';
 import { ApiKeyGuard } from '../../common/guards/api-key.guard';
+import { MasterKeyGuard } from '../../common/guards/master-key.guard';
 import { Scopes } from '../../common/decorators/scopes.decorator';
 import { PrismaService } from '../../database/prisma.service';
 import { ProxyServerService } from '../proxy-engine/proxy-server.service';
@@ -27,11 +28,18 @@ import {
 } from './dto';
 import { normalizeDomain } from '../../common/utils/proxy-format';
 
+/**
+ * Vue GLOBALE (tous les comptes proxy, identifiants en clair inclus) —
+ * réservée à la clé API maître (admin). Une clé à portée réduite créée
+ * depuis le panel ("Clés API") est TOUJOURS refusée ici par MasterKeyGuard,
+ * quels que soient ses scopes — l'équivalent self-service (limité aux
+ * proxies de son propriétaire) est /api/v1/me/*.
+ */
 @ApiTags('legacy-subuser')
 @ApiSecurity('x-api-key')
 @ApiBasicAuth()
 @Controller('api/v1/sub-user')
-@UseGuards(ApiKeyGuard)
+@UseGuards(ApiKeyGuard, MasterKeyGuard)
 export class SubUserController {
   constructor(
     private readonly prisma: PrismaService,
