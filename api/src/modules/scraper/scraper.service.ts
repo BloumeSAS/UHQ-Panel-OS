@@ -30,6 +30,19 @@ export class ScraperService implements OnModuleInit {
   // Tor SOCKS ports — these "proxies" exit through a random Tor node, so their
   // country is unpredictable and breaks country filtering. Skip them entirely.
   private readonly torPorts = new Set([9050, 9150]);
+  // Suivi en direct (page Scraper) — mis à jour pendant runOnce(), remis à
+  // zéro entre les cycles. `loopEnabled` pilote startScrapeLoop() comme
+  // CheckerService : stop() empêche seulement le PROCHAIN cycle planifié,
+  // le cycle en cours va à son terme (Promise.all sur les sources n'est pas
+  // annulable proprement — chaque fetch() n'a pas d'AbortController branché).
+  private sourcesTotal = 0;
+  private sourcesDone = 0;
+  private itemsCollected = 0;
+  private lastRunTimestamp: Date | null = null;
+  private lastRunDurationMs = 0;
+  private lastRunCollected = 0;
+  private loopEnabled = true;
+  private loopActive = false;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -45,7 +58,7 @@ export class ScraperService implements OnModuleInit {
    */
   onModuleInit(): void {
     // Fire & forget background loops — mirrors `asyncio.create_task(...)`
-    setTimeout(() => this.startScrapeLoop(), 30_000);
+    setTimeout(() => this.start(), 30_000);
     setTimeout(() => this.startGeoLoop(), 60_000);
   }
 
@@ -72,6 +85,10 @@ export class ScraperService implements OnModuleInit {
     const acquired = await this.jobs.acquireExclusive('scraper', ['checker']);
     if (!acquired) return;
     this.running = true;
+    const startTime = Date.now();
+    this.sourcesTotal = 0;
+    this.sourcesDone = 0;
+    this.itemsCollected = 0;
     try {
       this.logger.log('Starting proxy scraping cycle...');
 
@@ -99,6 +116,7 @@ export class ScraperService implements OnModuleInit {
       // (spread de 50k args, proche de la limite d'arguments V8).
       const dedup = new Map<string, ProxyItem>();
       const counters = { collected: 0, torSkipped: 0, urlSkipped: 0 };
+      this.sourcesTotal = sources.length + (groqKey ? 1 : 0);
 
       // ── GroqAI provider ────────────────────────────────────────────────────
       if (groqKey) {
@@ -110,6 +128,9 @@ export class ScraperService implements OnModuleInit {
           await this.foldInto(dedup, items, counters);
         } catch (e) {
           this.logger.warn(`[GroqAI] ERREUR: ${e}`);
+        } finally {
+          this.sourcesDone += 1;
+          this.itemsCollected = counters.collected;
         }
       }
 
@@ -151,6 +172,8 @@ export class ScraperService implements OnModuleInit {
           }
           await this.prisma.scraperSource.update({ where: { id: s.id }, data: updates }).catch(() => undefined);
         }
+        this.sourcesDone += 1;
+        this.itemsCollected = counters.collected;
       }));
 
       // ── Upsert ─────────────────────────────────────────────────────────────
@@ -171,10 +194,38 @@ export class ScraperService implements OnModuleInit {
 
       await this.bulkUpsert(merged);
       this.backgroundGeo().catch((e) => this.logger.error(`Background geo failed: ${e}`));
+      this.lastRunTimestamp = new Date();
+      this.lastRunDurationMs = Date.now() - startTime;
+      this.lastRunCollected = merged.length;
     } finally {
       this.running = false;
       this.jobs.release('scraper');
     }
+  }
+
+  /** Démarre la boucle automatique (no-op si déjà active). */
+  start(): void {
+    if (this.loopActive) return;
+    this.loopEnabled = true;
+    this.startScrapeLoop();
+  }
+
+  /** Arrête la boucle automatique — le cycle en cours va à son terme, aucun autre n'est planifié après. */
+  stop(): void {
+    this.loopEnabled = false;
+  }
+
+  getStatus() {
+    return {
+      running: this.running,
+      loopEnabled: this.loopEnabled,
+      sourcesTotal: this.sourcesTotal,
+      sourcesDone: this.sourcesDone,
+      itemsCollected: this.itemsCollected,
+      lastRun: this.lastRunTimestamp,
+      lastRunDurationMs: this.lastRunDurationMs,
+      lastRunCollected: this.lastRunCollected,
+    };
   }
 
   /**
@@ -287,26 +338,32 @@ export class ScraperService implements OnModuleInit {
   // -------------------- Loops --------------------
 
   private async startScrapeLoop(): Promise<void> {
-    while (true) {
-      try {
-        await this.runOnce();
-        // Adaptive scaling: every minute, check if working pool < seuil configuré -> rescrape
-        let accumulated = 0;
-        while (accumulated < this.scrapeIntervalSec) {
-          await new Promise((r) => setTimeout(r, 60_000));
-          accumulated += 60;
-          const minPoolSize = this.settings.getPositiveNumber('scraperMinPoolSize');
-          const working = await this.prisma.backendProxy.count({ where: { isWorking: true } });
-          if (working < minPoolSize) {
-            this.logger.warn(`Adaptive scaling: pool=${working}<${minPoolSize}, triggering early rescrape`);
-            await this.runOnce();
-            accumulated = 0;
+    this.loopActive = true;
+    try {
+      while (this.loopEnabled) {
+        try {
+          await this.runOnce();
+          if (!this.loopEnabled) break;
+          // Adaptive scaling: every minute, check if working pool < seuil configuré -> rescrape
+          let accumulated = 0;
+          while (accumulated < this.scrapeIntervalSec && this.loopEnabled) {
+            await new Promise((r) => setTimeout(r, 60_000));
+            accumulated += 60;
+            const minPoolSize = this.settings.getPositiveNumber('scraperMinPoolSize');
+            const working = await this.prisma.backendProxy.count({ where: { isWorking: true } });
+            if (working < minPoolSize) {
+              this.logger.warn(`Adaptive scaling: pool=${working}<${minPoolSize}, triggering early rescrape`);
+              await this.runOnce();
+              accumulated = 0;
+            }
           }
+        } catch (e) {
+          this.logger.error(`Scraper loop error: ${e}`);
+          await new Promise((r) => setTimeout(r, 60_000));
         }
-      } catch (e) {
-        this.logger.error(`Scraper loop error: ${e}`);
-        await new Promise((r) => setTimeout(r, 60_000));
       }
+    } finally {
+      this.loopActive = false;
     }
   }
 

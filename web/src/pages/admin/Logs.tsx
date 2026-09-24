@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Pause, Play, Trash2, FileText, Radio, Download } from 'lucide-react';
+import { Pause, Play, Trash2, FileText, Radio, Download, Info, RefreshCw, AlertCircle, Search } from 'lucide-react';
 import { api, getToken } from '@/lib/api';
 import { useT } from '@/lib/i18n';
-import { Badge, Button, Card, CardContent } from '@/components/ui';
+import { Badge, Button, Card, CardContent, Input } from '@/components/ui';
 import { cn } from '@/lib/utils';
 
 interface LogEntry {
@@ -162,8 +162,9 @@ export default function Logs() {
 function FilesTab() {
   const t = useT();
   const [selected, setSelected] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
 
-  const { data: files } = useQuery({
+  const { data: files, isLoading: filesLoading, refetch } = useQuery({
     queryKey: ['log-files'],
     queryFn: async () => (await api.get('/logs/files')).data.data as LogFile[],
     refetchInterval: 30000,
@@ -179,55 +180,94 @@ function FilesTab() {
     window.open(`/api/panel/logs/files/${name}`, '_blank');
   };
 
-  return (
-    <div className="grid gap-4 lg:grid-cols-[16rem_1fr]">
-      <Card>
-        <CardContent className="p-0">
-          <div className="max-h-[70vh] overflow-y-auto divide-y divide-border">
-            {!files?.length && (
-              <p className="p-4 text-xs text-muted-foreground">{t('logs.noFiles')}</p>
-            )}
-            {files?.map((f) => (
-              <button
-                key={f.name}
-                onClick={() => setSelected(f.name)}
-                className={cn(
-                  'w-full text-left px-3 py-2 text-xs hover:bg-muted/50 transition-colors',
-                  selected === f.name && 'bg-muted',
-                )}
-              >
-                <div className="font-mono font-medium flex items-center gap-1.5">
-                  {f.name.startsWith('error-') && <span className="h-1.5 w-1.5 rounded-full bg-destructive shrink-0" />}
-                  {f.name}
-                </div>
-                <div className="text-muted-foreground mt-0.5">
-                  {formatBytes(f.sizeBytes)} · {new Date(f.modifiedAt).toLocaleString()}
-                </div>
-              </button>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
+  const filtered = (files ?? []).filter((f) => f.name.toLowerCase().includes(search.trim().toLowerCase()));
+  const totalSize = (files ?? []).reduce((a, f) => a + f.sizeBytes, 0);
 
-      <Card>
-        <CardContent className="p-0">
-          {!selected ? (
-            <p className="p-6 text-sm text-muted-foreground">{t('logs.selectFile')}</p>
-          ) : (
-            <div>
-              <div className="flex items-center justify-between px-4 py-2 border-b border-border">
-                <span className="font-mono text-xs">{selected}</span>
-                <Button variant="outline" size="sm" onClick={() => download(selected)}>
-                  <Download className="h-3.5 w-3.5" /> {t('common.download')}
-                </Button>
+  return (
+    <div className="space-y-4">
+      <div className="flex items-start gap-2 rounded-lg border border-primary/20 bg-primary/5 p-3 text-xs text-muted-foreground">
+        <Info className="h-4 w-4 shrink-0 text-primary mt-0.5" />
+        <p>
+          {t('logs.filesVolumeHint')}
+        </p>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-[16rem_1fr]">
+        <Card>
+          <CardContent className="p-0">
+            <div className="flex items-center gap-2 border-b border-border p-2">
+              <div className="relative flex-1">
+                <Search className="absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder={t('logs.searchFiles')}
+                  className="h-7 pl-6 text-xs"
+                />
               </div>
-              <pre className="h-[65vh] overflow-auto bg-zinc-950 p-4 font-mono text-xs text-zinc-100 whitespace-pre-wrap">
-                {isLoading ? '…' : content?.content || t('logs.emptyFile')}
-              </pre>
+              <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={() => refetch()} title={t('common.refresh')}>
+                <RefreshCw className="h-3.5 w-3.5" />
+              </Button>
             </div>
-          )}
-        </CardContent>
-      </Card>
+            {files && files.length > 0 && (
+              <p className="px-3 py-1.5 text-[11px] text-muted-foreground border-b border-border">
+                {t('logs.filesCount').replace('{n}', String(files.length)).replace('{size}', formatBytes(totalSize))}
+              </p>
+            )}
+            <div className="max-h-[65vh] overflow-y-auto divide-y divide-border">
+              {filesLoading && (
+                <p className="p-4 text-xs text-muted-foreground">{t('app.loading')}</p>
+              )}
+              {!filesLoading && !filtered.length && (
+                <div className="flex flex-col items-center gap-2 p-6 text-center">
+                  <AlertCircle className="h-6 w-6 text-muted-foreground/50" />
+                  <p className="text-xs text-muted-foreground">
+                    {search ? t('common.noResults') : t('logs.noFiles')}
+                  </p>
+                </div>
+              )}
+              {filtered.map((f) => (
+                <button
+                  key={f.name}
+                  onClick={() => setSelected(f.name)}
+                  className={cn(
+                    'w-full text-left px-3 py-2 text-xs hover:bg-muted/50 transition-colors',
+                    selected === f.name && 'bg-muted',
+                  )}
+                >
+                  <div className="font-mono font-medium flex items-center gap-1.5">
+                    {f.name.startsWith('error-') && <span className="h-1.5 w-1.5 rounded-full bg-destructive shrink-0" />}
+                    {f.name}
+                  </div>
+                  <div className="text-muted-foreground mt-0.5">
+                    {formatBytes(f.sizeBytes)} · {new Date(f.modifiedAt).toLocaleString()}
+                  </div>
+                </button>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-0">
+            {!selected ? (
+              <p className="p-6 text-sm text-muted-foreground">{t('logs.selectFile')}</p>
+            ) : (
+              <div>
+                <div className="flex items-center justify-between px-4 py-2 border-b border-border">
+                  <span className="font-mono text-xs">{selected}</span>
+                  <Button variant="outline" size="sm" onClick={() => download(selected)}>
+                    <Download className="h-3.5 w-3.5" /> {t('common.download')}
+                  </Button>
+                </div>
+                <pre className="h-[65vh] overflow-auto bg-zinc-950 p-4 font-mono text-xs text-zinc-100 whitespace-pre-wrap">
+                  {isLoading ? '…' : content?.content || t('logs.emptyFile')}
+                </pre>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }

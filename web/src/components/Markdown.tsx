@@ -10,7 +10,7 @@ import { cn } from '@/lib/utils';
  */
 export function Markdown({ children, className }: { children: string; className?: string }) {
   return (
-    <div className={cn('space-y-2 text-sm leading-relaxed text-muted-foreground', className)}>
+    <div className={cn('space-y-2 min-w-0 break-words text-sm leading-relaxed text-muted-foreground', className)}>
       <ReactMarkdown
         components={{
           h1: ({ children }) => <h3 className="text-base font-semibold text-foreground mt-3 first:mt-0">{children}</h3>,
@@ -19,7 +19,7 @@ export function Markdown({ children, className }: { children: string; className?
           p: ({ children }) => <p className="leading-relaxed">{children}</p>,
           strong: ({ children }) => <strong className="font-semibold text-foreground">{children}</strong>,
           a: ({ href, children }) => (
-            <a href={href} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+            <a href={href} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline break-all">
               {children}
             </a>
           ),

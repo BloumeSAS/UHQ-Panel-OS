@@ -291,4 +291,24 @@ export class ScraperSourcesController {
     void this.notifications.notifyScraperRun(user?.email);
     return { status: 'success', message: 'Cycle de scraping déclenché' };
   }
+
+  /** État en direct (pour la page Scraper : bouton stop + stats en temps réel). */
+  @Get('status')
+  status() {
+    return { status: 'success', data: this.scraper.getStatus() };
+  }
+
+  /** Démarre la boucle automatique de scraping. */
+  @Post('start')
+  start() {
+    this.scraper.start();
+    return { status: 'success' };
+  }
+
+  /** Arrête la boucle automatique — le cycle en cours va à son terme, mais aucun autre n'est planifié. */
+  @Post('stop')
+  stop() {
+    this.scraper.stop();
+    return { status: 'success' };
+  }
 }

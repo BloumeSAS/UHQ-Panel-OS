@@ -1,13 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Activity, Boxes, Globe2, Network, TrendingUp, Cpu, MemoryStick, Database, Timer, Users, LayoutGrid } from 'lucide-react';
+import { Activity, Boxes, Globe2, Network, TrendingUp, Cpu, MemoryStick, Database, Timer, Users, LayoutGrid, Puzzle } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui';
 import { cn } from '@/lib/utils';
 import { AddonPageBar } from '@/components/AddonPageBar';
 
-type DashboardTab = 'overview' | 'active-accounts';
+type DashboardTab = 'overview' | 'active-accounts' | 'extensions';
 
 export default function Dashboard() {
   const t = useT();
@@ -121,9 +121,21 @@ export default function Dashboard() {
           <Users className="h-3.5 w-3.5" />
           {t('dash.tabActiveAccounts')}
         </button>
+        <button
+          type="button"
+          onClick={() => setTab('extensions')}
+          className={cn(
+            'flex items-center gap-1.5 px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors',
+            tab === 'extensions' ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground',
+          )}
+        >
+          <Puzzle className="h-3.5 w-3.5" />
+          {t('dash.tabExtensions')}
+        </button>
       </div>
 
       {tab === 'active-accounts' && <ActiveAccountsTab />}
+      {tab === 'extensions' && <ExtensionsTab />}
 
       {tab === 'overview' && (
       <>
@@ -204,10 +216,35 @@ export default function Dashboard() {
       </div>
       </>
       )}
-
-      <AddonPageBar />
     </div>
   );
+}
+
+function ExtensionsTab() {
+  const t = useT();
+  const { data: addons } = useQuery({
+    queryKey: ['addons'],
+    queryFn: async () => {
+      try {
+        return (await api.get('/addons')).data.data as { manifest?: { widgets?: { zone: string }[] } }[];
+      } catch {
+        return [] as { manifest?: { widgets?: { zone: string }[] } }[];
+      }
+    },
+  });
+  const hasWidgets = (addons ?? []).some((a) => (a.manifest?.widgets ?? []).some((w) => w.zone === '/' || w.zone === '*'));
+
+  if (addons && !hasWidgets) {
+    return (
+      <Card>
+        <CardContent className="py-10 text-center text-sm text-muted-foreground">
+          {t('dash.noExtensionWidgets')}
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return <AddonPageBar />;
 }
 
 function Stat({ icon: Icon, label, value, sub }: { icon: React.ElementType; label: string; value: any; sub?: string }) {

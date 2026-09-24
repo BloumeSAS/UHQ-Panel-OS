@@ -158,11 +158,11 @@ export default function Checker() {
         {/* Status Card */}
         <Card className="relative overflow-hidden border bg-card/60 backdrop-blur-md">
           <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div className="space-y-1">
+            <div className="flex flex-col gap-4">
+              <div className="space-y-1.5">
                 <p className="text-sm font-medium text-muted-foreground">{t('checker.statusTitle')}</p>
-                <div className="flex items-center gap-2">
-                  <span className="relative flex h-3.5 w-3.5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="relative flex h-3.5 w-3.5 shrink-0">
                     {status?.running ? (
                       <>
                         <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-75"></span>
@@ -175,13 +175,13 @@ export default function Checker() {
                   <span className="text-lg font-bold">
                     {status?.running ? t('checker.running') : t('checker.idle')}
                   </span>
-                  <Badge variant={status?.loopEnabled ? 'default' : 'outline'} className="ml-1 text-[10px]">
+                  <Badge variant={status?.loopEnabled ? 'default' : 'outline'} className="text-[10px]">
                     {status?.loopEnabled ? t('checker.loopOn') : t('checker.loopOff')}
                   </Badge>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 {status?.loopEnabled ? (
                   <Button
                     variant="outline"
@@ -205,6 +205,7 @@ export default function Checker() {
                   </Button>
                 )}
                 <Button
+                  size="sm"
                   onClick={() => runMutation.mutate()}
                   disabled={status?.running || runMutation.isPending}
                   className={cn(

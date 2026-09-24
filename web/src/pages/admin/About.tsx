@@ -128,7 +128,7 @@ export default function About() {
       </Card>
 
       <Dialog open={changelogOpen} onOpenChange={setChangelogOpen}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+        <DialogContent className="w-[calc(100vw-2rem)] max-w-3xl max-h-[85vh] overflow-y-auto overflow-x-hidden">
           <DialogHeader>
             <DialogTitle>{t('about.changelogTitle')}</DialogTitle>
           </DialogHeader>
@@ -137,12 +137,12 @@ export default function About() {
           ) : !releases || releases.length === 0 ? (
             <p className="text-sm text-muted-foreground">{t('about.changelogEmpty')}</p>
           ) : (
-            <ol className="relative space-y-6 border-l pl-5">
+            <ol className="relative min-w-0 space-y-6 border-l pl-5">
               {releases.map((r) => (
-                <li key={r.tag} className="relative">
+                <li key={r.tag} className="relative min-w-0">
                   <span className="absolute -left-[1.45rem] top-1 h-2.5 w-2.5 rounded-full bg-primary" />
                   <div className="flex flex-wrap items-center gap-2">
-                    <a href={r.url} target="_blank" rel="noopener noreferrer" className="font-mono text-sm font-semibold text-primary hover:underline">
+                    <a href={r.url} target="_blank" rel="noopener noreferrer" className="font-mono text-sm font-semibold text-primary hover:underline break-all">
                       {r.name || r.tag}
                     </a>
                     {r.prerelease && (
@@ -154,7 +154,7 @@ export default function About() {
                       {new Date(r.publishedAt).toLocaleDateString()}
                     </span>
                   </div>
-                  {r.body && <Markdown className="mt-1">{r.body}</Markdown>}
+                  {r.body && <Markdown className="mt-1 min-w-0 break-words">{r.body}</Markdown>}
                 </li>
               ))}
             </ol>

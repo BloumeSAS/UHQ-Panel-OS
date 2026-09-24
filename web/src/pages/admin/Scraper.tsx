@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2, FlaskConical, Play, Pencil, Layers, CheckSquare, Square, Wand2, RotateCcw, AlertTriangle, Search, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Plus, Trash2, FlaskConical, Play, Pencil, Layers, CheckSquare, Square, Wand2, RotateCcw, AlertTriangle, Search, ChevronLeft, ChevronRight, StopCircle, Activity } from 'lucide-react';
 import { api, apiError } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import {
@@ -117,7 +117,27 @@ export default function Scraper() {
       setTestResult(`✗ ${apiError(e)}`);
     }
   };
-  const runNow = () => api.post('/scraper-sources/run');
+  const [liveOpen, setLiveOpen] = useState(false);
+  const { data: liveStatus } = useQuery({
+    queryKey: ['scraper-status'],
+    queryFn: async () => (await api.get('/scraper-sources/status')).data.data as {
+      running: boolean;
+      loopEnabled: boolean;
+      sourcesTotal: number;
+      sourcesDone: number;
+      itemsCollected: number;
+      lastRun: string | null;
+      lastRunDurationMs: number;
+      lastRunCollected: number;
+    },
+    refetchInterval: (query) => (query.state.data?.running ? 1500 : 10000),
+  });
+  const stopLoop = () => api.post('/scraper-sources/stop').then(() => qc.invalidateQueries({ queryKey: ['scraper-status'] }));
+  const startLoop = () => api.post('/scraper-sources/start').then(() => qc.invalidateQueries({ queryKey: ['scraper-status'] }));
+  const runNow = () => {
+    api.post('/scraper-sources/run');
+    setLiveOpen(true);
+  };
   const resetFail = async (id: string) => {
     await api.post(`/scraper-sources/${id}/reset-fail`);
     invalidate();
@@ -138,6 +158,19 @@ export default function Scraper() {
           <p className="text-sm text-muted-foreground">{t('scraper.subtitle')}</p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <Button variant="outline" onClick={() => setLiveOpen(true)}>
+            <Activity className="h-4 w-4" /> {t('scraper.liveStats')}
+            {liveStatus?.running && <span className="ml-1 h-1.5 w-1.5 rounded-full bg-sky-500 animate-pulse" />}
+          </Button>
+          {liveStatus?.loopEnabled ? (
+            <Button variant="outline" className="text-destructive border-destructive/50 hover:bg-destructive/10" onClick={stopLoop}>
+              <StopCircle className="h-4 w-4" /> {t('scraper.stopLoop')}
+            </Button>
+          ) : (
+            <Button variant="outline" onClick={startLoop}>
+              <Play className="h-4 w-4" /> {t('scraper.startLoop')}
+            </Button>
+          )}
           <Button variant="outline" onClick={() => runNow()}>
             <Play className="h-4 w-4" /> {t('scraper.runNow')}
           </Button>
@@ -296,6 +329,73 @@ export default function Scraper() {
       {editing && (
         <EditDialog source={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); invalidate(); }} />
       )}
+
+      <Dialog open={liveOpen} onOpenChange={setLiveOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Activity className="h-4 w-4" />
+              {t('scraper.liveStats')}
+            </DialogTitle>
+          </DialogHeader>
+          {!liveStatus ? (
+            <p className="text-sm text-muted-foreground">{t('app.loading')}</p>
+          ) : (
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <span className="relative flex h-3 w-3">
+                  {liveStatus.running ? (
+                    <>
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-75" />
+                      <span className="relative inline-flex h-3 w-3 rounded-full bg-sky-500" />
+                    </>
+                  ) : (
+                    <span className="relative inline-flex h-3 w-3 rounded-full bg-emerald-500" />
+                  )}
+                </span>
+                <span className="font-semibold">
+                  {liveStatus.running ? t('scraper.running') : t('scraper.idle')}
+                </span>
+                <Badge variant={liveStatus.loopEnabled ? 'default' : 'outline'} className="text-[10px]">
+                  {liveStatus.loopEnabled ? t('scraper.loopOn') : t('scraper.loopOff')}
+                </Badge>
+              </div>
+
+              {liveStatus.running && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-mono text-muted-foreground">
+                      {t('scraper.sourcesProgress')} : {liveStatus.sourcesDone} / {liveStatus.sourcesTotal}
+                    </span>
+                    <span className="font-semibold text-primary">
+                      {liveStatus.sourcesTotal > 0 ? Math.round((liveStatus.sourcesDone / liveStatus.sourcesTotal) * 100) : 0}%
+                    </span>
+                  </div>
+                  <div className="h-2 w-full overflow-hidden rounded-full bg-secondary">
+                    <div
+                      className="h-full bg-gradient-to-r from-primary to-violet-500 transition-all duration-500 ease-out"
+                      style={{ width: `${liveStatus.sourcesTotal > 0 ? (liveStatus.sourcesDone / liveStatus.sourcesTotal) * 100 : 0}%` }}
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground font-mono">
+                    {t('scraper.itemsCollected')} : {liveStatus.itemsCollected.toLocaleString()}
+                  </p>
+                </div>
+              )}
+
+              <div className="rounded-md border p-3 text-xs text-muted-foreground space-y-1">
+                <p className="font-medium text-foreground">{t('scraper.lastRun')}</p>
+                <p>{liveStatus.lastRun ? new Date(liveStatus.lastRun).toLocaleString() : '—'}</p>
+                {liveStatus.lastRun && (
+                  <p>
+                    {(liveStatus.lastRunDurationMs / 1000).toFixed(1)}s · {liveStatus.lastRunCollected.toLocaleString()} {t('scraper.uniqueProxies')}
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
