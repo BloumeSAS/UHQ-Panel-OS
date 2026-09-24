@@ -1575,7 +1575,10 @@ function ExtensionsTab() {
     queryFn: async () => (await api.get('/addons/all')).data.data as any[],
   });
 
-  const ordersActive = (addons ?? []).some((a) => a.id === 'orders' && a.enabled);
+  // `a.id` est un UUID Prisma généré, jamais le slug de l'addon (cf.
+  // Addon.id dans schema.prisma) — un addon officiel embarqué se reconnaît
+  // par son baseUrl relatif `/addon-proxy/<slug>` (cf. BundledAddonsService).
+  const ordersActive = (addons ?? []).some((a) => a.baseUrl === '/addon-proxy/orders' && a.enabled);
   const anyExtension = ordersActive; // futurs addons : ajouter leur condition ici.
 
   return (
