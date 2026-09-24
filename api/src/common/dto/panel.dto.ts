@@ -125,6 +125,7 @@ export class UpdateSettingsDto {
   @ApiPropertyOptional() @IsOptional() @IsString() auditLogRetentionMonths?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() notificationRetentionDays?: string;
   @ApiPropertyOptional() @IsOptional() @IsBoolean() @Transform(({ value }) => value === undefined || value === null ? value : (value === 'true' || value === true)) require2faForAdmins?: boolean;
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() @Transform(({ value }) => value === undefined || value === null ? value : (value === 'true' || value === true)) trustCloudflareIps?: boolean;
   @ApiPropertyOptional() @IsOptional() @IsString() poolHealthSnapshotRetentionDays?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() trafficSnapshotRetentionDays?: string;
   @ApiPropertyOptional() @IsOptional() @IsBoolean() @Transform(({ value }) => value === undefined || value === null ? value : (value === 'true' || value === true)) poolLowAlertEnabled?: boolean;

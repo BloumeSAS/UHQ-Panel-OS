@@ -152,6 +152,7 @@ export default function Settings() {
         'checkerAutoStartEnabled',
         'checkerPrioritizeUnknownCountry',
         'require2faForAdmins',
+        'trustCloudflareIps',
         'proxyAuthAutoBanEnabled',
       ])
         payload[b] = payload[b] === true || payload[b] === 'true';
@@ -402,6 +403,11 @@ export default function Settings() {
                 label={t('settings.require2faForAdmins')}
                 hint={t('settings.require2faForAdminsHint')}
                 k="require2faForAdmins" form={form} set={set}
+              />
+              <Toggle
+                label={t('settings.trustCloudflareIps')}
+                hint={t('settings.trustCloudflareIpsHint')}
+                k="trustCloudflareIps" form={form} set={set}
               />
             </Row>
 

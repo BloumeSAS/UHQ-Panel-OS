@@ -9,19 +9,24 @@
  * pas sur celle du visiteur (symptôme observé : toutes les connexions
  * "viennent" des mêmes quelques IP Cloudflare).
  *
- * Cloudflare pose son propre en-tête `CF-Connecting-IP` (IP visiteur réelle,
- * posée par l'edge Cloudflare lui-même — pas falsifiable par le client tant
- * que l'origine n'est joignable QUE via Cloudflare, cas standard d'un
- * déploiement derrière Cloudflare). On le préfère quand présent ; sinon on
- * retombe sur le calcul Express habituel.
+ * Cloudflare pose son propre en-tête `CF-Connecting-IP` (IP visiteur réelle),
+ * mais cet en-tête n'est fiable QUE si l'origine n'est joignable QUE via
+ * Cloudflare — sinon n'importe quel client peut le falsifier en frappant
+ * l'origine directement (bypass de rate-limit / ban IP / audit trail). On ne
+ * le fait donc JAMAIS confiance par défaut : seul un admin qui a vérifié que
+ * son déploiement bloque bien le trafic direct (règle firewall/Coolify vers
+ * les plages IP Cloudflare) active `trustCloudflareIps` (Paramètres →
+ * Sécurité). Sans ce réglage, on retombe sur le calcul Express habituel.
  */
-export function getClientIp(req: any): string {
-  const cf = req.headers?.['cf-connecting-ip'];
-  if (typeof cf === 'string' && cf.trim()) return cf.trim();
+export function getClientIp(req: any, trustCloudflareHeaders = false): string {
+  if (trustCloudflareHeaders) {
+    const cf = req.headers?.['cf-connecting-ip'];
+    if (typeof cf === 'string' && cf.trim()) return cf.trim();
 
-  // Cloudflare Enterprise (certains plans) pose aussi celui-ci.
-  const trueClientIp = req.headers?.['true-client-ip'];
-  if (typeof trueClientIp === 'string' && trueClientIp.trim()) return trueClientIp.trim();
+    // Cloudflare Enterprise (certains plans) pose aussi celui-ci.
+    const trueClientIp = req.headers?.['true-client-ip'];
+    if (typeof trueClientIp === 'string' && trueClientIp.trim()) return trueClientIp.trim();
+  }
 
   return req.ip ?? req.socket?.remoteAddress ?? 'unknown';
 }

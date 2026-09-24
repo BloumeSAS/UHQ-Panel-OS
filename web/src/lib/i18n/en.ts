@@ -349,6 +349,8 @@ const en: Language = {
     'settings.security': 'Security',
     'settings.require2faForAdmins': 'Require 2FA for admin accounts',
     'settings.require2faForAdminsHint': "Doesn't block login itself, but locks admin accounts to the Security page until they set up 2FA.",
+    'settings.trustCloudflareIps': 'Trust the Cloudflare header',
+    'settings.trustCloudflareIpsHint': "Only enable if your origin is unreachable except through Cloudflare (dedicated firewall rule) — otherwise a client can spoof their IP by hitting the origin directly, skewing login rate-limiting and the audit log.",
     'settings.proxyAuthProtection': 'Proxy auth brute-force protection',
     'settings.proxyAuthAutoBanEnabled': 'Auto-ban on repeated auth failures',
     'settings.proxyAuthAutoBanEnabledHint': 'Unlike the panel login, the proxy engine (port 990) had no brute-force protection at all — automatically bans an IP that fails proxy authentication too many times in a row.',

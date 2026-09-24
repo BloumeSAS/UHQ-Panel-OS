@@ -47,10 +47,11 @@ export class PanelAuthController {
   ) {}
 
   // Cf. common/utils/client-ip.ts : priorise CF-Connecting-IP (Cloudflare)
-  // avant le calcul Express `req.ip` (`trust proxy`, 1 seul hop — insuffisant
-  // dès que Cloudflare est aussi devant le reverse proxy applicatif).
+  // avant le calcul Express `req.ip`, mais UNIQUEMENT si l'admin a confirmé
+  // (Paramètres → Sécurité) que l'origine est injoignable autrement — sinon
+  // l'en-tête est falsifiable par n'importe quel client direct.
   private clientIp(req: any): string {
-    return getClientIp(req);
+    return getClientIp(req, this.settings.getBool('trustCloudflareIps'));
   }
 
   /** Lecture publique : pilote l'écran de démarrage du front. */

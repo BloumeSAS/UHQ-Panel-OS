@@ -64,6 +64,12 @@ export const SETTING_DEFS = {
   // compte (ne bloque PAS le login lui-même — sinon un admin sans 2FA
   // n'aurait plus aucun moyen d'entrer pour l'activer). Voir finishLogin().
   require2faForAdmins: { def: 'false', env: undefined, secret: false },
+  // Fait confiance à l'en-tête CF-Connecting-IP (Cloudflare) pour l'IP client
+  // (rate-limit login, journal d'audit…) — à activer UNIQUEMENT si l'origine
+  // est réellement injoignable autrement que via Cloudflare (règle firewall
+  // dédiée), sinon un client peut falsifier son IP en frappant l'origine en
+  // direct. Désactivé par défaut (cf. common/utils/client-ip.ts).
+  trustCloudflareIps: { def: 'false', env: undefined, secret: false },
   // Rétention des snapshots historiques (jours) — santé du pool et trafic.
   // Était fixée en dur à 7 jours ; configurable pour les déploiements qui
   // veulent garder plus d'historique (Analytics).

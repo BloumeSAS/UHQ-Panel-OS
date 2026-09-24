@@ -349,6 +349,8 @@ const fr: Language = {
     'settings.security': 'Sécurité',
     'settings.require2faForAdmins': 'Exiger la 2FA pour les comptes admin',
     'settings.require2faForAdminsHint': 'Ne bloque pas la connexion elle-même, mais enferme les comptes admin sur la page Sécurité tant que la 2FA n\'est pas activée.',
+    'settings.trustCloudflareIps': "Faire confiance à l'en-tête Cloudflare",
+    'settings.trustCloudflareIpsHint': "N'activez QUE si votre origine est injoignable autrement que via Cloudflare (règle firewall dédiée) — sinon un client peut falsifier son IP en frappant l'origine en direct, faussant le rate-limit de connexion et le journal d'audit.",
     'settings.proxyAuthProtection': 'Protection anti-brute-force (auth proxy)',
     'settings.proxyAuthAutoBanEnabled': 'Bannissement auto sur échecs répétés',
     'settings.proxyAuthAutoBanEnabledHint': 'Contrairement au login du panel, le moteur proxy (port 990) n\'avait aucune protection anti-brute-force — bannit automatiquement une IP qui échoue trop de fois à s\'authentifier sur le proxy.',
