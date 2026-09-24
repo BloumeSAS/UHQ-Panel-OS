@@ -177,6 +177,12 @@ const fr: Language = {
     'about.upToDate': 'Vous êtes à jour.',
     'about.updateAvailable': 'Une mise à jour est disponible !',
     'about.notConfigured': 'Mise à jour automatique via le dépôt GitHub officiel.',
+    'about.github': 'Dépôt GitHub',
+    'about.githubHint': "Code source, issues et discussions du panel — projet open-source maintenu par Bloume SAS.",
+    'about.viewChangelog': 'Voir tous les changelogs',
+    'about.changelogTitle': 'Historique des versions',
+    'about.changelogEmpty': 'Aucune release trouvée.',
+    'about.prerelease': 'pré-version',
 
     'dash.activeThreads': 'Threads actifs',
     'dash.activeSessions': 'Sessions actives',

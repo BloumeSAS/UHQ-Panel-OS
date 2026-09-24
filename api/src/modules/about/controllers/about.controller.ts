@@ -6,6 +6,8 @@ import { SettingsService } from '../../../config/settings.service';
 import { APP_VERSION } from '../../../version';
 
 const CURRENT_VERSION = APP_VERSION;
+const GITHUB_REPO = 'BloumeSAS/UHQ-Panel-OS';
+const GITHUB_URL = `https://github.com/${GITHUB_REPO}`;
 
 /** Informations produit + vérification de mise à jour (utilisateur connecté). */
 @ApiTags('panel-about')
@@ -15,6 +17,9 @@ const CURRENT_VERSION = APP_VERSION;
 export class AboutController {
   constructor(private readonly settings: SettingsService) {}
 
+  /** Cache mémoire des releases GitHub (5 min) — évite de cogner la limite anonyme (60 req/h/IP). */
+  private releasesCache: { at: number; data: any[] } | null = null;
+
   @Get()
   about() {
     return {
@@ -23,9 +28,44 @@ export class AboutController {
         name: 'UHQ Panel OS',
         company: 'Bloume SAS',
         website: 'https://bloume.fr',
+        githubUrl: GITHUB_URL,
         version: CURRENT_VERSION,
       },
     };
+  }
+
+  /**
+   * Historique des versions (GitHub Releases, dépôt public — pas d'auth
+   * nécessaire côté GitHub). Renvoie tout d'un coup (le panel pagine côté
+   * client) : un repo actif a quelques dizaines de releases, largement sous
+   * la limite d'une seule page GitHub (100).
+   */
+  @Get('releases')
+  async releases() {
+    if (this.releasesCache && Date.now() - this.releasesCache.at < 5 * 60_000) {
+      return { status: 'success', data: this.releasesCache.data };
+    }
+    try {
+      const res = await request(`https://api.github.com/repos/${GITHUB_REPO}/releases?per_page=100`, {
+        method: 'GET',
+        headersTimeout: 8000,
+        bodyTimeout: 8000,
+        headers: { 'User-Agent': 'UHQ-Panel-OS', Accept: 'application/vnd.github+json' },
+      });
+      const body = (await res.body.json()) as any[];
+      const data = (Array.isArray(body) ? body : []).map((r) => ({
+        tag: r.tag_name,
+        name: r.name || r.tag_name,
+        body: r.body || '',
+        url: r.html_url,
+        publishedAt: r.published_at,
+        prerelease: !!r.prerelease,
+      }));
+      this.releasesCache = { at: Date.now(), data };
+      return { status: 'success', data };
+    } catch (e) {
+      return { status: 'error', message: String((e as Error)?.message ?? e), data: [] };
+    }
   }
 
   /**

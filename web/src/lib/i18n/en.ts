@@ -177,6 +177,12 @@ const en: Language = {
     'about.upToDate': 'You are up to date.',
     'about.updateAvailable': 'An update is available!',
     'about.notConfigured': 'Update check is automatic using the official GitHub repo.',
+    'about.github': 'GitHub repository',
+    'about.githubHint': 'Source code, issues and discussions for the panel — an open-source project maintained by Bloume SAS.',
+    'about.viewChangelog': 'View all changelogs',
+    'about.changelogTitle': 'Version history',
+    'about.changelogEmpty': 'No releases found.',
+    'about.prerelease': 'pre-release',
 
     'dash.activeThreads': 'Active threads',
     'dash.activeSessions': 'Active sessions',
