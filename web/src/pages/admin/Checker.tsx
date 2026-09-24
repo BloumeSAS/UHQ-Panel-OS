@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Play, Pause, Trash2, Activity, ShieldCheck, ShieldAlert, Globe, Square, PlayCircle } from 'lucide-react';
+import { Play, Pause, Trash2, Activity, ShieldCheck, ShieldAlert, Globe } from 'lucide-react';
 import { api, apiError, getToken } from '@/lib/api';
 import { useT } from '@/lib/i18n';
-import { Badge, Button, Card, CardContent, Table, TBody, TD, TH, THead, TR } from '@/components/ui';
+import { Badge, Button, Card, CardContent, Switch, Table, TBody, TD, TH, THead, TR } from '@/components/ui';
 import { cn } from '@/lib/utils';
 
 interface LogEntry {
@@ -176,35 +176,29 @@ export default function Checker() {
                   <span className="text-lg font-bold">
                     {status?.running ? t('checker.running') : t('checker.idle')}
                   </span>
-                  <Badge variant={status?.loopActive ? 'default' : 'outline'} className="text-[10px]">
-                    {status?.loopActive ? t('checker.loopOn') : t('checker.loopOff')}
-                  </Badge>
                 </div>
               </div>
 
+              {/* Boucle automatique — distincte du cycle en cours ci-dessus :
+                  un toggle plutôt qu'un bouton Démarrer/Arrêter, pour ne pas
+                  laisser croire qu'un cycle est "en cours" simplement parce
+                  que la planification récurrente est armée (elle passe le
+                  plus clair de son temps en veille entre deux cycles). */}
+              <div className="flex items-center justify-between rounded-lg border bg-muted/20 px-3 py-2">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium">{t('checker.autoLoop')}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {status?.loopActive ? t('checker.autoLoopOnHint') : t('checker.autoLoopOffHint')}
+                  </p>
+                </div>
+                <Switch
+                  checked={!!status?.loopActive}
+                  onCheckedChange={(checked) => loopMutation.mutate(checked ? 'start' : 'stop')}
+                  disabled={loopMutation.isPending}
+                />
+              </div>
+
               <div className="flex flex-wrap items-center gap-2">
-                {status?.loopActive ? (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => loopMutation.mutate('stop')}
-                    disabled={loopMutation.isPending}
-                    className="text-destructive border-destructive/50 hover:bg-destructive/10"
-                  >
-                    <Square className="h-3.5 w-3.5 mr-1.5" />
-                    {t('checker.stopLoop')}
-                  </Button>
-                ) : (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => loopMutation.mutate('start')}
-                    disabled={loopMutation.isPending}
-                  >
-                    <PlayCircle className="h-3.5 w-3.5 mr-1.5" />
-                    {t('checker.startLoop')}
-                  </Button>
-                )}
                 <Button
                   size="sm"
                   onClick={() => runMutation.mutate()}

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2, FlaskConical, Play, Pencil, Layers, CheckSquare, Square, Wand2, RotateCcw, AlertTriangle, Search, ChevronLeft, ChevronRight, StopCircle, Activity } from 'lucide-react';
+import { Plus, Trash2, FlaskConical, Play, Pencil, Layers, CheckSquare, Square, Wand2, RotateCcw, AlertTriangle, Search, ChevronLeft, ChevronRight, Activity } from 'lucide-react';
 import { api, apiError } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import {
@@ -163,15 +163,6 @@ export default function Scraper() {
             <Activity className="h-4 w-4" /> {t('scraper.liveStats')}
             {liveStatus?.running && <span className="ml-1 h-1.5 w-1.5 rounded-full bg-sky-500 animate-pulse" />}
           </Button>
-          {liveStatus?.loopActive ? (
-            <Button variant="outline" className="text-destructive border-destructive/50 hover:bg-destructive/10" onClick={stopLoop}>
-              <StopCircle className="h-4 w-4" /> {t('scraper.stopLoop')}
-            </Button>
-          ) : (
-            <Button variant="outline" onClick={startLoop}>
-              <Play className="h-4 w-4" /> {t('scraper.startLoop')}
-            </Button>
-          )}
           <Button variant="outline" onClick={() => runNow()}>
             <Play className="h-4 w-4" /> {t('scraper.runNow')}
           </Button>
@@ -357,9 +348,23 @@ export default function Scraper() {
                 <span className="font-semibold">
                   {liveStatus.running ? t('scraper.running') : t('scraper.idle')}
                 </span>
-                <Badge variant={liveStatus.loopActive ? 'default' : 'outline'} className="text-[10px]">
-                  {liveStatus.loopActive ? t('scraper.loopOn') : t('scraper.loopOff')}
-                </Badge>
+              </div>
+
+              {/* Boucle automatique — distincte du cycle en cours ci-dessus :
+                  un toggle plutôt qu'un bouton Démarrer/Arrêter, pour ne pas
+                  laisser croire qu'un cycle est "en cours" simplement parce
+                  que la planification récurrente est armée. */}
+              <div className="flex items-center justify-between rounded-lg border bg-muted/20 px-3 py-2">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium">{t('scraper.autoLoop')}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {liveStatus.loopActive ? t('scraper.autoLoopOnHint') : t('scraper.autoLoopOffHint')}
+                  </p>
+                </div>
+                <Switch
+                  checked={!!liveStatus.loopActive}
+                  onCheckedChange={(checked) => (checked ? startLoop() : stopLoop())}
+                />
               </div>
 
               {liveStatus.running && (

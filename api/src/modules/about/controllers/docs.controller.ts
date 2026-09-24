@@ -134,7 +134,7 @@ export class DocsController {
   <body>
     <div id="scalar-app"></div>
     <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
-    <script>
+    <script nonce="${res.locals.cspNonce}">
       Scalar.createApiReference(document.getElementById('scalar-app'), {
         spec: {
           url: '/docs/spec?token=${token}'
