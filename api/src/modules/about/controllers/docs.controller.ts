@@ -2,7 +2,34 @@ import { Controller, Get, Query, Req, Res, UnauthorizedException } from '@nestjs
 import { Response, Request } from 'express';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../../../database/prisma.service';
+import { SettingsService } from '../../../config/settings.service';
 import type { JwtUser } from '../../../common/guards/jwt-auth.guard';
+
+type ThemeColors = { light?: Record<string, string>; dark?: Record<string, string> };
+
+/**
+ * Palette tangerine par défaut (identique à web/src/index.css) — utilisée
+ * quand l'admin n'a pas customisé le thème (Paramètres → Thème).
+ */
+const DEFAULT_LIGHT: Record<string, string> = {
+  background: '0 0% 100%', foreground: '0 0% 20%', 'muted-foreground': '0 0% 45%',
+  primary: '13 73% 54%', border: '24 20% 90%', secondary: '24 30% 95%',
+  sidebar: '24 30% 97%', 'sidebar-foreground': '0 0% 25%',
+  'sidebar-accent': '24 50% 90%', 'sidebar-border': '24 20% 88%',
+};
+const DEFAULT_DARK: Record<string, string> = {
+  background: '20 14% 8%', foreground: '0 0% 92%', 'muted-foreground': '0 0% 65%',
+  primary: '13 80% 58%', border: '20 10% 20%', secondary: '20 10% 18%',
+  sidebar: '20 14% 9%', 'sidebar-foreground': '0 0% 85%',
+  'sidebar-accent': '20 12% 20%', 'sidebar-border': '20 10% 17%',
+};
+
+/** `"H S% L%"` → `hsl(H, S%, L%)`, avec repli sur `fallback` si absent/invalide. */
+function hsl(triplet: string | undefined, fallback: string): string {
+  const v = (triplet ?? fallback).trim().split(/\s+/);
+  if (v.length !== 3) return `hsl(${fallback.replace(/\s+/g, ', ')})`;
+  return `hsl(${v[0]}, ${v[1]}, ${v[2]})`;
+}
 
 /**
  * Controller gérant la documentation API dynamique.
@@ -16,7 +43,25 @@ export class DocsController {
   constructor(
     private readonly jwt: JwtService,
     private readonly prisma: PrismaService,
+    private readonly settings: SettingsService,
   ) {}
+
+  /**
+   * Thème custom éventuel (Paramètres → Thème), même source que le panel
+   * lui-même et que le theme sync des addons — `themeColors` est stocké en
+   * base comme une chaîne JSON (cf. le même bug déjà corrigé côté addons :
+   * cette page ne l'avait jamais lu du tout, elle affichait toujours la
+   * palette tangerine par défaut en dur, jamais le thème réellement configuré).
+   */
+  private getThemeColors(): ThemeColors | null {
+    const raw = this.settings.get('themeColors');
+    if (!raw) return null;
+    try {
+      return typeof raw === 'string' ? JSON.parse(raw) : raw;
+    } catch {
+      return null;
+    }
+  }
 
   /**
    * Valide un JWT "à la main" (session active, compte actif et non expiré) —
@@ -51,6 +96,13 @@ export class DocsController {
     if (!user) {
       return res.redirect('/login');
     }
+
+    // Thème custom du panel (Paramètres → Thème) s'il existe, sinon repli
+    // sur la palette tangerine par défaut — jusqu'ici cette page ignorait
+    // totalement le thème configuré et affichait toujours tangerine en dur.
+    const theme = this.getThemeColors();
+    const L = { ...DEFAULT_LIGHT, ...(theme?.light ?? {}) };
+    const D = { ...DEFAULT_DARK, ...(theme?.dark ?? {}) };
 
     res.setHeader('Content-Type', 'text/html');
     res.send(`
@@ -98,48 +150,48 @@ export class DocsController {
 
           /* ── Light ── */
           .light-mode {
-            --scalar-color-1:      hsl(0,   0%,  20%);
-            --scalar-color-2:      hsl(0,   0%,  45%);
-            --scalar-color-3:      hsl(0,   0%,  55%);
-            --scalar-color-accent: hsl(13, 73%,  54%);
-            --scalar-background-1: hsl(0,   0%, 100%);
-            --scalar-background-2: hsl(24,  30%, 95%);
-            --scalar-background-3: hsl(24,  20%, 90%);
-            --scalar-background-accent: hsla(13, 73%, 54%, 0.08);
-            --scalar-border-color: hsl(24,  20%, 90%);
+            --scalar-color-1:      ${hsl(L['foreground'], '0 0% 20%')};
+            --scalar-color-2:      ${hsl(L['muted-foreground'], '0 0% 45%')};
+            --scalar-color-3:      ${hsl(L['muted-foreground'], '0 0% 55%')};
+            --scalar-color-accent: ${hsl(L['primary'], '13 73% 54%')};
+            --scalar-background-1: ${hsl(L['background'], '0 0% 100%')};
+            --scalar-background-2: ${hsl(L['secondary'], '24 30% 95%')};
+            --scalar-background-3: ${hsl(L['border'], '24 20% 90%')};
+            --scalar-background-accent: ${hsl(L['primary'], '13 73% 54%').replace('hsl(', 'hsla(').replace(')', ', 0.08)')};
+            --scalar-border-color: ${hsl(L['border'], '24 20% 90%')};
             --scalar-scrollbar-color: rgba(0,0,0,0.12);
-            --scalar-scrollbar-color-active: hsl(13, 73%, 54%);
+            --scalar-scrollbar-color-active: ${hsl(L['primary'], '13 73% 54%')};
           }
           .light-mode .t-doc__sidebar {
-            --scalar-sidebar-background-1: hsl(24, 30%, 97%);
-            --scalar-sidebar-border-color:  hsl(24, 20%, 88%);
-            --scalar-sidebar-color-1: hsl(0, 0%, 25%);
-            --scalar-sidebar-item-hover-background: hsl(24, 50%, 90%);
-            --scalar-sidebar-item-active-background: hsl(24, 30%, 94%);
+            --scalar-sidebar-background-1: ${hsl(L['sidebar'], '24 30% 97%')};
+            --scalar-sidebar-border-color:  ${hsl(L['sidebar-border'], '24 20% 88%')};
+            --scalar-sidebar-color-1: ${hsl(L['sidebar-foreground'], '0 0% 25%')};
+            --scalar-sidebar-item-hover-background: ${hsl(L['sidebar-accent'], '24 50% 90%')};
+            --scalar-sidebar-item-active-background: ${hsl(L['secondary'], '24 30% 94%')};
           }
 
           /* ── Dark (défaut) ── */
           .dark-mode {
-            --scalar-color-1:      hsl(0,   0%,  92%);
-            --scalar-color-2:      hsl(0,   0%,  65%);
-            --scalar-color-3:      hsl(0,   0%,  50%);
-            --scalar-color-accent: hsl(13,  80%, 58%);
-            --scalar-background-1: hsl(20,  14%,  8%);
-            --scalar-background-2: hsl(20,  14%, 11%);
-            --scalar-background-3: hsl(20,  10%, 18%);
-            --scalar-background-accent: hsla(13, 80%, 58%, 0.10);
-            --scalar-border-color: hsl(20,  10%, 20%);
+            --scalar-color-1:      ${hsl(D['foreground'], '0 0% 92%')};
+            --scalar-color-2:      ${hsl(D['muted-foreground'], '0 0% 65%')};
+            --scalar-color-3:      ${hsl(D['muted-foreground'], '0 0% 50%')};
+            --scalar-color-accent: ${hsl(D['primary'], '13 80% 58%')};
+            --scalar-background-1: ${hsl(D['background'], '20 14% 8%')};
+            --scalar-background-2: ${hsl(D['secondary'], '20 14% 11%')};
+            --scalar-background-3: ${hsl(D['border'], '20 10% 18%')};
+            --scalar-background-accent: ${hsl(D['primary'], '13 80% 58%').replace('hsl(', 'hsla(').replace(')', ', 0.10)')};
+            --scalar-border-color: ${hsl(D['border'], '20 10% 20%')};
             --scalar-scrollbar-color: rgba(255,255,255,0.08);
-            --scalar-scrollbar-color-active: hsl(13, 80%, 58%);
+            --scalar-scrollbar-color-active: ${hsl(D['primary'], '13 80% 58%')};
           }
           .dark-mode .t-doc__sidebar {
-            --scalar-sidebar-background-1: hsl(20, 14%, 9%);
-            --scalar-sidebar-border-color:  hsl(20, 10%, 17%);
-            --scalar-sidebar-color-1: hsl(0, 0%, 85%);
-            --scalar-sidebar-color-2: hsl(0, 0%, 55%);
-            --scalar-sidebar-item-hover-background: hsl(20, 12%, 20%);
-            --scalar-sidebar-item-active-background: hsl(20, 10%, 16%);
-            --scalar-sidebar-color-active: hsl(13, 80%, 58%);
+            --scalar-sidebar-background-1: ${hsl(D['sidebar'], '20 14% 9%')};
+            --scalar-sidebar-border-color:  ${hsl(D['sidebar-border'], '20 10% 17%')};
+            --scalar-sidebar-color-1: ${hsl(D['sidebar-foreground'], '0 0% 85%')};
+            --scalar-sidebar-color-2: ${hsl(D['muted-foreground'], '0 0% 55%')};
+            --scalar-sidebar-item-hover-background: ${hsl(D['sidebar-accent'], '20 12% 20%')};
+            --scalar-sidebar-item-active-background: ${hsl(D['secondary'], '20 10% 16%')};
+            --scalar-sidebar-color-active: ${hsl(D['primary'], '13 80% 58%')};
           }
 
           /* ── Méthodes HTTP — couleurs vives sur fond sombre ── */

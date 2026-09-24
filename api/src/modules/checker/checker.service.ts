@@ -593,7 +593,14 @@ export class CheckerService implements OnModuleInit {
   getStatus() {
     return {
       running: this.running,
+      // `loopEnabled` = état DÉSIRÉ (peut être true avant même que la boucle
+      // ait réellement démarré, ex. juste après un boot avec auto-start).
+      // `loopActive` = la coroutine tourne RÉELLEMENT (en cycle ou en attente
+      // entre deux cycles) — c'est CE champ que l'UI doit utiliser pour
+      // décider d'afficher "Démarrer" ou "Arrêter", sinon le bouton "Arrêter"
+      // peut s'afficher alors que rien n'a encore démarré.
       loopEnabled: this.loopEnabled,
+      loopActive: this.loopActive,
       total: this.totalCount,
       processed: this.processedCount,
       progress: this.totalCount > 0 ? Math.round((this.processedCount / this.totalCount) * 1000) / 10 : 0,

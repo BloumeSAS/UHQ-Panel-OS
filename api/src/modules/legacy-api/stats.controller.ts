@@ -1,5 +1,5 @@
 import { Controller, Get, Param, Query, UseGuards } from '@nestjs/common';
-import { ApiBasicAuth, ApiParam, ApiQuery, ApiSecurity, ApiTags } from '@nestjs/swagger';
+import { ApiBasicAuth, ApiOkResponse, ApiOperation, ApiParam, ApiQuery, ApiSecurity, ApiTags } from '@nestjs/swagger';
 import { ApiKeyGuard } from '../../common/guards/api-key.guard';
 import { MasterKeyGuard } from '../../common/guards/master-key.guard';
 import { Scopes } from '../../common/decorators/scopes.decorator';
@@ -34,10 +34,23 @@ export class StatsController {
     private readonly engine: ProxyServerService,
   ) {}
 
+  @ApiOperation({ summary: 'Statistiques d\'usage détaillées (par hostname) d\'un compte proxy sur une période.' })
   @ApiParam({ name: 'proxy_id', description: 'ID du sous-utilisateur proxy' })
   @ApiQuery({ name: 'period', required: false, enum: ['week', 'month', 'year', 'all'], description: 'Période de statistiques' })
   @ApiQuery({ name: 'page', required: false, type: Number, description: 'Numéro de page' })
   @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Nombre maximum d\'éléments par page' })
+  @ApiOkResponse({
+    schema: {
+      example: {
+        status: 'success',
+        proxy_id: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
+        period: 'week',
+        total_stats: { bytesSent: 524288000, bytesReceived: 1048576000, totalBytes: 1572864000, totalGb: 1.4649, requests: 4213, errors: 12 },
+        errors_by_reason: [{ reason: 'captcha', count: 7 }, { reason: '403', count: 5 }],
+        usage: [{ hostname: 'example.com', bytesSent: 10240, bytesReceived: 51200, requests: 42, date: '2026-09-20T00:00:00.000Z' }],
+      },
+    },
+  })
   @Get('proxy/:proxy_id')
   @Scopes('read:stats')
   async proxyStats(
@@ -99,7 +112,17 @@ export class StatsController {
     };
   }
 
+  @ApiOperation({ summary: 'Top hostnames par volume de trafic, tous comptes confondus, sur une période.' })
   @ApiQuery({ name: 'period', required: false, enum: ['week', 'month', 'year', 'all'], description: 'Période de statistiques' })
+  @ApiOkResponse({
+    schema: {
+      example: {
+        status: 'success',
+        period: 'week',
+        top_hosts: [{ hostname: 'example.com', gb: 42.13, requests: 15234 }, { hostname: 'api.example.org', gb: 18.7, requests: 8421 }],
+      },
+    },
+  })
   @Get('global')
   @Scopes('read:stats')
   async global(@Query('period') period: Period = 'week') {
@@ -125,6 +148,21 @@ export class StatsController {
     };
   }
 
+  @ApiOperation({ summary: 'Statistiques temps réel du pool + résumé du trafic du jour.' })
+  @ApiOkResponse({
+    schema: {
+      example: {
+        status: 'success',
+        timestamp: '2026-09-24T12:34:56.000Z',
+        live: { active_threads: 342, active_sessions: 128, pool: { total: 154302, working: 121844, banned: 218 } },
+        today_summary: {
+          total_gb: 812.4521,
+          total_requests: 241830,
+          top_domains: [{ hostname: 'example.com', requests: 8213 }],
+        },
+      },
+    },
+  })
   @Get('live')
   @Scopes('read:stats')
   async live() {

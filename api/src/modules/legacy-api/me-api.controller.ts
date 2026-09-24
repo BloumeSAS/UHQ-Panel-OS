@@ -10,7 +10,7 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBasicAuth, ApiOperation, ApiQuery, ApiSecurity, ApiTags } from '@nestjs/swagger';
+import { ApiBasicAuth, ApiOkResponse, ApiOperation, ApiQuery, ApiSecurity, ApiTags } from '@nestjs/swagger';
 import { ApiKeyGuard } from '../../common/guards/api-key.guard';
 import { Scopes } from '../../common/decorators/scopes.decorator';
 import { PrismaService } from '../../database/prisma.service';
@@ -24,6 +24,29 @@ import {
   BlockedDomainsRemoveDto,
   BlockedDomainsSetDto,
 } from './dto';
+
+/** Exemple de réponse pour un compte proxy (formatSubUser) — réutilisé dans les exemples Swagger ci-dessous. */
+const PROXY_EXAMPLE = {
+  id: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
+  username: 'u_ab12cd34',
+  password: 'p_9f8e7d6c5b4a3210',
+  label: 'My Proxy Account',
+  allowed_ips: '*',
+  threads_limit: 100,
+  traffic_limit: 10737418240,
+  country_filter: 'US,FR',
+  bytes_sent: 524288000,
+  bytes_received: 1048576000,
+  is_blocked: false,
+  sticky_session_ttl: 1800,
+  custom_proxies: null,
+  blocked_domains: 'exemple.com,autre.net',
+  owner_id: 'd4738416-e27b-4d06-aecb-d7a90efdcfb7',
+  bandwidth_limit: null,
+  expires_at: null,
+  tags: 'residential,fr',
+  pool: null,
+};
 
 /**
  * Endpoints API v1 accessibles par clé API pour un simple USER.
@@ -42,6 +65,15 @@ export class MeApiController {
     private readonly settings: SettingsService,
   ) {}
 
+  @ApiOperation({ summary: 'Solde de trafic agrégé sur tous VOS proxies.' })
+  @ApiOkResponse({
+    schema: {
+      example: {
+        status: 'success',
+        data: { total_gb_used: 4.2153, total_gb_limit: 10, remaining_gb: 5.7847, status: 'active' },
+      },
+    },
+  })
   @Get('balance')
   @Scopes('read:stats')
   async balance(@Req() req: any) {
@@ -73,6 +105,10 @@ export class MeApiController {
     };
   }
 
+  @ApiOperation({ summary: 'Liste VOS proxies (host/port de connexion inclus).' })
+  @ApiOkResponse({
+    schema: { example: { status: 'success', data: [{ ...PROXY_EXAMPLE, host: 'proxy.uhq.panel', port: 990 }] } },
+  })
   @Get('proxies')
   @Scopes('read:proxies')
   async list(@Req() req: any) {
@@ -93,8 +129,22 @@ export class MeApiController {
     };
   }
 
+  @ApiOperation({ summary: 'Génère une liste de proxies "sticky session" pour un de VOS proxies.' })
   @ApiQuery({ name: 'id', required: true, description: 'ID du proxy' })
   @ApiQuery({ name: 'count', required: false, type: Number, description: 'Nombre de proxies à générer (1-1000, défaut 100)' })
+  @ApiOkResponse({
+    schema: {
+      example: {
+        status: 'success',
+        format: 'host:port:username:session:password',
+        count: 2,
+        proxies: [
+          'proxy.uhq.panel:990:u_ab12cd34:sess_1a2b3c:p_9f8e7d6c5b4a3210',
+          'proxy.uhq.panel:990:u_ab12cd34:sess_4d5e6f:p_9f8e7d6c5b4a3210',
+        ],
+      },
+    },
+  })
   @Get('proxies/sticky-list')
   @Scopes('read:proxies')
   async stickyProxies(
@@ -123,7 +173,24 @@ export class MeApiController {
     };
   }
 
+  @ApiOperation({ summary: 'Statistiques d\'usage de base pour un de VOS proxies.' })
   @ApiQuery({ name: 'id', required: true, description: 'ID du proxy' })
+  @ApiOkResponse({
+    schema: {
+      example: {
+        status: 'success',
+        data: {
+          sub_user_id: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
+          total_bytes: 1572864000,
+          gb_used: 1.4649,
+          sent: 524288000,
+          received: 1048576000,
+          active_threads: 3,
+          threads_limit: 100,
+        },
+      },
+    },
+  })
   @Get('proxies/stats')
   @Scopes('read:stats')
   async usageStat(@Req() req: any, @Query('id') id: string) {
@@ -165,6 +232,7 @@ export class MeApiController {
   }
 
   @ApiOperation({ summary: 'Ajoute des IPs à la liste blanche de VOTRE proxy (fusionne avec l\'existant).' })
+  @ApiOkResponse({ schema: { example: { status: 'success', data: { ...PROXY_EXAMPLE, allowed_ips: '127.0.0.1,1.1.1.1' } } } })
   @Post('proxies/allowed-ips/add')
   @HttpCode(200)
   @Scopes('write:proxies')
@@ -183,6 +251,7 @@ export class MeApiController {
   }
 
   @ApiOperation({ summary: 'Ajoute des domaines à la liste des domaines bloqués de VOTRE proxy (fusionne avec l\'existant).' })
+  @ApiOkResponse({ schema: { example: { status: 'success', data: PROXY_EXAMPLE } } })
   @Post('proxies/blocked-domains/add')
   @HttpCode(200)
   @Scopes('write:proxies')
@@ -202,6 +271,7 @@ export class MeApiController {
   }
 
   @ApiOperation({ summary: 'Retire des domaines de la liste des domaines bloqués de VOTRE proxy.' })
+  @ApiOkResponse({ schema: { example: { status: 'success', data: { ...PROXY_EXAMPLE, blocked_domains: 'autre.net' } } } })
   @Post('proxies/blocked-domains/remove')
   @HttpCode(200)
   @Scopes('write:proxies')
@@ -221,6 +291,7 @@ export class MeApiController {
   }
 
   @ApiOperation({ summary: 'Remplace intégralement la liste des domaines bloqués de VOTRE proxy.' })
+  @ApiOkResponse({ schema: { example: { status: 'success', data: PROXY_EXAMPLE } } })
   @Post('proxies/blocked-domains/set')
   @HttpCode(200)
   @Scopes('write:proxies')

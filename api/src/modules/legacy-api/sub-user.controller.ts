@@ -8,7 +8,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBasicAuth, ApiOperation, ApiQuery, ApiSecurity, ApiTags } from '@nestjs/swagger';
+import { ApiBasicAuth, ApiOkResponse, ApiOperation, ApiQuery, ApiSecurity, ApiTags } from '@nestjs/swagger';
 import { ApiKeyGuard } from '../../common/guards/api-key.guard';
 import { MasterKeyGuard } from '../../common/guards/master-key.guard';
 import { Scopes } from '../../common/decorators/scopes.decorator';
@@ -27,6 +27,29 @@ import {
   SubUserUpdateDto,
 } from './dto';
 import { normalizeDomain } from '../../common/utils/proxy-format';
+
+/** Exemple de réponse pour un compte proxy (formatSubUser) — réutilisé dans les exemples Swagger ci-dessous. */
+const PROXY_EXAMPLE = {
+  id: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
+  username: 'u_ab12cd34',
+  password: 'p_9f8e7d6c5b4a3210',
+  label: 'My Proxy Account',
+  allowed_ips: '*',
+  threads_limit: 100,
+  traffic_limit: 10737418240,
+  country_filter: 'US,FR',
+  bytes_sent: 524288000,
+  bytes_received: 1048576000,
+  is_blocked: false,
+  sticky_session_ttl: 1800,
+  custom_proxies: null,
+  blocked_domains: 'exemple.com,autre.net',
+  owner_id: null,
+  bandwidth_limit: null,
+  expires_at: null,
+  tags: 'residential,fr',
+  pool: null,
+};
 
 /**
  * Vue GLOBALE (tous les comptes proxy, identifiants en clair inclus) —
@@ -47,6 +70,8 @@ export class SubUserController {
     private readonly settings: SettingsService,
   ) {}
 
+  @ApiOperation({ summary: 'Liste TOUS les comptes proxy du panel (identifiants en clair inclus).' })
+  @ApiOkResponse({ schema: { example: { status: 'success', data: [{ ...PROXY_EXAMPLE, host: 'proxy.uhq.panel', port: 990 }] } } })
   @Get('list')
   @Scopes('read:proxies')
   async list() {
@@ -61,6 +86,8 @@ export class SubUserController {
     };
   }
 
+  @ApiOperation({ summary: 'Crée un nouveau compte proxy.' })
+  @ApiOkResponse({ schema: { example: { status: 'success', data: PROXY_EXAMPLE } } })
   @Post('create')
   @Scopes('write:proxies')
   async create(@Body() dto: SubUserCreateDto) {
@@ -96,6 +123,8 @@ export class SubUserController {
     }
   }
 
+  @ApiOperation({ summary: 'Met à jour un compte proxy existant (champs fournis uniquement).' })
+  @ApiOkResponse({ schema: { example: { status: 'success', data: PROXY_EXAMPLE } } })
   @Post('update')
   @Scopes('write:proxies')
   async update(@Body() dto: SubUserUpdateDto) {
@@ -125,6 +154,8 @@ export class SubUserController {
     }
   }
 
+  @ApiOperation({ summary: 'Bloque ou débloque un compte proxy.' })
+  @ApiOkResponse({ schema: { example: { status: 'success', data: { ...PROXY_EXAMPLE, is_blocked: true } } } })
   @Post('set-blocked')
   @Scopes('write:proxies')
   async setBlocked(@Body() dto: SubUserBlockDto) {
@@ -139,6 +170,8 @@ export class SubUserController {
     }
   }
 
+  @ApiOperation({ summary: 'Ajoute des IPs à la liste blanche d\'un compte (fusionne avec l\'existant).' })
+  @ApiOkResponse({ schema: { example: { status: 'success', data: { ...PROXY_EXAMPLE, allowed_ips: '127.0.0.1,1.1.1.1' } } } })
   @Post('allowed-ips/add')
   @Scopes('write:proxies')
   async addAllowedIps(@Body() dto: AllowedIpsAddDto) {
@@ -158,6 +191,7 @@ export class SubUserController {
 
   /** Ajoute des domaines à la liste des domaines bloqués de ce compte (fusionne avec l'existant). */
   @ApiOperation({ summary: 'Ajoute des domaines à la liste des domaines bloqués (fusionne avec l\'existant).' })
+  @ApiOkResponse({ schema: { example: { status: 'success', data: PROXY_EXAMPLE } } })
   @Post('blocked-domains/add')
   @Scopes('write:proxies')
   async addBlockedDomains(@Body() dto: BlockedDomainsAddDto) {
@@ -177,6 +211,7 @@ export class SubUserController {
 
   /** Retire des domaines de la liste des domaines bloqués de ce compte. */
   @ApiOperation({ summary: 'Retire des domaines de la liste des domaines bloqués.' })
+  @ApiOkResponse({ schema: { example: { status: 'success', data: { ...PROXY_EXAMPLE, blocked_domains: 'autre.net' } } } })
   @Post('blocked-domains/remove')
   @Scopes('write:proxies')
   async removeBlockedDomains(@Body() dto: BlockedDomainsRemoveDto) {
@@ -196,6 +231,7 @@ export class SubUserController {
 
   /** Remplace intégralement la liste des domaines bloqués de ce compte. */
   @ApiOperation({ summary: 'Remplace intégralement la liste des domaines bloqués (resynchronisation en un appel).' })
+  @ApiOkResponse({ schema: { example: { status: 'success', data: PROXY_EXAMPLE } } })
   @Post('blocked-domains/set')
   @Scopes('write:proxies')
   async setBlockedDomains(@Body() dto: BlockedDomainsSetDto) {
@@ -217,6 +253,8 @@ export class SubUserController {
    * Utilisé par les addons (ex. Orders) pour livrer des identifiants
    * `host:port:user:pass` complets après création d'un compte.
    */
+  @ApiOperation({ summary: 'Point d\'entrée public du proxy (host:port) configuré dans le panel.' })
+  @ApiOkResponse({ schema: { example: { status: 'success', data: { host: 'proxy.uhq.panel', port: 990 } } } })
   @Get('endpoint')
   @Scopes('read:proxies')
   proxyEndpoint() {
@@ -229,7 +267,26 @@ export class SubUserController {
     };
   }
 
+  @ApiOperation({ summary: 'Statistiques d\'usage d\'un compte proxy (identifiant quelconque).' })
   @ApiQuery({ name: 'id', required: true, description: 'ID du sous-utilisateur proxy' })
+  @ApiOkResponse({
+    schema: {
+      example: {
+        status: 'success',
+        data: {
+          sub_user_id: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
+          total_bytes: 1572864000,
+          gb_used: 1.4649,
+          sent: 524288000,
+          received: 1048576000,
+          active_threads: 3,
+          threads_limit: 100,
+          host: 'proxy.uhq.panel',
+          port: 990,
+        },
+      },
+    },
+  })
   @Get('usage-stat/get')
   @Scopes('read:stats')
   async usageStat(@Query('id') id: string) {
@@ -254,8 +311,22 @@ export class SubUserController {
     };
   }
 
+  @ApiOperation({ summary: 'Génère une liste de proxies "sticky session" pour un compte (identifiant quelconque).' })
   @ApiQuery({ name: 'id', required: true, description: 'ID du sous-utilisateur proxy' })
   @ApiQuery({ name: 'count', required: false, type: Number, description: 'Nombre de proxies à générer (1-1000, défaut 100)' })
+  @ApiOkResponse({
+    schema: {
+      example: {
+        status: 'success',
+        format: 'host:port:username:session:password',
+        count: 2,
+        proxies: [
+          'proxy.uhq.panel:990:u_ab12cd34:sess_1a2b3c:p_9f8e7d6c5b4a3210',
+          'proxy.uhq.panel:990:u_ab12cd34:sess_4d5e6f:p_9f8e7d6c5b4a3210',
+        ],
+      },
+    },
+  })
   @Get('get-sticky-proxies')
   @Scopes('read:proxies')
   async stickyProxies(

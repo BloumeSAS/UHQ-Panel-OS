@@ -8,7 +8,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBasicAuth, ApiQuery, ApiSecurity, ApiTags } from '@nestjs/swagger';
+import { ApiBasicAuth, ApiOkResponse, ApiOperation, ApiQuery, ApiSecurity, ApiTags } from '@nestjs/swagger';
 import { ApiKeyGuard } from '../../common/guards/api-key.guard';
 import { Scopes } from '../../common/decorators/scopes.decorator';
 import { PrismaService } from '../../database/prisma.service';
@@ -27,6 +27,21 @@ export class CommonController {
     private readonly engine: ProxyServerService,
   ) {}
 
+  @ApiOperation({ summary: 'Statistiques globales du pool partagé (par provider et protocole).' })
+  @ApiOkResponse({
+    schema: {
+      example: {
+        status: 'success',
+        data: {
+          total_proxies: 154302,
+          working_proxies: 121844,
+          dead_proxies: 32458,
+          by_provider: { Scraper: 140120, Manual: 14182 },
+          by_protocol: { http: 98213, socks5: 56089 },
+        },
+      },
+    },
+  })
   @Get('pool_stats')
   @Scopes('read:pool')
   async poolStats() {
@@ -53,6 +68,10 @@ export class CommonController {
   }
 
   /** Liste les catégories (ProxyPool) — utilisé par ex. pour peupler un sélecteur de catégorie. */
+  @ApiOperation({ summary: 'Liste les catégories (ProxyPool) déclarées sur le panel.' })
+  @ApiOkResponse({
+    schema: { example: { status: 'success', data: [{ name: 'Résidentiel FR', antiVpnEnabled: true }, { name: 'Datacenter', antiVpnEnabled: false }] } },
+  })
   @Get('pools')
   @Scopes('read:pool')
   async pools() {
@@ -63,6 +82,8 @@ export class CommonController {
     return { status: 'success', data: pools };
   }
 
+  @ApiOperation({ summary: 'Nombre de proxies fonctionnels dans le pool partagé.' })
+  @ApiOkResponse({ schema: { example: { status: 'success', count: 121844 } } })
   @Get('available_count')
   @Scopes('read:pool')
   async availableCount() {
@@ -70,9 +91,19 @@ export class CommonController {
     return { status: 'success', count };
   }
 
+  @ApiOperation({ summary: 'Liste les proxies fonctionnels du pool partagé (URLs upstream).' })
   @ApiQuery({ name: 'country', required: false, description: 'Code pays à 2 lettres (ex. FR)' })
   @ApiQuery({ name: 'protocol', required: false, enum: ['http', 'socks4', 'socks5'], description: 'Protocole' })
   @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Nombre maximum de proxies à retourner' })
+  @ApiOkResponse({
+    schema: {
+      example: {
+        status: 'success',
+        count: 1,
+        data: [{ ip: '203.0.113.42', port: 8080, protocol: 'http', country: 'FR', provider: 'Scraper', url: 'http://203.0.113.42:8080', sticky_sessions: 3, latency_ms: 182 }],
+      },
+    },
+  })
   @Get('proxies')
   @Scopes('read:pool')
   async proxies(
@@ -106,6 +137,16 @@ export class CommonController {
     };
   }
 
+  @ApiOperation({ summary: 'Liste les sessions "sticky" actives (attribution proxy figée par session).' })
+  @ApiOkResponse({
+    schema: {
+      example: {
+        status: 'success',
+        count: 1,
+        data: [{ username: 'u_ab12cd34', session_id: 'sess_1a2b3c', proxy_id: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890', remaining_seconds: 1420.5 }],
+      },
+    },
+  })
   @Get('sticky-sessions')
   @Scopes('read:proxies')
   async stickySessions() {
@@ -125,6 +166,8 @@ export class CommonController {
     return { status: 'success', count: out.length, data: out };
   }
 
+  @ApiOperation({ summary: 'Déprécié — le TTL sticky est désormais géré par compte, pas globalement.' })
+  @ApiOkResponse({ schema: { example: { status: 'success', message: 'Global TTL set, but sub-user settings take precedence.' } } })
   @Post('sticky-settings')
   @Scopes('write:proxies')
   stickySettings(@Body() _dto: StickySettingsDto) {
@@ -135,6 +178,8 @@ export class CommonController {
     };
   }
 
+  @ApiOperation({ summary: 'Nombre de proxies fonctionnels par pays, dans tout le pool partagé.' })
+  @ApiOkResponse({ schema: { example: { status: 'success', data: { US: 42130, FR: 18422, DE: 12093 } } } })
   @Get('countries')
   @Scopes('read:pool')
   async countries() {
@@ -164,7 +209,17 @@ export class CommonController {
    * chiffres simulés, une pool avec du vrai stock affiche du réel + simulé
    * combiné.
    */
+  @ApiOperation({ summary: 'Nombre de pays et d\'IPs disponibles dans une catégorie (ou tout le pool si omis).' })
   @ApiQuery({ name: 'pool', required: false, description: 'Nom de la catégorie/pool (vide = tout le pool)' })
+  @ApiOkResponse({
+    schema: {
+      example: {
+        status: 'success',
+        pool: 'Résidentiel FR',
+        data: { countries_count: 3, ip_count: 4821, proxy_count: 4821, by_country: { FR: 4200, BE: 400, CH: 221 } },
+      },
+    },
+  })
   @Get('category-stats')
   @Scopes('read:pool')
   async categoryStats(@Query('pool') poolRaw?: string) {

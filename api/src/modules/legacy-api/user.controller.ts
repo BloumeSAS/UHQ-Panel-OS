@@ -1,5 +1,5 @@
 import { Controller, Get, UseGuards } from '@nestjs/common';
-import { ApiBasicAuth, ApiSecurity, ApiTags } from '@nestjs/swagger';
+import { ApiBasicAuth, ApiOkResponse, ApiOperation, ApiSecurity, ApiTags } from '@nestjs/swagger';
 import { ApiKeyGuard } from '../../common/guards/api-key.guard';
 import { MasterKeyGuard } from '../../common/guards/master-key.guard';
 import { Scopes } from '../../common/decorators/scopes.decorator';
@@ -14,6 +14,15 @@ import { PrismaService } from '../../database/prisma.service';
 export class UserController {
   constructor(private readonly prisma: PrismaService) {}
 
+  @ApiOperation({ summary: 'Solde de trafic agrégé sur TOUS les comptes proxy du panel.' })
+  @ApiOkResponse({
+    schema: {
+      example: {
+        status: 'success',
+        data: { total_gb_used: 412.5, total_gb_limit: 1000, remaining_gb: 587.5, status: 'active' },
+      },
+    },
+  })
   @Get('balance')
   @Scopes('read:stats')
   async balance() {

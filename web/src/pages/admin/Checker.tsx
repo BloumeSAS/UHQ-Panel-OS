@@ -16,6 +16,7 @@ interface LogEntry {
 interface CheckerStatus {
   running: boolean;
   loopEnabled: boolean;
+  loopActive: boolean;
   total: number;
   processed: number;
   progress: number;
@@ -175,14 +176,14 @@ export default function Checker() {
                   <span className="text-lg font-bold">
                     {status?.running ? t('checker.running') : t('checker.idle')}
                   </span>
-                  <Badge variant={status?.loopEnabled ? 'default' : 'outline'} className="text-[10px]">
-                    {status?.loopEnabled ? t('checker.loopOn') : t('checker.loopOff')}
+                  <Badge variant={status?.loopActive ? 'default' : 'outline'} className="text-[10px]">
+                    {status?.loopActive ? t('checker.loopOn') : t('checker.loopOff')}
                   </Badge>
                 </div>
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
-                {status?.loopEnabled ? (
+                {status?.loopActive ? (
                   <Button
                     variant="outline"
                     size="sm"

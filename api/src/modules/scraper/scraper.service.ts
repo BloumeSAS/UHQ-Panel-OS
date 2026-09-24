@@ -41,7 +41,11 @@ export class ScraperService implements OnModuleInit {
   private lastRunTimestamp: Date | null = null;
   private lastRunDurationMs = 0;
   private lastRunCollected = 0;
-  private loopEnabled = true;
+  // Faux par défaut — devient vrai uniquement via start() (bouton "Démarrer"
+  // ou auto-start au boot), jamais juste par initialisation du champ. Sinon
+  // le bouton "Arrêter" s'affichait dès le chargement de la page, avant même
+  // que la boucle ait réellement démarré (30 s après le boot du process).
+  private loopEnabled = false;
   private loopActive = false;
 
   constructor(
@@ -219,6 +223,7 @@ export class ScraperService implements OnModuleInit {
     return {
       running: this.running,
       loopEnabled: this.loopEnabled,
+      loopActive: this.loopActive,
       sourcesTotal: this.sourcesTotal,
       sourcesDone: this.sourcesDone,
       itemsCollected: this.itemsCollected,

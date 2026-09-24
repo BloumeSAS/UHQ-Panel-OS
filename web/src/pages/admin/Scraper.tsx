@@ -123,6 +123,7 @@ export default function Scraper() {
     queryFn: async () => (await api.get('/scraper-sources/status')).data.data as {
       running: boolean;
       loopEnabled: boolean;
+      loopActive: boolean;
       sourcesTotal: number;
       sourcesDone: number;
       itemsCollected: number;
@@ -162,7 +163,7 @@ export default function Scraper() {
             <Activity className="h-4 w-4" /> {t('scraper.liveStats')}
             {liveStatus?.running && <span className="ml-1 h-1.5 w-1.5 rounded-full bg-sky-500 animate-pulse" />}
           </Button>
-          {liveStatus?.loopEnabled ? (
+          {liveStatus?.loopActive ? (
             <Button variant="outline" className="text-destructive border-destructive/50 hover:bg-destructive/10" onClick={stopLoop}>
               <StopCircle className="h-4 w-4" /> {t('scraper.stopLoop')}
             </Button>
@@ -356,8 +357,8 @@ export default function Scraper() {
                 <span className="font-semibold">
                   {liveStatus.running ? t('scraper.running') : t('scraper.idle')}
                 </span>
-                <Badge variant={liveStatus.loopEnabled ? 'default' : 'outline'} className="text-[10px]">
-                  {liveStatus.loopEnabled ? t('scraper.loopOn') : t('scraper.loopOff')}
+                <Badge variant={liveStatus.loopActive ? 'default' : 'outline'} className="text-[10px]">
+                  {liveStatus.loopActive ? t('scraper.loopOn') : t('scraper.loopOff')}
                 </Badge>
               </div>
 
