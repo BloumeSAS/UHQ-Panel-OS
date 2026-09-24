@@ -24,11 +24,23 @@ const DEFAULT_DARK: Record<string, string> = {
   'sidebar-accent': '20 12% 20%', 'sidebar-border': '20 10% 17%',
 };
 
-/** `"H S% L%"` → `hsl(H, S%, L%)`, avec repli sur `fallback` si absent/invalide. */
+/**
+ * `"H S% L%"` → `hsl(H, S%, L%)`, avec repli sur `fallback` si absent/invalide.
+ * `themeColors` vient de la base (Paramètres → Thème, ADMIN uniquement) mais
+ * finit interpolé dans une template string JS EMBARQUÉE dans un `<script>` —
+ * une valeur non numérique (backtick, `</script>`, etc.) pourrait casser hors
+ * du littéral et injecter du JS arbitraire. Chaque composant est donc validé
+ * strictement (nombre optionnellement signé/décimal, `%` optionnel) avant
+ * interpolation ; au moindre doute, repli sur `fallback` (jamais interpolé
+ * tel quel non plus — reconstruit via les mêmes composants validés).
+ */
 function hsl(triplet: string | undefined, fallback: string): string {
-  const v = (triplet ?? fallback).trim().split(/\s+/);
-  if (v.length !== 3) return `hsl(${fallback.replace(/\s+/g, ', ')})`;
-  return `hsl(${v[0]}, ${v[1]}, ${v[2]})`;
+  const safe = /^-?\d+(?:\.\d+)?%?$/;
+  const build = (parts: string[]) => `hsl(${parts[0]}, ${parts[1]}, ${parts[2]})`;
+  const fb = fallback.trim().split(/\s+/);
+  const v = (triplet ?? '').trim().split(/\s+/);
+  if (v.length === 3 && v.every((t) => safe.test(t))) return build(v);
+  return build(fb);
 }
 
 /**
