@@ -467,6 +467,7 @@ const en: Language = {
 
     'setup.siteNamePlaceholder': 'Enter site name',
     'setup.proxyPortPlaceholder': 'Enter port (e.g. 990)',
+    'setup.localEnvHint': 'In a local environment (localhost / 127.0.0.1), the panel works fine to try out the interface, but the proxy engine (port 990) isn\'t usable as-is by your proxy accounts: you need a real domain name actually pointed at this server (DNS) for the "Proxy domain" above to make sense outside of local testing.',
     'setup.advancedSettings': 'Advanced Settings (optional)',
 
     'db.hostPlaceholder': 'Example: db.example.com',
@@ -585,6 +586,8 @@ const en: Language = {
     'settings.checkerAutoStartHint': 'If disabled, the checker stays inactive when the server starts — start it manually from the Checker page once ready.',
     'settings.checkerPrioritizeUnknown': 'Prioritize unknown countries',
     'settings.checkerPrioritizeUnknownHint': 'Checks proxies with an unresolved country first, ahead of the rest.',
+    'settings.scraperAutoStart': 'Auto-start on boot',
+    'settings.scraperAutoStartHint': 'If disabled, the scraper stays inactive when the server starts — start it manually from the Scraper page once ready.',
     'settings.integrations': 'Integrations',
     'settings.smtpServer': 'SMTP Server',
     'settings.notifications': 'Notifications',
@@ -858,6 +861,9 @@ const en: Language = {
     'audit.noLogs': 'No audit log entries.',
     'audit.page': 'Page',
     'audit.entries': 'entries',
+    'audit.diffKey': 'Key',
+    'audit.diffBefore': 'Before',
+    'audit.diffAfter': 'After',
     'audit.from': 'From',
     'audit.to': 'To',
     'audit.applyFilters': 'Filter',

@@ -4,6 +4,7 @@ import axios from 'axios';
 import { useSite } from '@/lib/site';
 import { useAuth } from '@/lib/auth';
 import { useT } from '@/lib/i18n';
+import { Info } from 'lucide-react';
 import { Button, Card, CardContent, CardHeader, CardTitle, Input, Label, Switch } from '@/components/ui';
 import { Footer } from '@/components/Footer';
 
@@ -72,6 +73,11 @@ export default function Setup() {
               <Field label={t('setup.siteName')} value={form.siteName} onChange={(v) => set('siteName', v)} placeholder={t('setup.siteNamePlaceholder')} />
               <Field label={t('setup.proxyHost')} value={form.publicProxyHost} onChange={(v) => set('publicProxyHost', v)} placeholder="prx.exemple.com" />
               <Field label={t('setup.proxyPort')} value={form.publicProxyPort} onChange={(v) => set('publicProxyPort', v)} placeholder={t('setup.proxyPortPlaceholder')} />
+            </div>
+
+            <div className="flex items-start gap-2 rounded-md border border-primary/20 bg-primary/5 p-3 text-xs text-muted-foreground">
+              <Info className="h-4 w-4 shrink-0 text-primary mt-0.5" />
+              <p>{t('setup.localEnvHint')}</p>
             </div>
 
             <div className="flex items-center justify-between rounded-md border p-3">

@@ -44,3 +44,7 @@ CLAUDE.md
 .claude/
 scripts/
 api/logs/
+
+# Override local docker-compose (ex: exposer le port 8000 pour un accès direct
+# sans Traefik en dev) — jamais commité, jamais nécessaire pour Coolify.
+docker-compose.override.yml

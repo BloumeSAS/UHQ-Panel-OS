@@ -207,9 +207,9 @@ export default function AuditPage() {
                           <table className="w-full text-xs">
                             <thead>
                               <tr className="text-muted-foreground">
-                                <th className="text-left font-medium py-1 pr-4">Clé</th>
-                                <th className="text-left font-medium py-1 pr-4">Avant</th>
-                                <th className="text-left font-medium py-1">Après</th>
+                                <th className="text-left font-medium py-1 pr-4">{t('audit.diffKey')}</th>
+                                <th className="text-left font-medium py-1 pr-4">{t('audit.diffBefore')}</th>
+                                <th className="text-left font-medium py-1">{t('audit.diffAfter')}</th>
                               </tr>
                             </thead>
                             <tbody>

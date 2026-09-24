@@ -61,8 +61,18 @@ export class ScraperService implements OnModuleInit {
    * de sortie configuré (fallback résidentiel).
    */
   onModuleInit(): void {
-    // Fire & forget background loops — mirrors `asyncio.create_task(...)`
-    setTimeout(() => this.start(), 30_000);
+    // Si désactivé, le scraper reste inerte au boot — cohérent avec
+    // `checkerAutoStartEnabled` (CheckerService). Sans ce réglage, la boucle
+    // démarrait TOUJOURS 30s après le boot sans aucun moyen de l'empêcher —
+    // sur une install fraîche, "Arrêter" s'affichait alors que rien n'avait
+    // été démarré manuellement.
+    if (this.settings.getBool('scraperAutoStartEnabled')) {
+      setTimeout(() => this.start(), 30_000);
+    } else {
+      this.logger.log('Démarrage automatique du scraper désactivé (Paramètres → Moteur proxy).');
+    }
+    // La résolution géo en arrière-plan (pays "Unknown") reste indépendante
+    // de la boucle de scraping elle-même — utile même scraper à l'arrêt.
     setTimeout(() => this.startGeoLoop(), 60_000);
   }
 

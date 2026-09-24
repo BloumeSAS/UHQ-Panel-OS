@@ -47,6 +47,9 @@ export const SETTING_DEFS = {
   // toujours possible. Utile pour un déploiement où l'admin veut valider la
   // config (settings, pools) avant de lancer 150k vérifications.
   checkerAutoStartEnabled: { def: 'true', env: undefined, secret: false },
+  // Pendant du réglage checker ci-dessus, côté scraper — jusqu'ici la boucle
+  // de scraping démarrait TOUJOURS 30s après le boot sans réglage possible.
+  scraperAutoStartEnabled: { def: 'true', env: undefined, secret: false },
   // Priorise les proxies au pays inconnu (jamais vérifié avec succès, ou
   // probe pays échouée) en tête de chaque cycle — utile après un import en
   // masse pour résorber rapidement le "Unknown" affiché dans Pool/Analytics.

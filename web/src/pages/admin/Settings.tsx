@@ -153,6 +153,7 @@ export default function Settings() {
         'skipDeadProxies',
         'checkerAutoStartEnabled',
         'checkerPrioritizeUnknownCountry',
+        'scraperAutoStartEnabled',
         'require2faForAdmins',
         'trustCloudflareIps',
         'proxyAuthAutoBanEnabled',
@@ -546,6 +547,11 @@ export default function Settings() {
                 label={t('settings.checkerPrioritizeUnknown')}
                 hint={t('settings.checkerPrioritizeUnknownHint')}
                 k="checkerPrioritizeUnknownCountry" form={form} set={set}
+              />
+              <Toggle
+                label={t('settings.scraperAutoStart')}
+                hint={t('settings.scraperAutoStartHint')}
+                k="scraperAutoStartEnabled" form={form} set={set}
               />
             </Row>
 
