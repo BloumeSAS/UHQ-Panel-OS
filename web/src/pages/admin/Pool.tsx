@@ -21,6 +21,7 @@ import {
   Radar,
 } from 'lucide-react';
 import { CountryFlag } from '@/components/CountryFlag';
+import { useConfirm } from '@/components/ConfirmDialog';
 import { api, apiError } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { toast } from '@/lib/toast';
@@ -69,6 +70,7 @@ type StatusFilter = 'all' | 'working' | 'dead' | 'permanent';
 export default function Pool() {
   const t = useT();
   const qc = useQueryClient();
+  const confirmDialog = useConfirm();
   const [country, setCountry] = useState('');
   const [protocol, setProtocol] = useState('');
   const [poolFilter, setPoolFilter] = useState('');
@@ -217,7 +219,12 @@ export default function Pool() {
   };
 
   const clearDead = async () => {
-    if (!window.confirm(t('pool.clearDeadConfirm') || 'Voulez-vous supprimer tous les proxies non fonctionnels (KO) ?')) return;
+    const ok = await confirmDialog({
+      title: t('common.delete'),
+      description: t('pool.clearDeadConfirm') || 'Voulez-vous supprimer tous les proxies non fonctionnels (KO) ?',
+      destructive: true,
+    });
+    if (!ok) return;
     setCleaning(true);
     try {
       await api.delete('/monitoring/proxies?working=false');
@@ -230,7 +237,11 @@ export default function Pool() {
   };
 
   const reviveAllDead = async () => {
-    if (!window.confirm(t('pool.reviveDeadConfirm') || 'Réinitialiser tous les proxies morts (failCount → 0, isWorking → true) ?')) return;
+    const ok = await confirmDialog({
+      title: t('pool.reviveDead') || 'Réinitialiser',
+      description: t('pool.reviveDeadConfirm') || 'Réinitialiser tous les proxies morts (failCount → 0, isWorking → true) ?',
+    });
+    if (!ok) return;
     setRevivedAll(true);
     try {
       await api.post('/monitoring/proxies/revive-dead');

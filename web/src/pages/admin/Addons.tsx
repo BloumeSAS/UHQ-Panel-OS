@@ -31,6 +31,7 @@ import {
   Label,
   Switch,
 } from '@/components/ui';
+import { useConfirm } from '@/components/ConfirmDialog';
 
 interface AddonPage {
   path: string;
@@ -123,6 +124,7 @@ function AddonIcon({ name, className = 'h-5 w-5' }: { name?: string; className?:
 export default function Addons() {
   const t = useT();
   const qc = useQueryClient();
+  const confirmDialog = useConfirm();
 
   const { data: addons = [], isLoading } = useQuery({
     queryKey: ['addons-all'],
@@ -189,7 +191,10 @@ export default function Addons() {
               onToggle={(v) => toggle.mutate({ id: addon.id, enabled: v })}
               onRefresh={() => refresh.mutate(addon.id)}
               onUpdate={() => applyUpdate.mutate(addon.id)}
-              onRemove={() => confirm(t('addons.confirmRemove')) && remove.mutate(addon.id)}
+              onRemove={async () => {
+                const ok = await confirmDialog({ title: t('common.delete'), description: t('addons.confirmRemove'), destructive: true });
+                if (ok) remove.mutate(addon.id);
+              }}
               refreshing={refresh.isPending && refresh.variables === addon.id}
               updating={applyUpdate.isPending && applyUpdate.variables === addon.id}
             />

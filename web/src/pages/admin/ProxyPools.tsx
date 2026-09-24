@@ -27,6 +27,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/dialog';
+import { useConfirm } from '@/components/ConfirmDialog';
 import { toast } from '@/lib/toast';
 
 interface ProxyPool {
@@ -66,6 +67,7 @@ function fakeIpDetail(pool: ProxyPool): string {
 export default function ProxyPools() {
   const t = useT();
   const qc = useQueryClient();
+  const confirmDialog = useConfirm();
   const [editing, setEditing] = useState<ProxyPool | null>(null);
 
   const { data } = useQuery({
@@ -222,14 +224,24 @@ export default function ProxyPools() {
                       size="icon"
                       title={t('pools.clearProxies')}
                       disabled={clearingIds.has(pool.id)}
-                      onClick={() => confirm(t('pools.confirmClearProxies').replace('{name}', pool.name)) && clearProxies.mutate(pool.id)}
+                      onClick={async () => {
+                        const ok = await confirmDialog({
+                          title: t('pools.clearProxies'),
+                          description: t('pools.confirmClearProxies').replace('{name}', pool.name),
+                          destructive: true,
+                        });
+                        if (ok) clearProxies.mutate(pool.id);
+                      }}
                     >
                       <Eraser className={cn('h-4 w-4 text-orange-500', clearingIds.has(pool.id) && 'animate-pulse')} />
                     </Button>
                     <Button
                       variant="ghost"
                       size="icon"
-                      onClick={() => confirm(t('pools.confirmDelete')) && del.mutate(pool.id)}
+                      onClick={async () => {
+                        const ok = await confirmDialog({ title: t('common.delete'), description: t('pools.confirmDelete'), destructive: true });
+                        if (ok) del.mutate(pool.id);
+                      }}
                     >
                       <Trash2 className="h-4 w-4 text-destructive" />
                     </Button>

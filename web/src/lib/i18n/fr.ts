@@ -474,6 +474,7 @@ const fr: Language = {
     'settings.apiKey': 'Clé API',
     'settings.dashboard': 'Tableau de bord',
     'settings.apiKeyDesc': 'Utilisée pour l\'API legacy /api/v1 via l\'en-tête X-API-Key ou en mot de passe Basic auth.',
+    'settings.confirmRegenerateApiKey': "Régénérer la clé API maître ? L'ancienne sera immédiatement invalidée — toute intégration qui l'utilise devra être mise à jour.",
     'settings.dashboardDesc': "Vue d'ensemble en temps réel : threads actifs, sessions, santé du pool, charge système.",
     'settings.generalDesc': "Identité du panel (nom, logo), langue par défaut, ouverture des inscriptions.",
     'settings.themeDesc': "Couleurs du panel en mode clair et sombre — personnalisable ou importable depuis un thème tweakcn.",

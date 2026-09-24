@@ -474,6 +474,7 @@ const en: Language = {
     'settings.apiKey': 'API Key',
     'settings.dashboard': 'Dashboard',
     'settings.apiKeyDesc': 'Used for the legacy API /api/v1 via the X-API-Key header or as Basic auth password.',
+    'settings.confirmRegenerateApiKey': 'Regenerate the master API key? The old one will be invalidated immediately — any integration using it will need to be updated.',
     'settings.dashboardDesc': 'Real-time overview: active threads, sessions, pool health, system load.',
     'settings.generalDesc': "Panel identity (name, logo), default language, sign-ups toggle.",
     'settings.themeDesc': 'Panel colors in light and dark mode — customizable or importable from a tweakcn theme.',

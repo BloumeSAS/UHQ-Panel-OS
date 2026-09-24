@@ -13,6 +13,7 @@ import { useSite } from '@/lib/site';
 import { useTheme } from '@/lib/theme';
 import { hexToHslTriplet, hslTripletToHex, THEME_VARS, type ThemeColors, type ThemeVar } from '@/lib/color';
 import { Button, Input, Label, Switch } from '@/components/ui';
+import { useConfirm } from '@/components/ConfirmDialog';
 import { cn } from '@/lib/utils';
 import { toast } from '@/lib/toast';
 
@@ -89,6 +90,7 @@ export default function Settings() {
   const t = useT();
   const { languages } = useI18n();
   const { refresh } = useSite();
+  const confirmDialog = useConfirm();
   const [tab, setTab] = useState<TabKey>('general');
 
   const { data, refetch } = useQuery({
@@ -232,7 +234,8 @@ export default function Settings() {
   };
 
   const handleRestoreBackup = async (filename: string) => {
-    if (!confirm(t('settings.confirmRestore').replace('{filename}', filename))) return;
+    const ok = await confirmDialog({ title: t('settings.backupRestore'), description: t('settings.confirmRestore').replace('{filename}', filename), destructive: true });
+    if (!ok) return;
     setBackupBusy(true);
     try {
       const res = await api.post('/backup/restore', { filename });
@@ -245,7 +248,8 @@ export default function Settings() {
   };
 
   const handleDeleteBackup = async (filename: string) => {
-    if (!confirm(t('settings.confirmDeleteBackup').replace('{filename}', filename))) return;
+    const ok = await confirmDialog({ title: t('common.delete'), description: t('settings.confirmDeleteBackup').replace('{filename}', filename), destructive: true });
+    if (!ok) return;
     try {
       const res = await api.delete(`/backup/${filename}`);
       if (res.data?.status === 'success') { toast.success(t('settings.backupDeleted')); refetchBackups(); }
@@ -1542,6 +1546,7 @@ function SecretField({
 
 function ApiKeyCard() {
   const t = useT();
+  const confirmDialog = useConfirm();
   const [key, setKey]   = useState('');
   const [shown, setShown] = useState(false);
   const [busy, setBusy]   = useState(false);
@@ -1551,7 +1556,12 @@ function ApiKeyCard() {
     setShown((s) => !s);
   };
   const regenerate = async () => {
-    if (!confirm('Régénérer la clé ? L\'ancienne sera invalidée.')) return;
+    const ok = await confirmDialog({
+      title: t('common.regenerate'),
+      description: t('settings.confirmRegenerateApiKey'),
+      destructive: true,
+    });
+    if (!ok) return;
     setBusy(true);
     try {
       const { data } = await api.post('/settings/api-key/regenerate');

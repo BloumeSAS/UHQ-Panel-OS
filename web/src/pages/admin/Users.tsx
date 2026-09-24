@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, Link2, Download, CheckSquare, Square, ShieldCheck, UserPlus, Clock, Pencil, ChevronLeft, ChevronRight } from 'lucide-react';
 import { AddonPageBar } from '@/components/AddonPageBar';
+import { useConfirm } from '@/components/ConfirmDialog';
 import { api, apiError } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import {
@@ -43,6 +44,7 @@ interface PanelUser {
 export default function Users() {
   const t = useT();
   const qc = useQueryClient();
+  const confirmDialog = useConfirm();
   const { data } = useQuery({
     queryKey: ['users'],
     queryFn: async () => (await api.get('/users')).data.data as PanelUser[],
@@ -136,7 +138,14 @@ export default function Users() {
             <Button size="sm" variant="outline" onClick={() => bulkMutation.mutate({ action: 'deactivate', ids: Array.from(selected) })}>
               {t('users.bulkDeactivate')}
             </Button>
-            <Button size="sm" variant="destructive" onClick={() => confirm(t('common.confirmDelete')) && bulkMutation.mutate({ action: 'delete', ids: Array.from(selected) })}>
+            <Button
+              size="sm"
+              variant="destructive"
+              onClick={async () => {
+                const ok = await confirmDialog({ title: t('common.delete'), description: t('common.confirmDelete'), destructive: true });
+                if (ok) bulkMutation.mutate({ action: 'delete', ids: Array.from(selected) });
+              }}
+            >
               {t('common.delete')}
             </Button>
           </div>
@@ -226,7 +235,14 @@ export default function Users() {
                     <Button variant="ghost" size="icon" onClick={() => setAssignFor(u)} title={t('users.assign')}>
                       <Link2 className="h-4 w-4" />
                     </Button>
-                    <Button variant="ghost" size="icon" onClick={() => confirm(t('common.confirmDelete')) && del.mutate(u.id)}>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={async () => {
+                        const ok = await confirmDialog({ title: t('common.delete'), description: t('common.confirmDelete'), destructive: true });
+                        if (ok) del.mutate(u.id);
+                      }}
+                    >
                       <Trash2 className="h-4 w-4 text-destructive" />
                     </Button>
                   </TD>

@@ -26,6 +26,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/dialog';
+import { useConfirm } from '@/components/ConfirmDialog';
 
 interface Source {
   id: string;
@@ -43,6 +44,7 @@ interface Source {
 export default function Scraper() {
   const t = useT();
   const qc = useQueryClient();
+  const confirmDialog = useConfirm();
   const { data } = useQuery({
     queryKey: ['scraper-sources'],
     queryFn: async () => (await api.get('/scraper-sources')).data.data as Source[],
@@ -86,14 +88,16 @@ export default function Scraper() {
 
   const bulkDelete = async () => {
     const n = selected.size;
-    if (!window.confirm(t('scraper.bulkDeleteConfirm').replace('{n}', String(n)))) return;
+    const ok = await confirmDialog({ title: t('common.delete'), description: t('scraper.bulkDeleteConfirm').replace('{n}', String(n)), destructive: true });
+    if (!ok) return;
     await api.post('/scraper-sources/bulk-delete', { ids: Array.from(selected) });
     setSelected(new Set());
     invalidate();
   };
 
   const deleteAll = async () => {
-    if (!window.confirm(t('scraper.deleteAllConfirm'))) return;
+    const ok = await confirmDialog({ title: t('scraper.deleteAll'), description: t('scraper.deleteAllConfirm'), destructive: true });
+    if (!ok) return;
     await api.delete('/scraper-sources');
     setSelected(new Set());
     invalidate();
@@ -120,7 +124,8 @@ export default function Scraper() {
   };
   const deadCount = data?.filter((s) => s.failCount > 0 || !s.enabled).length ?? 0;
   const resetAllFailed = async () => {
-    if (!window.confirm(t('scraper.resetAllConfirm'))) return;
+    const ok = await confirmDialog({ title: t('scraper.resetAllFailed'), description: t('scraper.resetAllConfirm') });
+    if (!ok) return;
     await api.post('/scraper-sources/reset-all-failed');
     invalidate();
   };
@@ -249,7 +254,14 @@ export default function Scraper() {
                     <Button variant="ghost" size="icon" onClick={() => setEditing(s)} title={t('common.edit')}>
                       <Pencil className="h-4 w-4" />
                     </Button>
-                    <Button variant="ghost" size="icon" onClick={() => confirm(t('common.confirmDelete')) && del.mutate(s.id)}>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={async () => {
+                        const ok = await confirmDialog({ title: t('common.delete'), description: t('common.confirmDelete'), destructive: true });
+                        if (ok) del.mutate(s.id);
+                      }}
+                    >
                       <Trash2 className="h-4 w-4 text-destructive" />
                     </Button>
                   </TD>
