@@ -40,6 +40,7 @@ interface ProxyPool {
   alwaysOnline: boolean;
   checkerEnabled: boolean;
   antiVpnEnabled: boolean;
+  trafficMultiplier: number;
   fakeCountries: string | null;
   fakePriorityCountries: string | null;
   fakeIpCountMin: number | null;
@@ -174,6 +175,15 @@ export default function ProxyPools() {
                           {t('pools.checkerDisabled')}
                         </Badge>
                       )}
+                      {pool.trafficMultiplier != null && pool.trafficMultiplier !== 1 && (
+                        <Badge
+                          variant="secondary"
+                          className="bg-violet-100 text-violet-800 dark:bg-violet-950/30 dark:text-violet-400 text-[10px]"
+                          title={t('pools.trafficMultiplierHint')}
+                        >
+                          {t('pools.trafficMultiplierBadge').replace('{n}', String(pool.trafficMultiplier))}
+                        </Badge>
+                      )}
                       {pool.antiVpnEnabled && (
                         <Badge
                           variant="secondary"
@@ -279,6 +289,7 @@ const EMPTY_POOL_FORM = {
   alwaysOnline: false,
   checkerEnabled: true,
   antiVpnEnabled: false,
+  trafficMultiplier: '1',
   fakeCountries: '',
   fakePriorityCountries: '',
   fakeIpMode: 'fixed' as 'fixed' | 'random',
@@ -312,6 +323,7 @@ function CreateDialog({ onCreated }: { onCreated: () => void }) {
         alwaysOnline: form.alwaysOnline,
         checkerEnabled: form.checkerEnabled,
         antiVpnEnabled: form.antiVpnEnabled,
+        trafficMultiplier: Number(form.trafficMultiplier) || 1,
         fakeCountries: form.fakeCountries || undefined,
         fakePriorityCountries: form.fakePriorityCountries || undefined,
         fakeIpCountMin: fakeMin ? Number(fakeMin) : undefined,
@@ -356,6 +368,7 @@ function EditDialog({ pool, onClose, onSaved }: { pool: ProxyPool; onClose: () =
     alwaysOnline: pool.alwaysOnline,
     checkerEnabled: pool.checkerEnabled,
     antiVpnEnabled: pool.antiVpnEnabled,
+    trafficMultiplier: String(pool.trafficMultiplier ?? 1),
     fakeCountries: pool.fakeCountries ?? '',
     fakePriorityCountries: pool.fakePriorityCountries ?? '',
     fakeIpMode: (isRandom ? 'random' : 'fixed') as 'fixed' | 'random',
@@ -393,6 +406,7 @@ function EditDialog({ pool, onClose, onSaved }: { pool: ProxyPool; onClose: () =
         alwaysOnline: form.alwaysOnline,
         checkerEnabled: form.checkerEnabled,
         antiVpnEnabled: form.antiVpnEnabled,
+        trafficMultiplier: Number(form.trafficMultiplier) || 1,
         fakeCountries: form.fakeCountries || null,
         fakePriorityCountries: form.fakePriorityCountries || null,
         fakeIpCountMin: fakeMin ? Number(fakeMin) : null,
@@ -433,7 +447,7 @@ function PoolForm({
 }: {
   form: {
     name: string; description: string; color: string; port: string; domain: string;
-    alwaysOnline: boolean; checkerEnabled: boolean; antiVpnEnabled: boolean; fakeCountries: string; fakePriorityCountries: string; fakeIpMode: 'fixed' | 'random';
+    alwaysOnline: boolean; checkerEnabled: boolean; antiVpnEnabled: boolean; trafficMultiplier: string; fakeCountries: string; fakePriorityCountries: string; fakeIpMode: 'fixed' | 'random';
     fakeIpFixed: string; fakeIpMin: string; fakeIpMax: string;
     fakeIpRotateEnabled: boolean; fakeIpRotateSeconds: string;
     fallbackCountryFormat: string;
@@ -506,6 +520,22 @@ function PoolForm({
           placeholder={t('pools.domainPlaceholder')}
         />
         <p className="text-xs text-muted-foreground">{t('pools.domainHint')}</p>
+      </div>
+      <div className="space-y-1.5">
+        <Label>{t('pools.trafficMultiplier')}</Label>
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-muted-foreground">×</span>
+          <Input
+            type="number"
+            min={0.01}
+            max={100}
+            step={0.01}
+            value={form.trafficMultiplier}
+            onChange={(e) => set('trafficMultiplier', e.target.value)}
+            className="w-32"
+          />
+        </div>
+        <p className="text-xs text-muted-foreground">{t('pools.trafficMultiplierHint')}</p>
       </div>
 
       <div className="flex items-center justify-between rounded-lg border bg-muted/20 px-4 py-3 gap-4">

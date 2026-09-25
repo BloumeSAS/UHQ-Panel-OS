@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
+import { IsBoolean, IsInt, IsNumber, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
 
 export class CreatePoolDto {
   @ApiProperty({ example: 'Datacenter' })
@@ -45,6 +45,16 @@ export class CreatePoolDto {
   @IsOptional()
   @IsBoolean()
   antiVpnEnabled?: boolean;
+
+  @ApiPropertyOptional({
+    example: 2,
+    description: "Multiplicateur de consommation des comptes de cette catégorie : 2 = chaque octet compte double (conso, quota, historique du compte). 1 = normal (défaut). Décimales acceptées (ex. 1.5) ; < 1 = remise.",
+  })
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0.01)
+  @Max(100)
+  trafficMultiplier?: number;
 
   @ApiPropertyOptional({ example: 'FR,DE,US,GB', description: 'Pays simulés (codes ISO 2 lettres, virgules), ajoutés aux vraies stats de category-stats. Indépendant de alwaysOnline. Aucune limite sur le nombre de pays.' })
   @IsOptional()
@@ -116,6 +126,16 @@ export class UpdatePoolDto {
   @IsOptional()
   @IsBoolean()
   antiVpnEnabled?: boolean;
+
+  @ApiPropertyOptional({
+    example: 2,
+    description: "Multiplicateur de consommation des comptes de cette catégorie : 2 = chaque octet compte double (conso, quota, historique du compte). 1 = normal (défaut). Décimales acceptées (ex. 1.5) ; < 1 = remise.",
+  })
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0.01)
+  @Max(100)
+  trafficMultiplier?: number;
 
   @ApiPropertyOptional({ example: 'FR,DE,US,GB', description: 'Pays simulés (codes ISO 2 lettres, virgules), ajoutés aux vraies stats de category-stats (null = retire). Indépendant de alwaysOnline. Aucune limite sur le nombre de pays.' })
   @IsOptional()

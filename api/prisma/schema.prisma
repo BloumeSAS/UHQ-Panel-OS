@@ -285,6 +285,10 @@ model ProxyPool {
   // à chaque cycle. Le scraper ne marque jamais rien mort de son côté (seul
   // le checker teste la connectivité réelle).
   alwaysOnline    Boolean @default(false)
+  // Multiplicateur de consommation des comptes de cette catégorie (1 = normal,
+  // 2 = chaque octet compte double pour le compte : conso, quota, historique).
+  // Le compteur global de bande passante réelle n'est pas multiplié.
+  trafficMultiplier Float @default(1)
   // "Checker actif" : si false, le cycle automatique du checker ignore
   // complètement les BackendProxy de cette pool (aucun test, statut figé tel
   // quel — contrairement à alwaysOnline qui force isWorking=true, ici on ne

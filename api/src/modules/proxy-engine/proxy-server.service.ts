@@ -86,6 +86,8 @@ export class ProxyServerService implements OnModuleDestroy {
   private readonly alwaysOnlinePoolSet = new Set<string>();
   /** Pools "Anti-VPN" : toute IP cliente identifiée VPN/hébergeur (cf. VpnDetectionService) est rejetée + bannie sur ces pools. */
   private readonly antiVpnPoolSet = new Set<string>();
+  /** Pools avec un multiplicateur de consommation ≠ 1 (nom → multiplicateur). */
+  private readonly poolMultiplierMap = new Map<string, number>();
   /**
    * nom de pool → gabarit de username pour le fallback résidentiel
    * (ex. "{user}-country-{country}"). Absent = format par défaut du moteur
@@ -275,7 +277,7 @@ export class ProxyServerService implements OnModuleDestroy {
     if (this.syncing) return;
     this.syncing = true;
     try {
-      const [pools, users, alwaysOnlinePools, fallbackFormatPools, antiVpnPools] = await Promise.all([
+      const [pools, users, alwaysOnlinePools, fallbackFormatPools, antiVpnPools, multiplierPools] = await Promise.all([
         this.prisma.proxyPool.findMany({ where: { port: { not: null } } }),
         this.prisma.userProxy.findMany({ where: { port: { not: null } } }),
         this.prisma.proxyPool.findMany({ where: { alwaysOnline: true }, select: { name: true } }),
@@ -287,6 +289,10 @@ export class ProxyServerService implements OnModuleDestroy {
           select: { name: true, fallbackCountryFormat: true },
         }),
         this.prisma.proxyPool.findMany({ where: { antiVpnEnabled: true }, select: { name: true } }),
+        this.prisma.proxyPool.findMany({
+          where: { trafficMultiplier: { not: 1 } },
+          select: { name: true, trafficMultiplier: true },
+        }),
       ]);
       this.portPoolMap.clear();
       this.poolPortMap.clear();
@@ -302,6 +308,10 @@ export class ProxyServerService implements OnModuleDestroy {
       for (const p of fallbackFormatPools) if (p.fallbackCountryFormat) this.poolFallbackFormatMap.set(p.name, p.fallbackCountryFormat);
       this.antiVpnPoolSet.clear();
       for (const p of antiVpnPools) this.antiVpnPoolSet.add(p.name);
+      this.poolMultiplierMap.clear();
+      for (const p of multiplierPools) {
+        if (p.trafficMultiplier > 0) this.poolMultiplierMap.set(p.name, p.trafficMultiplier);
+      }
 
       const desired = new Set<number>([
         this.port,
@@ -871,7 +881,7 @@ export class ProxyServerService implements OnModuleDestroy {
         sock.once('close', () => {
           const extraWritten = Math.max(0, (sock.bytesWritten ?? 0) - counted.written);
           const extraRead = Math.max(0, (sock.bytesRead ?? 0) - counted.read);
-          if (extraWritten > 0 || extraRead > 0) this.meter(acct, hostKey, extraWritten, extraRead, false);
+          if (extraWritten > 0 || extraRead > 0) this.meter(acct, hostKey, extraWritten, extraRead, false, effectivePool);
         });
       };
 
@@ -1009,7 +1019,7 @@ export class ProxyServerService implements OnModuleDestroy {
       const throttle = this.getThrottle(acct, this.userListCache.get(acct)?.bandwidthLimit ?? user.bandwidthLimit);
 
       if (method === 'CONNECT') {
-        this.meter(acct, hostKey, 0, 0, true); // 1 tunnel = 1 requête
+        this.meter(acct, hostKey, 0, 0, true, effectivePool); // 1 tunnel = 1 requête
         client.write('HTTP/1.1 200 Connection established\r\n\r\n');
         const tls = new TlsClientWatch();
         const tunnelUpstream = winner.upstream;
@@ -1018,7 +1028,7 @@ export class ProxyServerService implements OnModuleDestroy {
           winner.socket,
           (chunk) => {
             winnerCounted.written += chunk.length;
-            this.meter(acct, hostKey, chunk.length, 0, false);
+            this.meter(acct, hostKey, chunk.length, 0, false, effectivePool);
             if (!tls.done) {
               tls.feed(chunk);
               if (tls.rejected) this.onTlsRejected(tunnelUpstream);
@@ -1026,7 +1036,7 @@ export class ProxyServerService implements OnModuleDestroy {
           },
           (chunk) => {
             winnerCounted.read += chunk.length;
-            this.meter(acct, hostKey, 0, chunk.length, false);
+            this.meter(acct, hostKey, 0, chunk.length, false, effectivePool);
           },
           throttle,
           this.idleTimeoutMs,
@@ -1046,6 +1056,7 @@ export class ProxyServerService implements OnModuleDestroy {
           hostKey,
           winnerCounted,
           throttle,
+          effectivePool,
         );
       }
       // Tunnel "muet" : le client a envoyé des données mais l'upstream n'a
@@ -1864,6 +1875,7 @@ export class ProxyServerService implements OnModuleDestroy {
     hostKey: string,
     counted: { read: number; written: number },
     throttle: PipeThrottle | undefined,
+    pool: string | null,
   ): Promise<void> {
     const proto = (upstream.protocol || 'http').toLowerCase();
     let finalPath = path;
@@ -1908,7 +1920,7 @@ export class ProxyServerService implements OnModuleDestroy {
     upstreamSocket.write(reqBuf, (err) => {
       if (err) return;
       counted.written += reqBuf.length;
-      this.meter(username, hostKey, reqBuf.length, 0, true);
+      this.meter(username, hostKey, reqBuf.length, 0, true, pool);
     });
 
     let firstResponseChunk = true;
@@ -1918,11 +1930,11 @@ export class ProxyServerService implements OnModuleDestroy {
       // Corps de requête éventuel (POST/PUT…) client → upstream.
       (chunk) => {
         counted.written += chunk.length;
-        this.meter(username, hostKey, chunk.length, 0, false);
+        this.meter(username, hostKey, chunk.length, 0, false, pool);
       },
       (chunk) => {
         counted.read += chunk.length;
-        this.meter(username, hostKey, 0, chunk.length, false);
+        this.meter(username, hostKey, 0, chunk.length, false, pool);
         // HTTP en clair : on peut sniffer le début de la réponse (blocage
         // cible) — code auparavant mort (jamais appelé avec isNewReq=true).
         if (firstResponseChunk) {
@@ -1956,8 +1968,18 @@ export class ProxyServerService implements OnModuleDestroy {
    * applique le quota en temps réel : dès que usedGb + octets pas encore
    * flushés atteint `totalGb`, tous les tunnels du compte sont coupés.
    */
-  private meter(username: string, hostKey: string, sent: number, received: number, isNewReq: boolean): void {
-    this.traffic.logTraffic(username, hostKey, sent, received, isNewReq);
+  private meter(
+    username: string,
+    hostKey: string,
+    sent: number,
+    received: number,
+    isNewReq: boolean,
+    pool: string | null = null,
+  ): void {
+    // Multiplicateur de la catégorie (lu à chaque appel : un changement
+    // s'applique aussi aux tunnels déjà ouverts).
+    const multiplier = (pool && this.poolMultiplierMap.get(pool)) || 1;
+    this.traffic.logTraffic(username, hostKey, sent, received, isNewReq, multiplier);
     const u = this.userListCache.get(username);
     if (u && this.isOverQuota(u)) this.disconnectAccount(username, 'data quota reached');
   }

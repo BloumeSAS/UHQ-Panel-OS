@@ -14,8 +14,12 @@ interface HostStats {
 }
 
 interface UserStats {
+  /** Octets FACTURÉS au compte (× multiplicateur de sa catégorie). */
   sent: number;
   received: number;
+  /** Octets RÉELS (compteur global de bande passante, jamais multiplié). */
+  realSent: number;
+  realReceived: number;
   /** Clé = `${day}|${hostname}`. */
   hosts: Map<string, HostStats>;
 }
@@ -97,17 +101,25 @@ export class TrafficService implements OnModuleInit, BeforeApplicationShutdown {
     sent: number,
     received: number,
     isNewReq = false,
+    multiplier = 1,
   ): void {
     const now = Date.now();
     if (now >= this.nextDayStart || now < this.dayStart) this.rollDay(now);
 
     let user = this.buffer.get(username);
     if (!user) {
-      user = { sent: 0, received: 0, hosts: new Map() };
+      user = { sent: 0, received: 0, realSent: 0, realReceived: 0, hosts: new Map() };
       this.buffer.set(username, user);
     }
-    user.sent += sent;
-    user.received += received;
+    // Multiplicateur de catégorie : tout ce qui est imputé AU COMPTE (conso,
+    // quota, historique, détail par domaine) est multiplié ; le débit live et
+    // le compteur global restent en octets réels.
+    const billedSent = sent * multiplier;
+    const billedReceived = received * multiplier;
+    user.sent += billedSent;
+    user.received += billedReceived;
+    user.realSent += sent;
+    user.realReceived += received;
 
     const key = `${this.dayStart}|${hostname}`;
     let host = user.hosts.get(key);
@@ -115,8 +127,8 @@ export class TrafficService implements OnModuleInit, BeforeApplicationShutdown {
       host = { day: this.dayStart, hostname, sent: 0, received: 0, reqs: 0 };
       user.hosts.set(key, host);
     }
-    host.sent += sent;
-    host.received += received;
+    host.sent += billedSent;
+    host.received += billedReceived;
     if (isNewReq) host.reqs += 1;
 
     this.recordRate(username, now, sent, received);
@@ -255,8 +267,8 @@ export class TrafficService implements OnModuleInit, BeforeApplicationShutdown {
       this.prisma.trafficCounter.update({
         where: { id: 'global' },
         data: {
-          bytesSent: { increment: BigInt(Math.round(data.sent)) },
-          bytesReceived: { increment: BigInt(Math.round(data.received)) },
+          bytesSent: { increment: BigInt(Math.round(data.realSent)) },
+          bytesReceived: { increment: BigInt(Math.round(data.realReceived)) },
           requests: { increment: BigInt(reqs) },
         },
       }),
@@ -376,11 +388,13 @@ export class TrafficService implements OnModuleInit, BeforeApplicationShutdown {
   private requeue(username: string, data: UserStats): void {
     let user = this.buffer.get(username);
     if (!user) {
-      user = { sent: 0, received: 0, hosts: new Map() };
+      user = { sent: 0, received: 0, realSent: 0, realReceived: 0, hosts: new Map() };
       this.buffer.set(username, user);
     }
     user.sent += data.sent;
     user.received += data.received;
+    user.realSent += data.realSent;
+    user.realReceived += data.realReceived;
     for (const [key, h] of data.hosts) {
       const cur = user.hosts.get(key);
       if (cur) {
