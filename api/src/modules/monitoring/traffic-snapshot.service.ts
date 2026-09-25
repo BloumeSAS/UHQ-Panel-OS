@@ -21,18 +21,17 @@ export class TrafficSnapshotService {
   @Cron('*/15 * * * *')
   async snapshot() {
     try {
-      const [bytes, requests] = await Promise.all([
-        this.prisma.userProxy.aggregate({
-          _sum: { totalBytesSent: true, totalBytesReceived: true },
-        }),
-        this.prisma.proxyUsage.aggregate({ _sum: { requests: true } }),
-      ]);
+      // Compteur global monotone (cf. TrafficCounter) : un reset ou la
+      // suppression d'un compte ne fait plus baisser le cumul — avant, le delta
+      // négatif était ramené à 0 et le trafic réel de l'intervalle disparaissait.
+      const counter = await this.prisma.trafficCounter.findUnique({ where: { id: 'global' } });
+      if (!counter) return; // créé au premier flush de trafic
 
       await this.prisma.trafficSnapshot.create({
         data: {
-          totalBytesSent: bytes._sum.totalBytesSent ?? 0n,
-          totalBytesReceived: bytes._sum.totalBytesReceived ?? 0n,
-          totalRequests: BigInt(requests._sum.requests ?? 0),
+          totalBytesSent: counter.bytesSent,
+          totalBytesReceived: counter.bytesReceived,
+          totalRequests: counter.requests,
         },
       });
 

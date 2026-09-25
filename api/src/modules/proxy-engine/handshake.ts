@@ -372,23 +372,56 @@ export async function performHandshake(
 const HALF_CLOSE_GRACE_MS = 30_000;
 
 /**
- * Bidirectional TCP relay between client and upstream. Calls `onAtoB` /
- * `onBtoA` with each chunk so the engine can update TrafficService.
- * Support for optional bandwidthLimit (in KB/s).
+ * Seau à jetons (octets/s, rafale max = 1 s de débit), recharge paresseuse.
+ * Partagé entre TOUS les tunnels d'un compte (cf. ProxyServerService) : la
+ * limite `bandwidthLimit` s'applique au compte, pas à chaque connexion.
+ */
+export class TokenBucket {
+  private tokens: number;
+  private last = Date.now();
+
+  constructor(readonly ratePerSec: number) {
+    this.tokens = ratePerSec;
+  }
+
+  /** Prélève jusqu'à `max` octets ; retourne le nombre accordé (0 = attendre). */
+  take(max: number): number {
+    const now = Date.now();
+    this.tokens = Math.min(this.ratePerSec, this.tokens + (this.ratePerSec * (now - this.last)) / 1000);
+    this.last = now;
+    const n = Math.min(max, Math.floor(this.tokens));
+    if (n > 0) this.tokens -= n;
+    return n;
+  }
+}
+
+export interface PipeThrottle {
+  /** Sens a → b (client → upstream). */
+  aToB: TokenBucket;
+  /** Sens b → a (upstream → client). */
+  bToA: TokenBucket;
+}
+
+/**
+ * Bidirectional TCP relay between client (`a`) and upstream (`b`).
  *
- * Comptage exact (v2.4.63) : un chunk n'est compté qu'une fois RÉELLEMENT
- * livré (callback de `write()` sans erreur), plus au moment où il est lu. Avec
- * la backpressure (source en pause tant que la destination n'a pas vidé son
- * buffer), la mémoire tampon par tunnel reste bornée (~highWaterMark) au lieu
- * de grossir sans limite quand l'upstream est plus rapide que le client — et
- * ce tampon n'est plus facturé s'il est perdu à la fermeture.
+ * Comptage côté UPSTREAM (v2.4.64) — ce que le fournisseur du proxy
+ * upstream (reseller) mesure et facture :
+ *  - `onAtoB(chunk)` : appelé quand le chunk a été ÉCRIT sur `b` (callback de
+ *    `write()` sans erreur) = octets envoyés à l'upstream ;
+ *  - `onBtoA(chunk)` : appelé dès que le chunk est LU sur `b` = octets reçus de
+ *    l'upstream, qu'ils atteignent ou non le client ensuite.
+ * La backpressure (source en pause tant que la destination n'a pas vidé son
+ * buffer) borne ce qui est lu de l'upstream à ce que le client absorbe
+ * réellement, et la mémoire par tunnel à ~highWaterMark.
+ *
+ * `throttle` : seaux partagés au niveau du COMPTE (cf. TokenBucket).
  *
  * Fermeture propre : quand un côté termine ('end'/'close'), on `end()`
  * l'autre (ce qui vide d'abord ses écritures en attente) au lieu de tout
  * détruire immédiatement — avant, la fin d'un téléchargement encore en
- * transit vers un client lent était tronquée (mais facturée). Résout dès
- * qu'un côté est fermé ET que l'autre a tout reçu, sur erreur, ou après
- * `HALF_CLOSE_GRACE_MS`.
+ * transit vers un client lent était tronquée. Résout dès qu'un côté est
+ * fermé ET que l'autre a tout reçu, sur erreur, ou après `HALF_CLOSE_GRACE_MS`.
  *
  * `idleTimeoutMs` : ferme le tunnel si AUCUNE donnée n'a circulé dans ce
  * délai, dans un sens ou l'autre. Sans ça, un pair qui disparaît sans
@@ -401,7 +434,7 @@ export function bidirectionalPipe(
   b: Socket,
   onAtoB: (chunk: Buffer) => void,
   onBtoA: (chunk: Buffer) => void,
-  bandwidthLimit?: number,
+  throttle?: PipeThrottle,
   idleTimeoutMs?: number,
 ): Promise<void> {
   return new Promise((resolve) => {
@@ -433,11 +466,12 @@ export function bidirectionalPipe(
       b.once('timeout', finish);
     }
 
-    /** Écrit vers `dest` ; `count` n'est appelé qu'une fois le chunk livré. Retourne false si `dest` est saturé. */
-    const send = (dest: Socket, chunk: Buffer, count: (chunk: Buffer) => void): boolean => {
+    /** Écrit vers `dest` (`onWritten` après écriture effective). Retourne false si `dest` est saturé. */
+    const send = (dest: Socket, chunk: Buffer, onWritten?: (chunk: Buffer) => void): boolean => {
       if (dest.destroyed || dest.writableEnded) return true;
+      if (!onWritten) return dest.write(chunk);
       return dest.write(chunk, (err) => {
-        if (!err) count(chunk);
+        if (!err) onWritten(chunk);
       });
     };
     const endDest = (dest: Socket) => {
@@ -445,14 +479,23 @@ export function bidirectionalPipe(
     };
 
     /**
-     * Relais d'un sens `source` → `dest`. Retourne la fonction à appeler quand
-     * `source` a terminé : ferme proprement `dest` une fois tout livré.
+     * Relais d'un sens `source` → `dest`. `onRead` compte à la lecture sur
+     * `source`, `onWritten` à l'écriture effective sur `dest`. Retourne la
+     * fonction à appeler quand `source` a terminé : ferme proprement `dest`
+     * une fois tout livré.
      */
-    const relay = (source: Socket, dest: Socket, count: (chunk: Buffer) => void): (() => void) => {
-      if (!(bandwidthLimit && bandwidthLimit > 0)) {
+    const relay = (
+      source: Socket,
+      dest: Socket,
+      bucket: TokenBucket | undefined,
+      onRead?: (chunk: Buffer) => void,
+      onWritten?: (chunk: Buffer) => void,
+    ): (() => void) => {
+      if (!bucket) {
         let waitingDrain = false;
         source.on('data', (chunk: Buffer) => {
-          if (!send(dest, chunk, count) && !waitingDrain) {
+          onRead?.(chunk);
+          if (!send(dest, chunk, onWritten) && !waitingDrain) {
             waitingDrain = true;
             source.pause();
             dest.once('drain', () => {
@@ -464,29 +507,24 @@ export function bidirectionalPipe(
         return () => endDest(dest);
       }
 
-      const limitBytes = Math.floor(bandwidthLimit * 1024);
-      const refill = Math.max(1, Math.floor(limitBytes / 10));
-      let bucket = limitBytes;
       const queue: Buffer[] = [];
       let paused = false;
       let sourceEnded = false;
 
       const flush = () => {
-        while (queue.length > 0 && bucket > 0 && !dest.writableNeedDrain && !dest.destroyed) {
+        while (queue.length > 0 && !dest.writableNeedDrain && !dest.destroyed) {
           const chunk = queue[0];
+          const grant = bucket.take(chunk.length);
+          if (grant <= 0) break;
           let piece: Buffer;
-          if (chunk.length <= bucket) {
+          if (grant >= chunk.length) {
             queue.shift();
             piece = chunk;
           } else {
-            // Bucket entier (cf. refill arrondi) : un subarray d'une longueur
-            // fractionnaire serait tronqué à 0 octet et bouclerait sans fin.
-            piece = chunk.subarray(0, bucket);
-            queue[0] = chunk.subarray(bucket);
+            piece = chunk.subarray(0, grant);
+            queue[0] = chunk.subarray(grant);
           }
-          bucket -= piece.length;
-          if (piece.length === 0) break;
-          send(dest, piece, count);
+          send(dest, piece, onWritten);
         }
         if (queue.length > 0) return;
         if (sourceEnded) endDest(dest);
@@ -496,15 +534,11 @@ export function bidirectionalPipe(
         }
       };
 
-      // Refill bucket every 100ms
-      intervals.push(
-        setInterval(() => {
-          bucket = Math.min(limitBytes, bucket + refill);
-          flush();
-        }, 100),
-      );
+      // Réessaie toutes les 50 ms quand le seau (partagé) est vide.
+      intervals.push(setInterval(flush, 50));
       dest.on('drain', flush);
       source.on('data', (chunk: Buffer) => {
+        onRead?.(chunk);
         queue.push(chunk);
         flush();
         if ((queue.length > 0 || dest.writableNeedDrain) && !paused) {
@@ -520,8 +554,9 @@ export function bidirectionalPipe(
       };
     };
 
-    const endAtoB = relay(a, b, onAtoB);
-    const endBtoA = relay(b, a, onBtoA);
+    // a → b : compté à l'écriture sur l'upstream ; b → a : compté à la lecture sur l'upstream.
+    const endAtoB = relay(a, b, throttle?.aToB, undefined, onAtoB);
+    const endBtoA = relay(b, a, throttle?.bToA, onBtoA, undefined);
 
     // Un côté fermé : il ne reste qu'à finir de livrer ce qui est dû à
     // l'autre (son 'finish' = tout écrit + FIN envoyé), puis on libère le

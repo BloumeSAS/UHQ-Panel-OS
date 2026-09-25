@@ -227,6 +227,18 @@ model PoolHealthSnapshot {
 // différence entre deux points consécutifs, PAS la valeur brute (qui ne fait
 // que croître). Sans cette table, seul le total du jour courant est visible
 // (`/monitoring/live`) — aucun historique de trafic n'existait.
+// Compteur global MONOTONE du trafic (ligne unique id="global") — incrémenté
+// dans la même transaction que les compteurs de chaque compte, jamais remis à
+// zéro ni diminué par un reset/une suppression de compte. Source des
+// TrafficSnapshot (avant : somme des compteurs des comptes, qui baissait à
+// chaque reset → intervalles entiers effacés du graphique).
+model TrafficCounter {
+  id            String @id @default("global")
+  bytesSent     BigInt @default(0)
+  bytesReceived BigInt @default(0)
+  requests      BigInt @default(0)
+}
+
 model TrafficSnapshot {
   id                 String   @id @default(cuid())
   totalBytesSent     BigInt

@@ -61,6 +61,8 @@ export class TrafficService implements OnModuleInit, BeforeApplicationShutdown {
   private nextDayStart = 0;
   /** Appelé après chaque commit avec le `usedGb` réel en base (cf. ProxyServerService). */
   private usageListener: ((username: string, usedGb: number) => void) | null = null;
+  /** Ligne TrafficCounter garantie présente (initialisée une fois par process). */
+  private counterReady = false;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -178,6 +180,12 @@ export class TrafficService implements OnModuleInit, BeforeApplicationShutdown {
         return;
       }
 
+      if (!(await this.ensureCounter())) {
+        for (const [username, data] of snapshot) this.requeue(username, data);
+        snapshot.clear();
+        return;
+      }
+
       const rows = await this.prisma.userProxy
         .findMany({ where: { username: { in: [...snapshot.keys()] } }, select: { id: true, username: true } })
         .catch((e) => {
@@ -230,6 +238,7 @@ export class TrafficService implements OnModuleInit, BeforeApplicationShutdown {
     const totalBytes = data.sent + data.received;
     const gbIncrement = totalBytes / GiB;
     const hosts = [...data.hosts.values()];
+    const reqs = hosts.reduce((n, h) => n + h.reqs, 0);
 
     const [updated] = await this.prisma.$transaction([
       this.prisma.userProxy.update({
@@ -240,6 +249,14 @@ export class TrafficService implements OnModuleInit, BeforeApplicationShutdown {
           totalBytesReceived: { increment: BigInt(Math.round(data.received)) },
         },
         select: { usedGb: true, totalGb: true },
+      }),
+      this.prisma.trafficCounter.update({
+        where: { id: 'global' },
+        data: {
+          bytesSent: { increment: BigInt(Math.round(data.sent)) },
+          bytesReceived: { increment: BigInt(Math.round(data.received)) },
+          requests: { increment: BigInt(reqs) },
+        },
       }),
       ...hosts.map((h) =>
         this.prisma.proxyUsage.upsert({
@@ -274,6 +291,39 @@ export class TrafficService implements OnModuleInit, BeforeApplicationShutdown {
     const oldUsed = newUsed - gbIncrement;
     if (totalGb > 0 && oldUsed < totalGb && newUsed >= totalGb) {
       void this.notificationService.notifyQuotaExceeded(username, newUsed, totalGb);
+    }
+  }
+
+  /**
+   * Crée la ligne du compteur global si absente, initialisée avec les totaux
+   * actuels (somme des comptes + requêtes ProxyUsage — l'ancienne source des
+   * snapshots) pour que le graphique reste continu au passage à ce compteur.
+   */
+  private async ensureCounter(): Promise<boolean> {
+    if (this.counterReady) return true;
+    try {
+      const existing = await this.prisma.trafficCounter.findUnique({ where: { id: 'global' } });
+      if (!existing) {
+        const [bytes, requests] = await Promise.all([
+          this.prisma.userProxy.aggregate({ _sum: { totalBytesSent: true, totalBytesReceived: true } }),
+          this.prisma.proxyUsage.aggregate({ _sum: { requests: true } }),
+        ]);
+        await this.prisma.trafficCounter.upsert({
+          where: { id: 'global' },
+          create: {
+            id: 'global',
+            bytesSent: bytes._sum.totalBytesSent ?? 0n,
+            bytesReceived: bytes._sum.totalBytesReceived ?? 0n,
+            requests: BigInt(requests._sum.requests ?? 0),
+          },
+          update: {},
+        });
+      }
+      this.counterReady = true;
+      return true;
+    } catch (e) {
+      this.logger.error(`TrafficManager: cannot init global counter, traffic kept for retry: ${e}`);
+      return false;
     }
   }
 

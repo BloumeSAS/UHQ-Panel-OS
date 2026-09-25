@@ -16,6 +16,8 @@ import {
   tcpConnect,
   readUntil,
   bidirectionalPipe,
+  PipeThrottle,
+  TokenBucket,
 } from './handshake';
 import {
   NUM_RACERS,
@@ -138,6 +140,12 @@ export class ProxyServerService implements OnModuleDestroy {
    * compte qui dépasse son quota, est bloqué, expire ou est supprimé.
    */
   private readonly accountSockets = new Map<string, Set<Socket>>();
+  /**
+   * Seaux de débit PAR COMPTE (`bandwidthLimit`, Ko/s) partagés par tous ses
+   * tunnels — avant, la limite s'appliquait à chaque connexion : un compte à
+   * 100 threads avait 100× son débit. Libéré quand le compte n'a plus de tunnel.
+   */
+  private readonly throttles = new Map<string, { limit: number; throttle: PipeThrottle }>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -639,10 +647,6 @@ export class ProxyServerService implements OnModuleDestroy {
         () => null,
       );
       if (!firstLineRaw) return;
-      // Octets bruts de la requête proxy du client (ligne + en-têtes + CRLF
-      // final) — facturés au compte une fois le tunnel établi : c'est de la
-      // bande passante réellement consommée par le client (avant, jamais comptée).
-      let requestHeaderBytes = firstLineRaw.length;
 
       const firstLine = firstLineRaw.toString('latin1').trim();
       if (!firstLine) return;
@@ -655,7 +659,6 @@ export class ProxyServerService implements OnModuleDestroy {
       let authHeader: string | null = null;
       while (true) {
         const lineRaw = await readUntil(client, Buffer.from('\r\n'), this.timeoutMs);
-        requestHeaderBytes += lineRaw.length;
         if (lineRaw.equals(Buffer.from('\r\n'))) break;
         const line = lineRaw.toString('latin1').replace(/\r\n$/, '');
         headers.push(line);
@@ -791,7 +794,7 @@ export class ProxyServerService implements OnModuleDestroy {
       // temporaire "session statique" (`parent_xxxxxx`) avait sinon son propre
       // compteur — limite de threads multipliée, et le dashboard "comptes
       // actifs" affichait ces noms temporaires sans leur bande passante.
-      const acct = user.username;
+      const acct: string = user.username;
       const limit = user.threadsLimit ?? 100;
       const currentThreads = this.activeThreads.get(acct) ?? 0;
       if (currentThreads >= limit) {
@@ -836,6 +839,27 @@ export class ProxyServerService implements OnModuleDestroy {
         }
       }
 
+      // --- Comptage côté UPSTREAM (ce que le fournisseur/reseller facture) ---
+      // Chaque socket ouvert vers un upstream pour cette connexion (gagnant,
+      // tentatives échouées, variantes de protocole d'une liste privée,
+      // perdants d'une course, fallback) est suivi. Le pipe compte le trafic
+      // du gagnant en direct ; à la fermeture de CHAQUE socket, on complète
+      // avec les compteurs exacts du noyau (`bytesRead`/`bytesWritten`) : la
+      // négociation CONNECT/SOCKS (avec les identifiants du reseller) et les
+      // tentatives ratées, jusqu'ici jamais comptées, sont ainsi incluses.
+      const hostKey = ProxyServerService.hostKey(method === 'CONNECT' ? path : this.extractHost(path, headers));
+      const upstreamCounted = new Map<Socket, { read: number; written: number }>();
+      const watchUpstream = (sock: Socket) => {
+        if (upstreamCounted.has(sock)) return;
+        const counted = { read: 0, written: 0 };
+        upstreamCounted.set(sock, counted);
+        sock.once('close', () => {
+          const extraWritten = Math.max(0, (sock.bytesWritten ?? 0) - counted.written);
+          const extraRead = Math.max(0, (sock.bytesRead ?? 0) - counted.read);
+          if (extraWritten > 0 || extraRead > 0) this.meter(acct, hostKey, extraWritten, extraRead, false);
+        });
+      };
+
       let winner: { upstream: UpstreamProxy; socket: Socket } | null = null;
       for (let attempt = 0; attempt < 2 && !winner; attempt++) {
         const proxiesToTry: UpstreamProxy[] = [];
@@ -876,12 +900,12 @@ export class ProxyServerService implements OnModuleDestroy {
           // Listes privées : essais séquentiels (HTTP d'abord), 1 connexion à la
           // fois — comme curl. Évite les limites de connexions concurrentes des
           // fournisseurs résidentiels et l'auto-détection de protocole reste OK.
-          winner = await this.trySequential(proxiesToTry, method, path, headers);
+          winner = await this.trySequential(proxiesToTry, method, path, headers, watchUpstream);
           this.logger.debug(
             `[custom] attempt #${attempt} result: ${winner ? `WON by ${winner.upstream.protocol}:${winner.upstream.ip}:${winner.upstream.port}` : 'no winner'} (timeoutMs=${this.timeoutMs})`,
           );
         } else {
-          winner = await this.race(proxiesToTry, method, path, headers, this.racingTimeoutMs);
+          winner = await this.race(proxiesToTry, method, path, headers, this.racingTimeoutMs, watchUpstream);
         }
         if (winner && sessionKey) {
           this.sessions.set(sessionKey, {
@@ -897,6 +921,7 @@ export class ProxyServerService implements OnModuleDestroy {
           const fb = this.getFallbackUpstream(requestedCountry, effectivePool);
           if (fb) {
             const sock = await tcpConnect(fb.ip, fb.port, this.timeoutMs);
+            watchUpstream(sock);
             const skipHs = method !== 'CONNECT' && (fb.protocol ?? 'http').toLowerCase() === 'http';
             if (!skipHs) {
               // CONNECT: `path` EST déjà "host:port" (ligne de requête) — le
@@ -904,12 +929,17 @@ export class ProxyServerService implements OnModuleDestroy {
               // header Host) le faisait échouer silencieusement et retomber
               // sur le fallback 'google.com:80', envoyant le tunnel vers le
               // mauvais hôte pour tout CONNECT sans header Host (courant).
-              await performHandshake(
-                sock,
-                fb,
-                method === 'CONNECT' ? path : this.extractHost(path, headers),
-                this.timeoutMs,
-              );
+              try {
+                await performHandshake(
+                  sock,
+                  fb,
+                  method === 'CONNECT' ? path : this.extractHost(path, headers),
+                  this.timeoutMs,
+                );
+              } catch (e) {
+                sock.destroy(); // ne pas laisser fuir le socket d'un fallback refusé
+                throw e;
+              }
             }
             winner = { upstream: fb, socket: sock };
           }
@@ -934,14 +964,12 @@ export class ProxyServerService implements OnModuleDestroy {
       // header Host) échouait silencieusement dessus et renvoyait le domaine
       // de secours 'google.com' en dur, polluant le tracking par domaine
       // (top domaines visités) pour tout CONNECT sans header Host.
-      const targetHost = method === 'CONNECT' ? path : this.extractHost(path, headers);
-      const hostKey = ProxyServerService.hostKey(targetHost);
       this.trackUpstreamOpen(winner.upstream, user.username);
       openUpstreamId = winner.upstream.id;
 
       // Enregistré AVANT tout comptage : si ce premier comptage fait franchir
       // le quota, ce tunnel doit déjà faire partie de ceux à couper.
-      accountKey = user.username as string;
+      accountKey = acct;
       let set = this.accountSockets.get(accountKey);
       if (!set) {
         set = new Set();
@@ -949,18 +977,24 @@ export class ProxyServerService implements OnModuleDestroy {
       }
       set.add(client);
 
+      const winnerCounted = upstreamCounted.get(winner.socket) ?? { read: 0, written: 0 };
+      const throttle = this.getThrottle(acct, this.userListCache.get(acct)?.bandwidthLimit ?? user.bandwidthLimit);
+
       if (method === 'CONNECT') {
-        this.onChunk('sent', user.username, hostKey, requestHeaderBytes, true);
-        const established = Buffer.from('HTTP/1.1 200 Connection established\r\n\r\n', 'latin1');
-        client.write(established, (err) => {
-          if (!err) this.onChunk('received', user.username, hostKey, established.length, false);
-        });
+        this.meter(acct, hostKey, 0, 0, true); // 1 tunnel = 1 requête
+        client.write('HTTP/1.1 200 Connection established\r\n\r\n');
         await bidirectionalPipe(
           client,
           winner.socket,
-          (chunk) => this.onChunk('sent', user.username, hostKey, chunk.length, false),
-          (chunk) => this.onChunk('received', user.username, hostKey, chunk.length, false),
-          user?.bandwidthLimit ?? undefined,
+          (chunk) => {
+            winnerCounted.written += chunk.length;
+            this.meter(acct, hostKey, chunk.length, 0, false);
+          },
+          (chunk) => {
+            winnerCounted.read += chunk.length;
+            this.meter(acct, hostKey, 0, chunk.length, false);
+          },
+          throttle,
           this.idleTimeoutMs,
         );
       } else {
@@ -973,9 +1007,10 @@ export class ProxyServerService implements OnModuleDestroy {
           path,
           protocol,
           headers,
-          user.username,
+          acct,
           hostKey,
-          requestHeaderBytes,
+          winnerCounted,
+          throttle,
         );
       }
     } catch (e) {
@@ -1002,7 +1037,10 @@ export class ProxyServerService implements OnModuleDestroy {
       if (accountKey) {
         const set = this.accountSockets.get(accountKey);
         set?.delete(client);
-        if (set && set.size === 0) this.accountSockets.delete(accountKey);
+        if (set && set.size === 0) {
+          this.accountSockets.delete(accountKey);
+          this.throttles.delete(accountKey);
+        }
       }
       this.clientSockets.delete(client);
       try {
@@ -1035,12 +1073,13 @@ export class ProxyServerService implements OnModuleDestroy {
     method: string,
     path: string,
     headers: string[],
+    onSocket?: (s: Socket) => void,
   ): Promise<{ upstream: UpstreamProxy; socket: Socket } | null> {
     const target = method === 'CONNECT' ? path : this.extractHost(path, headers);
     const isHttpMethod = method !== 'CONNECT';
     for (const u of upstreams) {
       const skipHandshake = isHttpMethod && (u.protocol ?? 'http').toLowerCase() === 'http';
-      const sock = await this.tryUpstream(u, target, skipHandshake);
+      const sock = await this.tryUpstream(u, target, skipHandshake, onSocket);
       if (sock) return { upstream: u, socket: sock };
     }
     return null;
@@ -1052,6 +1091,7 @@ export class ProxyServerService implements OnModuleDestroy {
     path: string,
     headers: string[],
     raceTimeoutMs: number = this.racingTimeoutMs,
+    onSocket?: (s: Socket) => void,
   ): Promise<{ upstream: UpstreamProxy; socket: Socket } | null> {
     const target =
       method === 'CONNECT' ? path : this.extractHost(path, headers);
@@ -1059,7 +1099,7 @@ export class ProxyServerService implements OnModuleDestroy {
 
     const tasks = upstreams.map((u) => {
       const skipHandshake = isHttpMethod && (u.protocol ?? 'http').toLowerCase() === 'http';
-      return this.tryUpstream(u, target, skipHandshake);
+      return this.tryUpstream(u, target, skipHandshake, onSocket);
     });
     let remaining = tasks.length;
     return await new Promise((resolve) => {
@@ -1159,6 +1199,7 @@ export class ProxyServerService implements OnModuleDestroy {
     upstream: UpstreamProxy,
     targetHostPort: string,
     skipHandshake = false,
+    onSocket?: (s: Socket) => void,
   ): Promise<Socket | null> {
     const isCustom = upstream.id.startsWith('custom:');
     let socket: Socket | null = null;
@@ -1170,6 +1211,9 @@ export class ProxyServerService implements OnModuleDestroy {
         );
       }
       socket = await tcpConnect(upstream.ip, upstream.port, this.timeoutMs);
+      // Suivi du comptage avant la négociation : ses octets (même en cas
+      // d'échec) sont consommés chez le fournisseur de cet upstream.
+      onSocket?.(socket);
       if (!skipHandshake) {
         await performHandshake(socket, upstream, targetHostPort, this.timeoutMs);
       }
@@ -1609,7 +1653,8 @@ export class ProxyServerService implements OnModuleDestroy {
     headers: string[],
     username: string,
     hostKey: string,
-    requestHeaderBytes: number,
+    counted: { read: number; written: number },
+    throttle: PipeThrottle | undefined,
   ): Promise<void> {
     const proto = (upstream.protocol || 'http').toLowerCase();
     let finalPath = path;
@@ -1629,28 +1674,46 @@ export class ProxyServerService implements OnModuleDestroy {
       const b64 = Buffer.from(upstream.auth, 'utf8').toString('base64');
       req += `Proxy-Authorization: Basic ${b64}\r\n`;
     }
+    // Une requête par connexion (`Connection: close`) : les requêtes
+    // suivantes d'une connexion keep-alive passaient dans le pipe sans être
+    // vues — attribuées au domaine de la 1re, comptées comme 1 seule requête,
+    // et jamais contrôlées par `blockedDomains`. Le client rouvre simplement
+    // une connexion (donc un vrai passage par l'auth et le routage) par requête.
     for (const h of headers) {
-      if (!h.toLowerCase().startsWith('proxy-authorization:')) req += `${h}\r\n`;
+      const lower = h.toLowerCase();
+      if (
+        lower.startsWith('proxy-authorization:') ||
+        lower.startsWith('connection:') ||
+        lower.startsWith('proxy-connection:') ||
+        lower.startsWith('keep-alive:')
+      ) {
+        continue;
+      }
+      req += `${h}\r\n`;
     }
-    req += '\r\n';
+    req += 'Connection: close\r\n\r\n';
     // La requête reconstruite est écrite ici directement (pas via le pipe) :
-    // on facture les octets de la requête TELLE QUE LE CLIENT L'A ENVOYÉE
-    // (`requestHeaderBytes`, même base que pour CONNECT) et on compte la
-    // requête (isNewReq=true) une fois transmise.
+    // comptée côté upstream (octets réellement envoyés, identifiants upstream
+    // inclus) + 1 requête, une fois écrite.
     const reqBuf = Buffer.from(req, 'latin1');
     upstreamSocket.write(reqBuf, (err) => {
-      if (!err) this.onChunk('sent', username, hostKey, requestHeaderBytes, true);
+      if (err) return;
+      counted.written += reqBuf.length;
+      this.meter(username, hostKey, reqBuf.length, 0, true);
     });
 
-    const user = this.userListCache.get(username);
     let firstResponseChunk = true;
     await bidirectionalPipe(
       client,
       upstreamSocket,
       // Corps de requête éventuel (POST/PUT…) client → upstream.
-      (chunk) => this.onChunk('sent', username, hostKey, chunk.length, false),
       (chunk) => {
-        this.onChunk('received', username, hostKey, chunk.length, false);
+        counted.written += chunk.length;
+        this.meter(username, hostKey, chunk.length, 0, false);
+      },
+      (chunk) => {
+        counted.read += chunk.length;
+        this.meter(username, hostKey, 0, chunk.length, false);
         // HTTP en clair : on peut sniffer le début de la réponse (blocage
         // cible) — code auparavant mort (jamais appelé avec isNewReq=true).
         if (firstResponseChunk) {
@@ -1658,7 +1721,7 @@ export class ProxyServerService implements OnModuleDestroy {
           this.sniffTargetBlocking(username, hostKey, chunk);
         }
       },
-      user?.bandwidthLimit ?? undefined,
+      throttle,
       this.idleTimeoutMs,
     );
   }
@@ -1680,29 +1743,25 @@ export class ProxyServerService implements OnModuleDestroy {
   }
 
   /**
-   * Comptabilise des octets RÉELLEMENT livrés (appelé depuis les callbacks
-   * d'écriture de `bidirectionalPipe`) et applique le quota en temps réel :
-   * dès que usedGb + octets pas encore flushés atteint `totalGb`, tous les
-   * tunnels du compte sont coupés — avant, seul l'établissement d'une
-   * connexion vérifiait le quota (sur un cache vieux de jusqu'à 60s), et un
-   * tunnel ouvert pouvait consommer sans limite au-delà.
+   * Comptabilise des octets échangés avec l'upstream pour le compte et
+   * applique le quota en temps réel : dès que usedGb + octets pas encore
+   * flushés atteint `totalGb`, tous les tunnels du compte sont coupés.
    */
-  private onChunk(
-    direction: 'sent' | 'received',
-    username: string,
-    hostKey: string,
-    bytes: number,
-    isNewReq: boolean,
-  ): void {
-    this.traffic.logTraffic(
-      username,
-      hostKey,
-      direction === 'sent' ? bytes : 0,
-      direction === 'received' ? bytes : 0,
-      isNewReq,
-    );
+  private meter(username: string, hostKey: string, sent: number, received: number, isNewReq: boolean): void {
+    this.traffic.logTraffic(username, hostKey, sent, received, isNewReq);
     const u = this.userListCache.get(username);
     if (u && this.isOverQuota(u)) this.disconnectAccount(username, 'data quota reached');
+  }
+
+  /** Seaux de débit partagés du compte (undefined = pas de limite). Recréés si la limite change. */
+  private getThrottle(username: string, limitKBs: number | null | undefined): PipeThrottle | undefined {
+    if (!limitKBs || limitKBs <= 0) return undefined;
+    const cur = this.throttles.get(username);
+    if (cur && cur.limit === limitKBs) return cur.throttle;
+    const rate = Math.floor(limitKBs * 1024);
+    const throttle = { aToB: new TokenBucket(rate), bToA: new TokenBucket(rate) };
+    this.throttles.set(username, { limit: limitKBs, throttle });
+    return throttle;
   }
 
   /** Détection légère de blocage côté cible sur le début d'une réponse HTTP en clair. */
