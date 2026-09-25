@@ -183,11 +183,33 @@ async function bootstrap() {
 
 
 
+  // SIGTERM (redeploy, `docker stop`) → `app.close()` déclenche les hooks
+  // Nest : le moteur coupe ses tunnels (onModuleDestroy) puis TrafficService
+  // écrit le trafic encore en mémoire (beforeApplicationShutdown). Sans ça,
+  // jusqu'à 5s de trafic de tous les comptes étaient perdus à chaque
+  // redémarrage. Handler maison plutôt que `enableShutdownHooks()` : ce
+  // dernier se ré-envoie le signal pour sortir, signal qu'un node PID 1
+  // (conteneur) ignore — l'arrêt attendait alors le SIGKILL de Docker.
+  let shuttingDown = false;
+  const shutdown = (signal: string) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    Logger.log(`${signal} received — graceful shutdown`, 'Bootstrap');
+    // Filet : toujours sortir avant le SIGKILL de Docker (10s par défaut).
+    setTimeout(() => process.exit(1), 8000).unref();
+    app
+      .close()
+      .catch((e) => Logger.error(`Shutdown error: ${e}`, 'Bootstrap'))
+      .finally(() => process.exit(0));
+  };
+  process.once('SIGTERM', () => shutdown('SIGTERM'));
+  process.once('SIGINT', () => shutdown('SIGINT'));
+
   const apiPort = Number(process.env.API_PORT ?? 8000);
   await app.listen(apiPort, '0.0.0.0');
   Logger.log(`API listening on :${apiPort}`, 'Bootstrap');
   // Build marker — bump this string on every deploy you want to confirm is live.
-  Logger.log('BUILD MARKER: panel-os-v2.4.62', 'Bootstrap');
+  Logger.log('BUILD MARKER: panel-os-v2.4.63', 'Bootstrap');
 
   // Le moteur proxy TCP n'a de sens qu'avec une base connectée (auth des
   // sous-utilisateurs). On ne le démarre donc pas tant que la base n'est pas

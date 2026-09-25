@@ -368,11 +368,27 @@ export async function performHandshake(
   }
 }
 
+/** Délai max pour finir de livrer ce qui reste dû à un côté une fois l'autre fermé. */
+const HALF_CLOSE_GRACE_MS = 30_000;
+
 /**
- * Bidirectional TCP relay between client and upstream. Calls `onBytes`
- * with chunk length per direction so the engine can update TrafficService.
- * Resolves when either side closes.
+ * Bidirectional TCP relay between client and upstream. Calls `onAtoB` /
+ * `onBtoA` with each chunk so the engine can update TrafficService.
  * Support for optional bandwidthLimit (in KB/s).
+ *
+ * Comptage exact (v2.4.63) : un chunk n'est compté qu'une fois RÉELLEMENT
+ * livré (callback de `write()` sans erreur), plus au moment où il est lu. Avec
+ * la backpressure (source en pause tant que la destination n'a pas vidé son
+ * buffer), la mémoire tampon par tunnel reste bornée (~highWaterMark) au lieu
+ * de grossir sans limite quand l'upstream est plus rapide que le client — et
+ * ce tampon n'est plus facturé s'il est perdu à la fermeture.
+ *
+ * Fermeture propre : quand un côté termine ('end'/'close'), on `end()`
+ * l'autre (ce qui vide d'abord ses écritures en attente) au lieu de tout
+ * détruire immédiatement — avant, la fin d'un téléchargement encore en
+ * transit vers un client lent était tronquée (mais facturée). Résout dès
+ * qu'un côté est fermé ET que l'autre a tout reçu, sur erreur, ou après
+ * `HALF_CLOSE_GRACE_MS`.
  *
  * `idleTimeoutMs` : ferme le tunnel si AUCUNE donnée n'a circulé dans ce
  * délai, dans un sens ou l'autre. Sans ça, un pair qui disparaît sans
@@ -390,9 +406,13 @@ export function bidirectionalPipe(
 ): Promise<void> {
   return new Promise((resolve) => {
     let closed = false;
+    let graceTimer: NodeJS.Timeout | null = null;
+    const intervals: NodeJS.Timeout[] = [];
     const finish = () => {
       if (closed) return;
       closed = true;
+      if (graceTimer) clearTimeout(graceTimer);
+      for (const t of intervals) clearInterval(t);
       try {
         a.destroy();
       } catch {
@@ -413,77 +433,118 @@ export function bidirectionalPipe(
       b.once('timeout', finish);
     }
 
-    if (bandwidthLimit && bandwidthLimit > 0) {
-      const limitBytes = bandwidthLimit * 1024;
+    /** Écrit vers `dest` ; `count` n'est appelé qu'une fois le chunk livré. Retourne false si `dest` est saturé. */
+    const send = (dest: Socket, chunk: Buffer, count: (chunk: Buffer) => void): boolean => {
+      if (dest.destroyed || dest.writableEnded) return true;
+      return dest.write(chunk, (err) => {
+        if (!err) count(chunk);
+      });
+    };
+    const endDest = (dest: Socket) => {
+      if (!dest.destroyed && !dest.writableEnded) dest.end();
+    };
 
-      const setupThrottling = (source: Socket, dest: Socket, callback: (chunk: Buffer) => void) => {
-        let bucket = limitBytes;
-        const queue: Buffer[] = [];
-        let isWaiting = false;
-
-        const timer = setInterval(() => {
-          if (closed) {
-            clearInterval(timer);
-            return;
-          }
-          // Refill bucket every 100ms
-          bucket = Math.min(limitBytes, bucket + limitBytes / 10);
-          flush();
-        }, 100);
-
-        const flush = () => {
-          while (queue.length > 0 && bucket > 0) {
-            const chunk = queue[0];
-            if (chunk.length <= bucket) {
-              queue.shift();
-              bucket -= chunk.length;
-              callback(chunk);
-              if (!dest.destroyed) dest.write(chunk);
-            } else {
-              const slice = chunk.subarray(0, bucket);
-              queue[0] = chunk.subarray(bucket);
-              bucket = 0;
-              callback(slice);
-              if (!dest.destroyed) dest.write(slice);
-            }
-          }
-          if (queue.length === 0 && isWaiting) {
-            isWaiting = false;
-            source.resume();
-          }
-        };
-
+    /**
+     * Relais d'un sens `source` → `dest`. Retourne la fonction à appeler quand
+     * `source` a terminé : ferme proprement `dest` une fois tout livré.
+     */
+    const relay = (source: Socket, dest: Socket, count: (chunk: Buffer) => void): (() => void) => {
+      if (!(bandwidthLimit && bandwidthLimit > 0)) {
+        let waitingDrain = false;
         source.on('data', (chunk: Buffer) => {
-          queue.push(chunk);
-          if (queue.length > 0 && bucket <= 0) {
-            if (!isWaiting) {
-              isWaiting = true;
-              source.pause();
-            }
+          if (!send(dest, chunk, count) && !waitingDrain) {
+            waitingDrain = true;
+            source.pause();
+            dest.once('drain', () => {
+              waitingDrain = false;
+              if (!closed) source.resume();
+            });
           }
-          flush();
         });
+        return () => endDest(dest);
+      }
+
+      const limitBytes = Math.floor(bandwidthLimit * 1024);
+      const refill = Math.max(1, Math.floor(limitBytes / 10));
+      let bucket = limitBytes;
+      const queue: Buffer[] = [];
+      let paused = false;
+      let sourceEnded = false;
+
+      const flush = () => {
+        while (queue.length > 0 && bucket > 0 && !dest.writableNeedDrain && !dest.destroyed) {
+          const chunk = queue[0];
+          let piece: Buffer;
+          if (chunk.length <= bucket) {
+            queue.shift();
+            piece = chunk;
+          } else {
+            // Bucket entier (cf. refill arrondi) : un subarray d'une longueur
+            // fractionnaire serait tronqué à 0 octet et bouclerait sans fin.
+            piece = chunk.subarray(0, bucket);
+            queue[0] = chunk.subarray(bucket);
+          }
+          bucket -= piece.length;
+          if (piece.length === 0) break;
+          send(dest, piece, count);
+        }
+        if (queue.length > 0) return;
+        if (sourceEnded) endDest(dest);
+        else if (paused && !dest.writableNeedDrain) {
+          paused = false;
+          source.resume();
+        }
       };
 
-      setupThrottling(a, b, onAtoB);
-      setupThrottling(b, a, onBtoA);
-    } else {
-      a.on('data', (chunk: Buffer) => {
-        onAtoB(chunk);
-        if (!b.destroyed) b.write(chunk);
+      // Refill bucket every 100ms
+      intervals.push(
+        setInterval(() => {
+          bucket = Math.min(limitBytes, bucket + refill);
+          flush();
+        }, 100),
+      );
+      dest.on('drain', flush);
+      source.on('data', (chunk: Buffer) => {
+        queue.push(chunk);
+        flush();
+        if ((queue.length > 0 || dest.writableNeedDrain) && !paused) {
+          paused = true;
+          source.pause();
+        }
       });
-      b.on('data', (chunk: Buffer) => {
-        onBtoA(chunk);
-        if (!a.destroyed) a.write(chunk);
-      });
-    }
+      // La file d'attente du throttle est encore livrée après la fin de la
+      // source (avant : jetée à la fermeture, donc jamais reçue par le client).
+      return () => {
+        sourceEnded = true;
+        flush();
+      };
+    };
 
-    a.once('end', finish);
-    b.once('end', finish);
+    const endAtoB = relay(a, b, onAtoB);
+    const endBtoA = relay(b, a, onBtoA);
+
+    // Un côté fermé : il ne reste qu'à finir de livrer ce qui est dû à
+    // l'autre (son 'finish' = tout écrit + FIN envoyé), puis on libère le
+    // tunnel — sans attendre que l'autre pair ferme à son tour, pour ne pas
+    // garder un slot thread occupé inutilement.
+    const whenFlushed = (other: Socket) => {
+      if (closed) return;
+      if (other.destroyed || other.writableFinished) return finish();
+      other.once('finish', finish);
+      if (!graceTimer) graceTimer = setTimeout(finish, HALF_CLOSE_GRACE_MS);
+    };
+    a.once('end', endAtoB);
+    b.once('end', endBtoA);
+    a.once('close', () => {
+      endAtoB();
+      whenFlushed(b);
+    });
+    b.once('close', () => {
+      endBtoA();
+      whenFlushed(a);
+    });
     a.once('error', finish);
     b.once('error', finish);
-    a.once('close', finish);
-    b.once('close', finish);
     // Both sockets may have been paused by the preceding readUntil/handshake
     // reads (cleanup() pauses). Adding 'data' listeners alone won't resume a
     // socket whose `flowing` is false, so resume both explicitly — otherwise

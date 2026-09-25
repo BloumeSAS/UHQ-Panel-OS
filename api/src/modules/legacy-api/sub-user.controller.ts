@@ -164,6 +164,9 @@ export class SubUserController {
         where: { id: dto.id },
         data: { isBlocked: dto.is_blocked },
       });
+      // Seule route d'écriture qui n'invalidait pas le cache moteur : le
+      // blocage mettait jusqu'à 60s à s'appliquer (et ne coupait rien d'ouvert).
+      this.engine.invalidateUserCache(user.username);
       return { status: 'success', data: formatSubUser(user) };
     } catch {
       throw new HttpException('Sub-user not found', HttpStatus.NOT_FOUND);

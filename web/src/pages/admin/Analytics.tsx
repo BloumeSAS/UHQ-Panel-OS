@@ -499,7 +499,7 @@ function ActiveAccountsTable({ rows, t }: { rows: any[]; t: (k: any) => string }
             <td className="px-3 py-2 text-right font-mono text-xs text-emerald-600 dark:text-emerald-400">{formatBytes(a.sentBps)}/s</td>
             <td className="px-3 py-2 text-right font-mono text-xs text-blue-600 dark:text-blue-400">{formatBytes(a.receivedBps)}/s</td>
             <td className="px-3 py-2 text-right text-xs text-muted-foreground">
-              {a.totalGb ? `${a.usedGb?.toFixed?.(1) ?? 0}/${a.totalGb} Go` : '∞'}
+              {a.totalGb ? `${a.usedGb?.toFixed?.(2) ?? 0}/${Number(a.totalGb).toFixed(2)} Go` : '∞'}
             </td>
           </tr>
         ))}

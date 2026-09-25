@@ -423,7 +423,7 @@ function ActiveAccountsTab() {
                       <span className="text-sky-600 dark:text-sky-400">↑{formatBps(a.sentBps)}</span>
                     </td>
                     <td className="py-1.5 text-right text-xs text-muted-foreground">
-                      {a.totalGb ? `${(a.usedGb ?? 0).toFixed(2)} / ${a.totalGb} Go` : formatBytes((a.totalBytesSent ?? 0) + (a.totalBytesReceived ?? 0))}
+                      {a.totalGb ? `${(a.usedGb ?? 0).toFixed(2)} / ${a.totalGb.toFixed(2)} Go` : formatBytes((a.totalBytesSent ?? 0) + (a.totalBytesReceived ?? 0))}
                     </td>
                   </tr>
                 ))}

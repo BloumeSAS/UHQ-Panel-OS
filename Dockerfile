@@ -116,4 +116,9 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
 # le démarrage en cas d'échec : sans base configurée, l'app démarre quand même
 # pour servir l'assistant de configuration (puis l'app applique le schéma à la
 # saisie du lien). Avec une base présente (env/compose), le push s'exécute.
-CMD ["sh", "-c", "npx prisma db push --skip-generate --accept-data-loss || echo 'DB non configurée — démarrage en mode configuration'; node dist/main.js"]
+# `exec` : garantit que node REMPLACE le shell (PID 1) et reçoit le SIGTERM
+# de `docker stop`/redeploy (busybox ash le fait déjà implicitement, pas
+# d'autres shells). En PID 1, un signal sans handler est ignoré : c'est
+# `app.enableShutdownHooks()` (main.ts) qui installe le handler — sans lui,
+# node était tué par SIGKILL au bout de 10s, sans écrire le trafic en mémoire.
+CMD ["sh", "-c", "npx prisma db push --skip-generate --accept-data-loss || echo 'DB non configurée — démarrage en mode configuration'; exec node dist/main.js"]

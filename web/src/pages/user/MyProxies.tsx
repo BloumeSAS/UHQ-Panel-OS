@@ -303,22 +303,31 @@ function StatsDialog({ proxy, onClose }: { proxy: MyProxy; onClose: () => void }
   const usage = stats?.usage ?? [];
   const totalStats = stats?.total_stats;
 
-  // Group requests by hostname
-  const domainsMap = new Map<string, number>();
-  for (const r of usage) {
-    domainsMap.set(r.hostname, (domainsMap.get(r.hostname) || 0) + r.requests);
+  // Agrégats calculés côté serveur sur toute la période (`daily`,
+  // `top_domains`) ; repli sur les lignes brutes pour une API plus ancienne.
+  let topDomains: [string, number][];
+  let dailyTraffic: [string, number][];
+  const dayLabel = (d: string) => new Date(d).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  if (stats?.daily && stats?.top_domains) {
+    topDomains = (stats.top_domains as { hostname: string; requests: number }[])
+      .slice(0, 5)
+      .map((d) => [d.hostname, d.requests]);
+    dailyTraffic = (stats.daily as { date: string; bytes: number }[]).map((d) => [dayLabel(d.date), d.bytes]);
+  } else {
+    const domainsMap = new Map<string, number>();
+    for (const r of usage) {
+      domainsMap.set(r.hostname, (domainsMap.get(r.hostname) || 0) + r.requests);
+    }
+    topDomains = Array.from(domainsMap.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5);
+    const dailyMap = new Map<string, number>();
+    for (const r of usage) {
+      const day = dayLabel(r.date);
+      dailyMap.set(day, (dailyMap.get(day) || 0) + (r.bytesSent + r.bytesReceived));
+    }
+    dailyTraffic = Array.from(dailyMap.entries()).reverse();
   }
-  const topDomains = Array.from(domainsMap.entries())
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 5);
-
-  // Group traffic by date
-  const dailyMap = new Map<string, number>();
-  for (const r of usage) {
-    const day = new Date(r.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-    dailyMap.set(day, (dailyMap.get(day) || 0) + (r.bytesSent + r.bytesReceived));
-  }
-  const dailyTraffic = Array.from(dailyMap.entries()).reverse();
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>

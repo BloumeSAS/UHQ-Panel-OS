@@ -80,12 +80,29 @@ export class PanelMeController {
     // Sommes côté DB (`aggregate`) + seules les 100 lignes affichées sont
     // chargées — avant, TOUTES les lignes de la période étaient chargées en
     // mémoire juste pour être sommées en JS puis tronquées à 100 pour l'UI.
-    const [totals, recent] = await Promise.all([
+    // Graphique par jour + top domaines agrégés côté DB sur TOUTE la période :
+    // avant, ils étaient recalculés côté client à partir des seules 100
+    // dernières lignes (hôte × jour) — jours et domaines tronqués dès qu'un
+    // compte visitait plus de ~100 domaines sur la période.
+    const [totals, recent, daily, domains] = await Promise.all([
       this.prisma.proxyUsage.aggregate({
         where,
         _sum: { bytesSent: true, bytesReceived: true, requests: true },
       }),
       this.prisma.proxyUsage.findMany({ where, orderBy: { date: 'desc' }, take: 100 }),
+      this.prisma.proxyUsage.groupBy({
+        by: ['date'],
+        where,
+        _sum: { bytesSent: true, bytesReceived: true, requests: true },
+        orderBy: { date: 'asc' },
+      }),
+      this.prisma.proxyUsage.groupBy({
+        by: ['hostname'],
+        where,
+        _sum: { requests: true, bytesSent: true, bytesReceived: true },
+        orderBy: { _sum: { requests: 'desc' } },
+        take: 10,
+      }),
     ]);
     const sent = totals._sum.bytesSent ?? 0;
     const received = totals._sum.bytesReceived ?? 0;
@@ -108,6 +125,16 @@ export class PanelMeController {
         bytesReceived: r.bytesReceived,
         requests: r.requests,
         date: r.date,
+      })),
+      daily: daily.map((d) => ({
+        date: d.date,
+        bytes: (d._sum.bytesSent ?? 0) + (d._sum.bytesReceived ?? 0),
+        requests: d._sum.requests ?? 0,
+      })),
+      top_domains: domains.map((d) => ({
+        hostname: d.hostname,
+        requests: d._sum.requests ?? 0,
+        bytes: (d._sum.bytesSent ?? 0) + (d._sum.bytesReceived ?? 0),
       })),
     };
   }

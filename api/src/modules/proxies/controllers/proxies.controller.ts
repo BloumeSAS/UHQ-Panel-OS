@@ -27,6 +27,7 @@ import { t } from '../../../common/utils/i18n';
 import { assertPortAvailable } from '../../../common/utils/port-validation';
 import { buildPoolEndpointMap, resolveConnectionEndpoint, resolveHostPortSync } from '../../../common/utils/connection-endpoint';
 import { AuditService } from '../../audit/audit.service';
+import { TrafficService } from '../../traffic/traffic.service';
 
 type Period = 'week' | 'month' | 'year' | 'all';
 function periodStart(period: Period): Date {
@@ -58,6 +59,7 @@ export class PanelSubUserController {
     private readonly settings: SettingsService,
     private readonly engine: ProxyServerService,
     private readonly auditService: AuditService,
+    private readonly traffic: TrafficService,
   ) {}
 
   @Get()
@@ -265,6 +267,9 @@ export class PanelSubUserController {
         await this.prisma.userProxy.updateMany({ where: { id: { in: dto.ids } }, data: { isBlocked: false } });
         break;
       case 'reset-traffic':
+        // Écrit d'abord le trafic encore en mémoire : sinon ces octets
+        // (consommés AVANT le reset) étaient ajoutés au compteur remis à zéro.
+        await this.traffic.flushAll();
         await this.prisma.userProxy.updateMany({
           where: { id: { in: dto.ids } },
           data: { totalBytesSent: 0n, totalBytesReceived: 0n, usedGb: 0 },
@@ -349,6 +354,9 @@ export class PanelSubUserController {
   @Post(':id/reset-traffic')
   async resetTraffic(@Param('id') id: string) {
     try {
+      // Cf. bulk 'reset-traffic' : le trafic pré-reset en mémoire est écrit
+      // avant la remise à zéro, pour ne pas être compté dans la nouvelle période.
+      await this.traffic.flushAll();
       const user = await this.prisma.userProxy.update({
         where: { id },
         data: { totalBytesSent: 0n, totalBytesReceived: 0n, usedGb: 0 },

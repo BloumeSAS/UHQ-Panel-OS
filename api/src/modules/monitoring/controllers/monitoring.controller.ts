@@ -86,6 +86,8 @@ export class PanelMonitoringController {
     const data = usernames.map((username) => {
       const u = byUsername.get(username);
       const bw = bandwidth.get(username);
+      // Totaux "live" : base + octets pas encore flushés (jusqu'à 5s de retard sinon).
+      const pending = this.traffic.getPending(username);
       return {
         username,
         label: u?.name ?? username,
@@ -94,10 +96,10 @@ export class PanelMonitoringController {
         threadsLimit: u?.threadsLimit ?? null,
         sentBps: Math.round(bw?.sentBps ?? 0),
         receivedBps: Math.round(bw?.receivedBps ?? 0),
-        totalBytesSent: u ? Number(u.totalBytesSent) : null,
-        totalBytesReceived: u ? Number(u.totalBytesReceived) : null,
+        totalBytesSent: u ? Number(u.totalBytesSent) + pending.sent : null,
+        totalBytesReceived: u ? Number(u.totalBytesReceived) + pending.received : null,
         totalGb: u?.totalGb ?? null,
-        usedGb: u?.usedGb ?? null,
+        usedGb: u ? u.usedGb + (pending.sent + pending.received) / 1024 ** 3 : null,
       };
     });
     data.sort((a, b) => b.threads - a.threads);
@@ -668,7 +670,11 @@ export class PanelMonitoringController {
     // ── Trafic par jour (graphique) ─────────────────────────────────────────
     const dailyMap: Record<string, { gb: number; requests: number }> = {};
     for (const r of dailyRows) {
-      const day = r.date.toISOString().slice(0, 10);
+      // Clé en heure LOCALE : les lignes ProxyUsage sont datées à minuit local
+      // (TZ du conteneur, ex. Europe/Paris) — `toISOString()` (UTC) décalait
+      // chaque barre d'un jour en arrière.
+      const d = r.date;
+      const day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
       if (!dailyMap[day]) dailyMap[day] = { gb: 0, requests: 0 };
       dailyMap[day].gb += (r.bytesSent + r.bytesReceived) / 1024 ** 3;
       dailyMap[day].requests += r.requests;
