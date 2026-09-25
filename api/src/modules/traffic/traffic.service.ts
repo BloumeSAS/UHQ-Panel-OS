@@ -2,6 +2,7 @@ import { BeforeApplicationShutdown, Injectable, Logger, OnModuleInit } from '@ne
 import { Interval } from '@nestjs/schedule';
 import { PrismaService } from '../../database/prisma.service';
 import { NotificationService } from '../notifications/notification.service';
+import { BYTES_PER_GB, LEGACY_BYTES_PER_GB } from '../../common/utils/units';
 
 interface HostStats {
   /** Minuit local (ms) du jour où ces octets ont été consommés — pas celui du flush. */
@@ -30,7 +31,8 @@ interface RateRing {
   received: number[];
 }
 
-const GiB = 1024 ** 3;
+/** Octets par "Go" (décimal, cf. common/utils/units). */
+const GiB = BYTES_PER_GB;
 
 /**
  * In-memory traffic accumulator. Equivalent of Python `TrafficManager`.
@@ -325,6 +327,49 @@ export class TrafficService implements OnModuleInit, BeforeApplicationShutdown {
       this.logger.error(`TrafficManager: cannot init global counter, traffic kept for retry: ${e}`);
       return false;
     }
+  }
+
+  /**
+   * Passage unique Gio → Go décimal (v2.4.65) SANS changer aucun chiffre
+   * affiché : `usedGb`/`totalGb` (déjà exprimés en "Go") gardent leur valeur ;
+   * les compteurs en OCTETS sont convertis pour correspondre à ces mêmes Go
+   * dans la nouvelle unité (× 10⁹/2³⁰). Ex. un compte à « 9 / 10 Go » reste
+   * « 9 / 10 Go » ; seul le trafic à venir est compté en Go décimaux.
+   *
+   * Idempotent : marqueur dans la table Setting (sauvegardé/restauré avec
+   * elle). `includeGlobal` = aussi le compteur global et les snapshots — pas
+   * après une restauration de sauvegarde, qui ne les contient pas.
+   */
+  async ensureDecimalUnits(includeGlobal = true): Promise<void> {
+    const MARKER = '__migration.trafficUnitDecimal';
+    const f = BYTES_PER_GB / LEGACY_BYTES_PER_GB;
+    const scaleBig = (col: string) => `ROUND("${col}" * ${f})::bigint`;
+    const migrated = await this.prisma.$transaction(
+      async (tx) => {
+        if (await tx.setting.findUnique({ where: { key: MARKER } })) return false;
+        await tx.$executeRawUnsafe(
+          `UPDATE "UserProxy" SET "totalBytesSent" = ${scaleBig('totalBytesSent')}, ` +
+            `"totalBytesReceived" = ${scaleBig('totalBytesReceived')}, ` +
+            `"trafficLimit" = CASE WHEN "trafficLimit" IS NULL THEN NULL ELSE ${scaleBig('trafficLimit')} END`,
+        );
+        await tx.$executeRawUnsafe(
+          `UPDATE "ProxyUsage" SET "bytesSent" = "bytesSent" * ${f}, "bytesReceived" = "bytesReceived" * ${f}`,
+        );
+        if (includeGlobal) {
+          await tx.$executeRawUnsafe(
+            `UPDATE "TrafficCounter" SET "bytesSent" = ${scaleBig('bytesSent')}, "bytesReceived" = ${scaleBig('bytesReceived')}`,
+          );
+          await tx.$executeRawUnsafe(
+            `UPDATE "TrafficSnapshot" SET "totalBytesSent" = ${scaleBig('totalBytesSent')}, ` +
+              `"totalBytesReceived" = ${scaleBig('totalBytesReceived')}`,
+          );
+        }
+        await tx.setting.create({ data: { key: MARKER, value: new Date().toISOString() } });
+        return true;
+      },
+      { timeout: 300_000 },
+    );
+    if (migrated) this.logger.log('Unités de trafic converties en Go décimal (chiffres affichés inchangés).');
   }
 
   /** Remet les stats d'un compte dans le buffer courant (retry au prochain flush). */

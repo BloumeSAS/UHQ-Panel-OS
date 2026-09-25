@@ -24,6 +24,7 @@ import {
   BlockedDomainsRemoveDto,
   BlockedDomainsSetDto,
 } from './dto';
+import { BYTES_PER_GB } from '../../common/utils/units';
 
 /** Exemple de réponse pour un compte proxy (formatSubUser) — réutilisé dans les exemples Swagger ci-dessous. */
 const PROXY_EXAMPLE = {
@@ -33,7 +34,7 @@ const PROXY_EXAMPLE = {
   label: 'My Proxy Account',
   allowed_ips: '*',
   threads_limit: 100,
-  traffic_limit: 10737418240,
+  traffic_limit: 10000000000,
   country_filter: 'US,FR',
   bytes_sent: 524288000,
   bytes_received: 1048576000,
@@ -92,8 +93,8 @@ export class MeApiController {
       (acc, u) => acc + (u.trafficLimit ? Number(u.trafficLimit) : 0),
       0,
     );
-    const gbUsed = Math.round((totalBytes / 1024 ** 3) * 10000) / 10000;
-    const gbLimit = totalLimit ? Math.round((totalLimit / 1024 ** 3) * 10000) / 10000 : 0;
+    const gbUsed = Math.round((totalBytes / BYTES_PER_GB) * 10000) / 10000;
+    const gbLimit = totalLimit ? Math.round((totalLimit / BYTES_PER_GB) * 10000) / 10000 : 0;
     return {
       status: 'success',
       data: {
@@ -211,7 +212,7 @@ export class MeApiController {
       data: {
         sub_user_id: user.id,
         total_bytes: totalBytes,
-        gb_used: Math.round((totalBytes / 1024 ** 3) * 10000) / 10000,
+        gb_used: Math.round((totalBytes / BYTES_PER_GB) * 10000) / 10000,
         sent: Number(user.totalBytesSent),
         received: Number(user.totalBytesReceived),
         active_threads: active,

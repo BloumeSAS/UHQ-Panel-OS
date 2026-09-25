@@ -17,6 +17,7 @@ import {
   DeleteObjectCommand,
 } from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
+import { TrafficService } from '../traffic/traffic.service';
 
 /** Nombre de lignes lues par page pour les grosses tables (pagination cursor). */
 const BACKUP_PAGE_SIZE = 5000;
@@ -48,6 +49,7 @@ export class BackupService implements OnModuleInit {
     private readonly schedulerRegistry: SchedulerRegistry,
     private readonly jobs: JobCoordinatorService,
     private readonly engine: ProxyServerService,
+    private readonly traffic: TrafficService,
   ) {}
 
   /**
@@ -688,6 +690,12 @@ export class BackupService implements OnModuleInit {
         timeout: 300_000,
       },
     );
+
+    // Sauvegarde antérieure au passage en Go décimal (sans son marqueur) :
+    // convertit ses compteurs restaurés pour garder les mêmes chiffres affichés.
+    await this.traffic
+      .ensureDecimalUnits(false)
+      .catch((e) => this.logger.error(`Conversion des unités après restauration échouée : ${e}`));
 
     // Reload settings cache to reflect the restored settings
     await this.settings.reload();

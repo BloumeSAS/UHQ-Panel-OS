@@ -27,6 +27,7 @@ import {
   SubUserUpdateDto,
 } from './dto';
 import { normalizeDomain } from '../../common/utils/proxy-format';
+import { BYTES_PER_GB } from '../../common/utils/units';
 
 /** Exemple de réponse pour un compte proxy (formatSubUser) — réutilisé dans les exemples Swagger ci-dessous. */
 const PROXY_EXAMPLE = {
@@ -36,7 +37,7 @@ const PROXY_EXAMPLE = {
   label: 'My Proxy Account',
   allowed_ips: '*',
   threads_limit: 100,
-  traffic_limit: 10737418240,
+  traffic_limit: 10000000000,
   country_filter: 'US,FR',
   bytes_sent: 524288000,
   bytes_received: 1048576000,
@@ -105,7 +106,7 @@ export class SubUserController {
             ? BigInt(dto.traffic_limit_bytes)
             : null,
           totalGb: dto.traffic_limit_bytes
-            ? dto.traffic_limit_bytes / 1024 ** 3
+            ? dto.traffic_limit_bytes / BYTES_PER_GB
             : 0,
           countryFilter: dto.country_filter,
           stickySessionTtl: dto.sticky_session_ttl,
@@ -134,7 +135,7 @@ export class SubUserController {
     if (dto.threads_limit !== undefined) data.threadsLimit = dto.threads_limit;
     if (dto.traffic_limit_bytes !== undefined) {
       data.trafficLimit = BigInt(dto.traffic_limit_bytes);
-      data.totalGb = dto.traffic_limit_bytes / 1024 ** 3;
+      data.totalGb = dto.traffic_limit_bytes / BYTES_PER_GB;
     }
     if (dto.country_filter !== undefined) data.countryFilter = dto.country_filter;
     if (dto.password !== undefined) data.password = dto.password;
@@ -303,7 +304,7 @@ export class SubUserController {
       data: {
         sub_user_id: user.id,
         total_bytes: totalBytes,
-        gb_used: Math.round((totalBytes / 1024 ** 3) * 10000) / 10000,
+        gb_used: Math.round((totalBytes / BYTES_PER_GB) * 10000) / 10000,
         sent: Number(user.totalBytesSent),
         received: Number(user.totalBytesReceived),
         active_threads: active,

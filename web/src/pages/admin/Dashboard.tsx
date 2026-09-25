@@ -4,7 +4,7 @@ import { Activity, Boxes, Globe2, Network, TrendingUp, Cpu, MemoryStick, Databas
 import { api } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui';
-import { cn } from '@/lib/utils';
+import { cn, BYTES_PER_GB } from '@/lib/utils';
 import { AddonPageBar } from '@/components/AddonPageBar';
 
 type DashboardTab = 'overview' | 'active-accounts' | 'extensions';
@@ -348,15 +348,15 @@ type ActiveAccount = {
 };
 
 function formatBps(bps: number): string {
-  if (bps < 1024) return `${bps} o/s`;
-  if (bps < 1024 * 1024) return `${(bps / 1024).toFixed(1)} Ko/s`;
-  return `${(bps / 1024 / 1024).toFixed(2)} Mo/s`;
+  if (bps < 1000) return `${bps} o/s`;
+  if (bps < 1000 * 1000) return `${(bps / 1000).toFixed(1)} Ko/s`;
+  return `${(bps / 1000 / 1000).toFixed(2)} Mo/s`;
 }
 
 function formatBytes(bytes: number | null): string {
   if (bytes == null) return '—';
-  if (bytes < 1024 ** 3) return `${(bytes / 1024 / 1024).toFixed(1)} Mo`;
-  return `${(bytes / 1024 ** 3).toFixed(2)} Go`;
+  if (bytes < BYTES_PER_GB) return `${(bytes / 1000 / 1000).toFixed(1)} Mo`;
+  return `${(bytes / BYTES_PER_GB).toFixed(2)} Go`;
 }
 
 function ActiveAccountsTab() {

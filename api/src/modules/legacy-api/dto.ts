@@ -26,7 +26,7 @@ export class SubUserCreateDto {
   @IsInt()
   threads_limit?: number = 100;
 
-  @ApiPropertyOptional({ example: 10737418240 })
+  @ApiPropertyOptional({ example: 10000000000 })
   @IsOptional()
   @IsInt()
   traffic_limit_bytes?: number;

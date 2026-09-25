@@ -26,6 +26,7 @@ import { ImportProxiesDto } from '../../../common/dto/panel.dto';
 import { PoolHealthSnapshotService } from '../pool-health-snapshot.service';
 import { TrafficSnapshotService } from '../traffic-snapshot.service';
 import { AuditService } from '../../audit/audit.service';
+import { BYTES_PER_GB } from '../../../common/utils/units';
 
 /**
  * Pas de @Roles() au niveau classe : les routes en lecture (GET) sont
@@ -99,7 +100,7 @@ export class PanelMonitoringController {
         totalBytesSent: u ? Number(u.totalBytesSent) + pending.sent : null,
         totalBytesReceived: u ? Number(u.totalBytesReceived) + pending.received : null,
         totalGb: u?.totalGb ?? null,
-        usedGb: u ? u.usedGb + (pending.sent + pending.received) / 1024 ** 3 : null,
+        usedGb: u ? u.usedGb + (pending.sent + pending.received) / BYTES_PER_GB : null,
       };
     });
     data.sort((a, b) => b.threads - a.threads);
@@ -149,7 +150,7 @@ export class PanelMonitoringController {
         take: 10,
       }),
     ]);
-    const totalGb = ((totals._sum.bytesSent ?? 0) + (totals._sum.bytesReceived ?? 0)) / 1024 ** 3;
+    const totalGb = ((totals._sum.bytesSent ?? 0) + (totals._sum.bytesReceived ?? 0)) / BYTES_PER_GB;
     const top = topGroups.map((g) => ({ hostname: g.hostname, requests: g._sum.requests ?? 0 }));
 
     return {
@@ -655,7 +656,7 @@ export class PanelMonitoringController {
         select: { date: true, bytesSent: true, bytesReceived: true, requests: true },
       }),
     ]);
-    const totalGb = ((totals._sum.bytesSent ?? 0) + (totals._sum.bytesReceived ?? 0)) / 1024 ** 3;
+    const totalGb = ((totals._sum.bytesSent ?? 0) + (totals._sum.bytesReceived ?? 0)) / BYTES_PER_GB;
     const totalRequests = totals._sum.requests ?? 0;
     const topDomains = domainGroups.map((g) => ({ hostname: g.hostname, requests: g._sum.requests ?? 0 }));
     const userTrafficMap: Record<string, { sent: number; received: number; requests: number }> = {};
@@ -676,7 +677,7 @@ export class PanelMonitoringController {
       const d = r.date;
       const day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
       if (!dailyMap[day]) dailyMap[day] = { gb: 0, requests: 0 };
-      dailyMap[day].gb += (r.bytesSent + r.bytesReceived) / 1024 ** 3;
+      dailyMap[day].gb += (r.bytesSent + r.bytesReceived) / BYTES_PER_GB;
       dailyMap[day].requests += r.requests;
     }
     const dailyTraffic = Object.entries(dailyMap)
@@ -691,7 +692,7 @@ export class PanelMonitoringController {
       id: u.id,
       name: u.name,
       username: u.username,
-      used_gb: Math.round(((userTrafficMap[u.id]?.sent ?? 0) + (userTrafficMap[u.id]?.received ?? 0)) / 1024 ** 3 * 10000) / 10000,
+      used_gb: Math.round(((userTrafficMap[u.id]?.sent ?? 0) + (userTrafficMap[u.id]?.received ?? 0)) / BYTES_PER_GB * 10000) / 10000,
       total_requests: userTrafficMap[u.id]?.requests ?? 0,
       limit_gb: u.totalGb,
       is_blocked: u.isBlocked,
@@ -746,7 +747,7 @@ export class PanelMonitoringController {
         top_domains: topDomains,
         daily: dailyTraffic,
         previous_total_gb: previousTotals
-          ? Math.round((((previousTotals._sum.bytesSent ?? 0) + (previousTotals._sum.bytesReceived ?? 0)) / 1024 ** 3) * 10000) / 10000
+          ? Math.round((((previousTotals._sum.bytesSent ?? 0) + (previousTotals._sum.bytesReceived ?? 0)) / BYTES_PER_GB) * 10000) / 10000
           : null,
         previous_total_requests: previousTotals?._sum.requests ?? null,
       },

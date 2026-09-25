@@ -5,6 +5,7 @@ import { MasterKeyGuard } from '../../common/guards/master-key.guard';
 import { Scopes } from '../../common/decorators/scopes.decorator';
 import { PrismaService } from '../../database/prisma.service';
 import { ProxyServerService } from '../proxy-engine/proxy-server.service';
+import { BYTES_PER_GB } from '../../common/utils/units';
 
 type Period = 'week' | 'month' | 'year' | 'all';
 
@@ -97,7 +98,7 @@ export class StatsController {
         bytesSent: totalSent,
         bytesReceived: totalReceived,
         totalBytes: totalSent + totalReceived,
-        totalGb: Math.round(((totalSent + totalReceived) / 1024 ** 3) * 10000) / 10000,
+        totalGb: Math.round(((totalSent + totalReceived) / BYTES_PER_GB) * 10000) / 10000,
         requests: totalReqs,
         errors: totalErrors,
       },
@@ -142,7 +143,7 @@ export class StatsController {
       period,
       top_hosts: sorted.slice(0, 25).map(([hostname, d]) => ({
         hostname,
-        gb: Math.round((d.bytes / 1024 ** 3) * 10000) / 10000,
+        gb: Math.round((d.bytes / BYTES_PER_GB) * 10000) / 10000,
         requests: d.requests,
       })),
     };
@@ -185,7 +186,7 @@ export class StatsController {
     let totalReqs = 0;
     for (const r of records) {
       agg[r.hostname] = (agg[r.hostname] ?? 0) + r.requests;
-      totalGb += (r.bytesSent + r.bytesReceived) / 1024 ** 3;
+      totalGb += (r.bytesSent + r.bytesReceived) / BYTES_PER_GB;
       totalReqs += r.requests;
     }
     const sorted = Object.entries(agg).sort(([, a], [, b]) => b - a);

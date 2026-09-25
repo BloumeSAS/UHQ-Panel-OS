@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useT } from '@/lib/i18n';
-import { formatBytes } from '@/lib/utils';
+import { formatBytes, BYTES_PER_GB } from '@/lib/utils';
 import { Card, CardContent, CardHeader, CardTitle, Button, Input } from '@/components/ui';
 import { cn } from '@/lib/utils';
 import { AddonPageBar } from '@/components/AddonPageBar';
@@ -391,7 +391,7 @@ function LiveStrip({ live, sysHealth }: { live: any; sysHealth: any }) {
   const items = [
     { icon: Zap, label: t('analytics.activeThreads'), value: live?.live?.active_threads ?? '—', color: 'text-primary' },
     { icon: Clock, label: t('analytics.activeSessions'), value: live?.live?.active_sessions ?? '—', color: 'text-primary' },
-    { icon: ArrowUp, label: t('analytics.todayVolume'), value: live?.today_summary ? formatBytes(live.today_summary.total_gb * 1024 ** 3) : '—', color: 'text-emerald-500' },
+    { icon: ArrowUp, label: t('analytics.todayVolume'), value: live?.today_summary ? formatBytes(live.today_summary.total_gb * BYTES_PER_GB) : '—', color: 'text-emerald-500' },
     { icon: ArrowDown, label: t('analytics.todayRequests'), value: live?.today_summary?.total_requests?.toLocaleString?.() ?? '—', color: 'text-emerald-500' },
     { icon: Cpu, label: t('analytics.cpuLoad'), value: sysHealth ? `${sysHealth.host.cpuLoadPct}%` : '—', color: sysHealth?.host?.cpuLoadPct > 80 ? 'text-destructive' : 'text-muted-foreground' },
     { icon: MemoryStick, label: t('analytics.ramUsed'), value: sysHealth ? `${sysHealth.process.rssMb} Mo` : '—', color: 'text-muted-foreground' },

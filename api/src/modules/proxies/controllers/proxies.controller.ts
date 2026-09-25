@@ -28,6 +28,7 @@ import { assertPortAvailable } from '../../../common/utils/port-validation';
 import { buildPoolEndpointMap, resolveConnectionEndpoint, resolveHostPortSync } from '../../../common/utils/connection-endpoint';
 import { AuditService } from '../../audit/audit.service';
 import { TrafficService } from '../../traffic/traffic.service';
+import { BYTES_PER_GB } from '../../../common/utils/units';
 
 type Period = 'week' | 'month' | 'year' | 'all';
 function periodStart(period: Period): Date {
@@ -169,7 +170,7 @@ export class PanelSubUserController {
         ipWhitelist: dto.allowed_ips,
         threadsLimit: dto.threads_limit,
         trafficLimit: dto.traffic_limit_bytes ? BigInt(dto.traffic_limit_bytes) : null,
-        totalGb: dto.traffic_limit_bytes ? dto.traffic_limit_bytes / 1024 ** 3 : 0,
+        totalGb: dto.traffic_limit_bytes ? dto.traffic_limit_bytes / BYTES_PER_GB : 0,
         countryFilter: dto.country_filter,
         stickySessionTtl: dto.sticky_session_ttl,
         customProxies: dto.custom_proxies?.trim() || null,
@@ -226,7 +227,7 @@ export class PanelSubUserController {
             ipWhitelist: dto.allowed_ips,
             threadsLimit: dto.threads_limit,
             trafficLimit: dto.traffic_limit_bytes ? BigInt(dto.traffic_limit_bytes) : null,
-            totalGb: dto.traffic_limit_bytes ? dto.traffic_limit_bytes / 1024 ** 3 : 0,
+            totalGb: dto.traffic_limit_bytes ? dto.traffic_limit_bytes / BYTES_PER_GB : 0,
             countryFilter: dto.country_filter,
             pool: dto.pool || null,
             port: dto.port ?? null,
@@ -298,7 +299,7 @@ export class PanelSubUserController {
     if (dto.threads_limit !== undefined) data.threadsLimit = dto.threads_limit;
     if (dto.traffic_limit_bytes !== undefined) {
       data.trafficLimit = BigInt(dto.traffic_limit_bytes);
-      data.totalGb = dto.traffic_limit_bytes / 1024 ** 3;
+      data.totalGb = dto.traffic_limit_bytes / BYTES_PER_GB;
     }
     if (dto.country_filter !== undefined) data.countryFilter = dto.country_filter;
     if (dto.password !== undefined) data.password = dto.password;
@@ -457,7 +458,7 @@ export class PanelSubUserController {
       total_stats: {
         bytesSent: sent,
         bytesReceived: received,
-        totalGb: Math.round(((sent + received) / 1024 ** 3) * 10000) / 10000,
+        totalGb: Math.round(((sent + received) / BYTES_PER_GB) * 10000) / 10000,
         requests: totals._sum.requests ?? 0,
         active_threads: active,
         threads_limit: user.threadsLimit,

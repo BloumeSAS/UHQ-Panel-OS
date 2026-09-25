@@ -27,6 +27,7 @@ import {
   UpstreamProxy,
 } from './types';
 import type { BackendProxy } from '@prisma/client';
+import { BYTES_PER_GB } from '../../common/utils/units';
 
 /**
  * Port of `app/proxy_engine/server.py::ProxyServer`.
@@ -131,7 +132,20 @@ export class ProxyServerService implements OnModuleDestroy {
   private readonly lastPickedAt = new Map<string, number>();
   /** Fenêtre de refroidissement après sélection (ms) avant qu'un proxy ne redevienne pleinement éligible. */
   private static readonly PICK_COOLDOWN_MS = 60_000;
-  private static readonly GiB = 1024 ** 3;
+  /**
+   * Latence (ms) supposée pour un proxy jamais mesuré (fraîchement scrapé) —
+   * volontairement pessimiste : il reste tentable (exploration) sans passer
+   * devant les proxies déjà éprouvés.
+   */
+  private static readonly UNKNOWN_LATENCY_MS = 20_000;
+  /** Délai max de connexion TCP d'un concurrent de course (un proxy sain accepte en bien moins d'1 s). */
+  private static readonly RACER_CONNECT_TIMEOUT_MS = 2_000;
+  /** id upstream → nombre de rejets TLS (certificat refusé par le client) observés. */
+  private readonly tlsRejects = new Map<string, number>();
+  /** Endpoint (`ip:port`) d'une liste privée → protocole qui y a fonctionné en dernier. */
+  private readonly customProtocolWins = new Map<string, string>();
+  /** Octets par "Go" (décimal, cf. common/utils/units). */
+  private static readonly GiB = BYTES_PER_GB;
   /** Toutes les connexions clientes ouvertes (coupées proprement à l'arrêt). */
   private readonly clientSockets = new Set<Socket>();
   /**
@@ -643,6 +657,7 @@ export class ProxyServerService implements OnModuleDestroy {
     this.clientSockets.add(client);
     try {
       // Quick 3s timeout on the initial line read to flush hanging connections
+      const tAccept = Date.now();
       const firstLineRaw = await readUntil(client, Buffer.from('\r\n'), 3000).catch(
         () => null,
       );
@@ -860,59 +875,65 @@ export class ProxyServerService implements OnModuleDestroy {
         });
       };
 
+      const tUpstreamStart = Date.now();
+      let attemptsMade = 0;
       let winner: { upstream: UpstreamProxy; socket: Socket } | null = null;
-      for (let attempt = 0; attempt < 2 && !winner; attempt++) {
-        const proxiesToTry: UpstreamProxy[] = [];
-        if (attempt === 0 && stickyProxyObj && stickyProxyObj.isWorking !== false) {
-          proxiesToTry.push(this.applyCountrySelector(stickyProxyObj, requestedCountry));
-        } else if (customUpstreams) {
-          // Liste privée : on essaie les variantes DANS L'ORDRE (HTTP d'abord),
-          // de façon SÉQUENTIELLE (cf. trySequential plus bas) — pas en race
-          // concurrent. Raison : beaucoup de fournisseurs résidentiels limitent
-          // les connexions simultanées par compte ; ouvrir HTTP+SOCKS5+SOCKS4 en
-          // parallèle faisait rejeter la connexion HTTP légitime. curl n'ouvre
-          // qu'une seule connexion → on imite ce comportement.
-          proxiesToTry.push(...customUpstreams.slice(0, 12));
-          this.logger.debug(
-            `[custom] attempt #${attempt} — ${proxiesToTry.length} variante(s) en séquentiel: ` +
-              proxiesToTry.map((p) => `${p.protocol}:${p.ip}:${p.port}`).join(', '),
-          );
-        } else {
-          const excluded: string[] = [];
-          for (let i = 0; i < NUM_RACERS; i++) {
-            const p = await this.getUpstreamProxy(requestedCountry, excluded, effectivePool);
-            if (p) {
-              proxiesToTry.push(this.applyCountrySelector(p as UpstreamProxy, requestedCountry));
-              excluded.push(p.id);
-            }
-          }
-          // NOTE: the residential fallback is deliberately NOT added to the
-          // primary race. As a stable commercial gateway it out-connects the
-          // flaky free backend proxies almost every time, so including it here
-          // meant ~100% of traffic burned paid residential bandwidth. We let
-          // the backend pool race on its own; the residential proxy is used only as a
-          // last resort by the "final fallback" block below, when no backend
-          // proxy wins either attempt.
-        }
-        if (proxiesToTry.length === 0) continue;
 
-        if (customUpstreams) {
-          // Listes privées : essais séquentiels (HTTP d'abord), 1 connexion à la
-          // fois — comme curl. Évite les limites de connexions concurrentes des
-          // fournisseurs résidentiels et l'auto-détection de protocole reste OK.
-          winner = await this.trySequential(proxiesToTry, method, path, headers, watchUpstream);
-          this.logger.debug(
-            `[custom] attempt #${attempt} result: ${winner ? `WON by ${winner.upstream.protocol}:${winner.upstream.ip}:${winner.upstream.port}` : 'no winner'} (timeoutMs=${this.timeoutMs})`,
-          );
-        } else {
-          winner = await this.race(proxiesToTry, method, path, headers, this.racingTimeoutMs, watchUpstream);
+      // 1) Session sticky : son proxy épinglé, seul, d'abord (même IP de sortie).
+      const stickyTried = !!(stickyProxyObj && stickyProxyObj.isWorking !== false);
+      if (stickyTried) {
+        attemptsMade += 1;
+        const sticky = this.applyCountrySelector(stickyProxyObj as UpstreamProxy, requestedCountry);
+        winner = customUpstreams
+          ? await this.trySequential([sticky], method, path, headers, watchUpstream)
+          : await this.race([sticky], method, path, headers, this.racingTimeoutMs, watchUpstream);
+      }
+
+      if (!winner && customUpstreams) {
+        // Liste privée : variantes essayées DANS L'ORDRE, de façon SÉQUENTIELLE
+        // (1 connexion à la fois, comme curl) — beaucoup de fournisseurs
+        // résidentiels limitent les connexions simultanées par compte. Le
+        // protocole qui a déjà fonctionné pour chaque endpoint passe en tête
+        // (cf. orderCustomVariants) : sans ça, un endpoint SOCKS5 donné sans
+        // schéma payait à CHAQUE connexion l'essai HTTP raté d'abord.
+        for (let pass = 0; pass < (stickyTried ? 1 : 2) && !winner; pass++) {
+          attemptsMade += 1;
+          const ordered = this.orderCustomVariants(customUpstreams).slice(0, 12);
+          winner = await this.trySequential(ordered, method, path, headers, watchUpstream);
         }
-        if (winner && sessionKey) {
-          this.sessions.set(sessionKey, {
-            proxyId: winner.upstream.id,
-            expiresAt: Date.now() + userTtlSec * 1000,
-          });
-        }
+      } else if (!winner) {
+        // Pool : course CONTINUE (cf. raceAdaptive) au lieu de 2 tours fixes
+        // de 5 proxies séparés par l'attente du timeout de course : un proxy
+        // mort est remplacé immédiatement et des concurrents s'ajoutent
+        // toutes les 300 ms. Avant, 5 proxies morts d'affilée coûtaient
+        // systématiquement ~1,5 s d'attente avant le second tour.
+        //
+        // NOTE: the residential fallback is deliberately NOT added to the
+        // race. As a stable commercial gateway it out-connects the flaky free
+        // backend proxies almost every time, so including it here meant ~100%
+        // of traffic burned paid residential bandwidth. It is used only as a
+        // last resort by the "final fallback" block below.
+        attemptsMade += 1;
+        const excluded = new Set<string>();
+        if (stickyProxyObj) excluded.add(stickyProxyObj.id);
+        const nextCandidate = async (): Promise<UpstreamProxy | null> => {
+          for (let i = 0; i < 3; i++) {
+            const p = await this.getUpstreamProxy(requestedCountry, [...excluded], effectivePool);
+            if (!p) return null;
+            if (excluded.has(p.id)) continue; // choisi en parallèle par un autre lancement
+            excluded.add(p.id);
+            return this.applyCountrySelector(p as UpstreamProxy, requestedCountry);
+          }
+          return null;
+        };
+        winner = await this.raceAdaptive(nextCandidate, method, path, headers, this.racingTimeoutMs * 2, watchUpstream);
+      }
+
+      if (winner && sessionKey) {
+        this.sessions.set(sessionKey, {
+          proxyId: winner.upstream.id,
+          expiresAt: Date.now() + userTtlSec * 1000,
+        });
       }
 
       // --- Final fallback (Phase 10 in Python) ---
@@ -958,7 +979,14 @@ export class ProxyServerService implements OnModuleDestroy {
       }
 
       // --- Pipe data ---
-      this.logger.log(`Race won by ${winner.upstream.url}`);
+      // Délais de mise en place (diagnostic de latence) : avant upstream =
+      // lecture requête + auth + contrôles ; upstream = choix + connexion +
+      // négociation jusqu'au proxy gagnant.
+      const tReady = Date.now();
+      this.logger.log(
+        `Race won by ${winner.upstream.url} — setup ${tReady - tAccept}ms ` +
+          `(pre-upstream ${tUpstreamStart - tAccept}ms, upstream ${tReady - tUpstreamStart}ms, rounds ${attemptsMade})`,
+      );
       // Même piège que le fallback ci-dessus : pour CONNECT, `path` est déjà
       // le host:port cible — extractHost() (qui suppose une URL absolue ou un
       // header Host) échouait silencieusement dessus et renvoyait le domaine
@@ -983,12 +1011,18 @@ export class ProxyServerService implements OnModuleDestroy {
       if (method === 'CONNECT') {
         this.meter(acct, hostKey, 0, 0, true); // 1 tunnel = 1 requête
         client.write('HTTP/1.1 200 Connection established\r\n\r\n');
+        const tls = new TlsClientWatch();
+        const tunnelUpstream = winner.upstream;
         await bidirectionalPipe(
           client,
           winner.socket,
           (chunk) => {
             winnerCounted.written += chunk.length;
             this.meter(acct, hostKey, chunk.length, 0, false);
+            if (!tls.done) {
+              tls.feed(chunk);
+              if (tls.rejected) this.onTlsRejected(tunnelUpstream);
+            }
           },
           (chunk) => {
             winnerCounted.read += chunk.length;
@@ -997,6 +1031,7 @@ export class ProxyServerService implements OnModuleDestroy {
           throttle,
           this.idleTimeoutMs,
         );
+        if (!tls.rejected && tls.abandoned() && winnerCounted.read > 0) this.onTlsRejected(tunnelUpstream);
       } else {
         // Reconstruct & forward the buffered HTTP request, then pipe
         await this.relayHttpRequest(
@@ -1012,6 +1047,15 @@ export class ProxyServerService implements OnModuleDestroy {
           winnerCounted,
           throttle,
         );
+      }
+      // Tunnel "muet" : le client a envoyé des données mais l'upstream n'a
+      // RIEN renvoyé (proxy gratuit cassé qui accepte le CONNECT puis se tait,
+      // ou coupe la négociation TLS). Pénalisé en mémoire pour qu'il ne soit
+      // plus choisi en priorité — sans le marquer mort en base (faux positifs
+      // possibles si c'est la cible qui ne répond pas).
+      if (winnerCounted.written > 0 && winnerCounted.read === 0) {
+        const cached = this.proxyMapCache.get(winner.upstream.id) as any;
+        if (cached) cached.failureCount = (cached.failureCount ?? 0) + 5;
       }
     } catch (e) {
       this.logger.debug(`Connection error: ${(e as Error)?.message ?? e}`);
@@ -1080,9 +1124,151 @@ export class ProxyServerService implements OnModuleDestroy {
     for (const u of upstreams) {
       const skipHandshake = isHttpMethod && (u.protocol ?? 'http').toLowerCase() === 'http';
       const sock = await this.tryUpstream(u, target, skipHandshake, onSocket);
-      if (sock) return { upstream: u, socket: sock };
+      if (sock) {
+        if (u.id.startsWith('custom:')) {
+          if (this.customProtocolWins.size > 10_000) this.customProtocolWins.clear();
+          this.customProtocolWins.set(`${u.ip}:${u.port}`, u.protocol);
+        }
+        return { upstream: u, socket: sock };
+      }
     }
     return null;
+  }
+
+  /**
+   * Le client a refusé la négociation TLS à travers ce proxy (certificat non
+   * reconnu) : signature typique d'un proxy gratuit qui INTERCEPTE le HTTPS
+   * (MITM, faux certificat). Ces proxies répondent au CONNECT instantanément
+   * (ils ne contactent même pas la cible) et gagnaient donc les courses.
+   * 1er rejet : retiré du tirage et marqué KO (comme un échec de connexion,
+   * le checker peut le réhabiliter) ; 2e : blacklist permanente, comme un 400/407. Jamais sur les listes privées, le
+   * fallback ni les pools "Toujours en ligne".
+   */
+  private onTlsRejected(upstream: UpstreamProxy): void {
+    if (upstream.id === 'fallback' || upstream.id.startsWith('custom:')) return;
+    if (upstream.pool && this.alwaysOnlinePoolSet.has(upstream.pool)) return;
+    const n = (this.tlsRejects.get(upstream.id) ?? 0) + 1;
+    if (this.tlsRejects.size > 20_000) this.tlsRejects.clear();
+    this.tlsRejects.set(upstream.id, n);
+    this.proxyMapCache.delete(upstream.id);
+    this.proxyPoolCache = this.proxyPoolCache.filter((p) => p.id !== upstream.id);
+    if (n < 2) {
+      // Marqué KO en base (même règle qu'un échec de connexion) : sinon le
+      // refresh 30 s du cache le remettait aussitôt dans le tirage.
+      this.logger.warn(`TLS refusé par le client via ${upstream.url} — marqué KO`);
+      this.prisma.backendProxy
+        .update({ where: { id: upstream.id }, data: { isWorking: false } })
+        .catch(() => undefined);
+      return;
+    }
+    this.logger.warn(`🚫 Permanent blacklist (interception TLS suspectée): ${upstream.url}`);
+    this.prisma.backendProxy
+      .update({ where: { id: upstream.id }, data: { isWorking: false, isBlacklisted: true } })
+      .then(() => this.notificationService.notifyProxyDead(upstream.url, 'Permanent Blacklist: TLS interception suspected'))
+      .catch(() => undefined);
+  }
+
+  /**
+   * Variantes d'une liste privée réordonnées : pour chaque endpoint (dans
+   * l'ordre de la liste, qui porte la priorité), le protocole qui y a déjà
+   * fonctionné passe devant les autres variantes.
+   */
+  private orderCustomVariants(list: UpstreamProxy[]): UpstreamProxy[] {
+    if (this.customProtocolWins.size === 0) return list;
+    const endpointRank = new Map<string, number>();
+    for (const u of list) {
+      const key = `${u.ip}:${u.port}`;
+      if (!endpointRank.has(key)) endpointRank.set(key, endpointRank.size);
+    }
+    const rank = (u: UpstreamProxy) => {
+      const key = `${u.ip}:${u.port}`;
+      return (endpointRank.get(key) ?? 0) * 2 + (this.customProtocolWins.get(key) === u.protocol ? 0 : 1);
+    };
+    return [...list].sort((x, y) => rank(x) - rank(y));
+  }
+
+  /**
+   * Course continue entre upstreams du pool : `NUM_RACERS` tentatives en
+   * parallèle au départ ; chaque échec est remplacé IMMÉDIATEMENT par un
+   * nouveau candidat, et 2 concurrents supplémentaires sont lancés toutes les
+   * 300 ms tant que personne n'a gagné (plafonds : 3×NUM_RACERS en vol,
+   * 8×NUM_RACERS au total). Connexion TCP de chaque concurrent bornée à
+   * RACER_CONNECT_TIMEOUT_MS : un proxy injoignable ne bloque plus un slot 3 s. Le premier handshake réussi gagne, les suivants
+   * sont fermés. `budgetMs` borne la durée totale (puis fallback résidentiel).
+   */
+  private raceAdaptive(
+    next: () => Promise<UpstreamProxy | null>,
+    method: string,
+    path: string,
+    headers: string[],
+    budgetMs: number,
+    onSocket?: (s: Socket) => void,
+  ): Promise<{ upstream: UpstreamProxy; socket: Socket } | null> {
+    const target = method === 'CONNECT' ? path : this.extractHost(path, headers);
+    const isHttpMethod = method !== 'CONNECT';
+    const MAX_INFLIGHT = NUM_RACERS * 3;
+    const MAX_TOTAL = NUM_RACERS * 8;
+    const HEDGE_MS = 300;
+
+    return new Promise((resolve) => {
+      let settled = false;
+      let inflight = 0;
+      let launching = 0;
+      let launched = 0;
+      let exhausted = false;
+      let deadline: NodeJS.Timeout | null = null;
+      let hedge: NodeJS.Timeout | null = null;
+
+      const done = (res: { upstream: UpstreamProxy; socket: Socket } | null) => {
+        if (settled) return;
+        settled = true;
+        if (deadline) clearTimeout(deadline);
+        if (hedge) clearInterval(hedge);
+        resolve(res);
+      };
+      const maybeGiveUp = () => {
+        if (!settled && inflight === 0 && launching === 0 && (exhausted || launched >= MAX_TOTAL)) done(null);
+      };
+      const launch = async (): Promise<void> => {
+        if (settled || exhausted || launched >= MAX_TOTAL || inflight + launching >= MAX_INFLIGHT) return;
+        launched += 1;
+        launching += 1;
+        const u = await next().catch(() => null);
+        launching -= 1;
+        if (!u) {
+          exhausted = true;
+          maybeGiveUp();
+          return;
+        }
+        if (settled) return;
+        inflight += 1;
+        const skipHandshake = isHttpMethod && (u.protocol ?? 'http').toLowerCase() === 'http';
+        void this.tryUpstream(u, target, skipHandshake, onSocket, ProxyServerService.RACER_CONNECT_TIMEOUT_MS).then((sock) => {
+          inflight -= 1;
+          if (sock) {
+            if (settled) {
+              try {
+                sock.destroy(); // gagnant tardif : la course est déjà jouée
+              } catch {
+                /* */
+              }
+              return;
+            }
+            done({ upstream: u, socket: sock });
+            return;
+          }
+          void launch(); // remplacement immédiat du concurrent tombé
+          maybeGiveUp();
+        });
+      };
+
+      deadline = setTimeout(() => done(null), budgetMs);
+      hedge = setInterval(() => {
+        void launch();
+        void launch();
+      }, HEDGE_MS);
+      for (let i = 0; i < NUM_RACERS; i++) void launch();
+    });
   }
 
   private async race(
@@ -1200,9 +1386,11 @@ export class ProxyServerService implements OnModuleDestroy {
     targetHostPort: string,
     skipHandshake = false,
     onSocket?: (s: Socket) => void,
+    connectTimeoutMs?: number,
   ): Promise<Socket | null> {
     const isCustom = upstream.id.startsWith('custom:');
     let socket: Socket | null = null;
+    const t0 = Date.now();
     try {
       if (isCustom) {
         this.logger.debug(
@@ -1210,7 +1398,7 @@ export class ProxyServerService implements OnModuleDestroy {
             `auth=${upstream.auth ? 'yes' : 'no'} skipHandshake=${skipHandshake} → ${targetHostPort}`,
         );
       }
-      socket = await tcpConnect(upstream.ip, upstream.port, this.timeoutMs);
+      socket = await tcpConnect(upstream.ip, upstream.port, Math.min(connectTimeoutMs ?? this.timeoutMs, this.timeoutMs));
       // Suivi du comptage avant la négociation : ses octets (même en cas
       // d'échec) sont consommés chez le fournisseur de cet upstream.
       onSocket?.(socket);
@@ -1219,6 +1407,16 @@ export class ProxyServerService implements OnModuleDestroy {
       }
       if (isCustom) {
         this.logger.debug(`[custom] OK ${upstream.protocol}://${upstream.ip}:${upstream.port}`);
+      }
+      // Latence réelle apprise en direct (même unité que le checker : ms,
+      // moyenne glissante 70/30) sur l'entrée du cache mémoire : les proxies
+      // rapides sont préférés dès les connexions suivantes, sans attendre le
+      // prochain cycle du checker.
+      const cached = this.proxyMapCache.get(upstream.id) as any;
+      if (cached) {
+        const ms = Date.now() - t0;
+        cached.averageLatency = cached.averageLatency != null ? cached.averageLatency * 0.7 + ms * 0.3 : ms;
+        cached.successCount = (cached.successCount ?? 0) + 1;
       }
       return socket;
     } catch (e) {
@@ -1257,6 +1455,11 @@ export class ProxyServerService implements OnModuleDestroy {
             });
             void this.notificationService.notifyProxyDead(upstream.url, `Permanent Blacklist: ${msg}`);
           } else {
+            // Retiré du cache mémoire tout de suite (comme le cas permanent) :
+            // avant, il y restait jusqu'au refresh 30 s et continuait d'être
+            // tiré au sort — chaque connexion retombait sur des proxies morts.
+            this.proxyMapCache.delete(upstream.id);
+            this.proxyPoolCache = this.proxyPoolCache.filter((p) => p.id !== upstream.id);
             await this.prisma.backendProxy.update({
               where: { id: upstream.id },
               data: { isWorking: false },
@@ -1417,7 +1620,13 @@ export class ProxyServerService implements OnModuleDestroy {
     const failure = p.failureCount ?? 0;
     const total = success + failure;
     const rate = (success + 10) / (total + 10);
-    const lat = p.averageLatency ?? 2.0;
+    // `averageLatency` est en MILLISECONDES (checker + apprentissage direct).
+    // Avant : lu comme des secondes avec 2.0 par défaut — un proxy jamais
+    // mesuré (fraîchement scrapé, le plus souvent mort) pesait des millions de
+    // fois plus qu'un proxy éprouvé à 3 500 ms, et la plupart des courses se
+    // jouaient entre proxies non testés (≈1,5 s perdues avant le 2e tour).
+    const latSec = (p.averageLatency ?? ProxyServerService.UNKNOWN_LATENCY_MS) / 1000;
+    const lat = Math.max(latSec, 0.05);
     let score = rate * (1 / (lat * lat));
     const lastPick = this.lastPickedAt.get(p.id);
     if (lastPick) {
@@ -1808,4 +2017,69 @@ function safeEqual(a: string, b: string): boolean {
   const bb = Buffer.from(b);
   if (ab.length !== bb.length) return false;
   return timingSafeEqual(ab, bb);
+}
+
+/**
+ * Observe les premiers enregistrements TLS envoyés par le CLIENT dans un
+ * tunnel CONNECT (en-têtes d'enregistrement uniquement, jamais le contenu) et
+ * détecte un rejet de la négociation :
+ *  - `rejected` : un enregistrement "alert" (0x15) en clair (TLS 1.2), ou en
+ *    TLS 1.3 un 1er enregistrement chiffré (0x17) de moins de 40 octets (une
+ *    alerte chiffrée fait ~19-24 octets, un "Finished" légitime au moins 53) ;
+ *  - `abandoned()` : le client n'a envoyé que son ClientHello (+ éventuel
+ *    ChangeCipherSpec de compatibilité) et n'a jamais poursuivi alors que
+ *    l'upstream a répondu — certains clients (ex. schannel/Windows) coupent
+ *    sans alerte quand le certificat est refusé.
+ */
+class TlsClientWatch {
+  done = false;
+  rejected = false;
+  private isTls = false;
+  private progressed = false;
+  private skip = 0;
+  private hdr: number[] = [];
+  private records = 0;
+
+  /** Négociation laissée sans suite par le client (à évaluer en fin de tunnel). */
+  abandoned(): boolean {
+    return this.isTls && !this.progressed && !this.rejected;
+  }
+
+  feed(chunk: Buffer): void {
+    let i = 0;
+    while (!this.done && i < chunk.length) {
+      if (this.skip > 0) {
+        const n = Math.min(this.skip, chunk.length - i);
+        this.skip -= n;
+        i += n;
+        continue;
+      }
+      this.hdr.push(chunk[i++]);
+      if (this.hdr.length < 5) continue;
+      const [type, major] = this.hdr;
+      const len = (this.hdr[3] << 8) | this.hdr[4];
+      this.hdr = [];
+      this.records += 1;
+      if (this.records === 1) {
+        if (type !== 0x16 || major !== 0x03) {
+          this.done = true; // pas du TLS : rien à surveiller
+          return;
+        }
+        this.isTls = true;
+        this.skip = len;
+        continue;
+      }
+      if (type === 0x15 || (type === 0x17 && len < 40)) {
+        this.rejected = true;
+        this.done = true;
+        return;
+      }
+      if (type !== 0x14) this.progressed = true; // CCS de compatibilité : pas un signe de réussite
+      if (type === 0x17 || this.records >= 6) {
+        this.done = true; // données applicatives : négociation réussie
+        return;
+      }
+      this.skip = len;
+    }
+  }
 }

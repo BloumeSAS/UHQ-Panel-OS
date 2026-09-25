@@ -4,6 +4,7 @@ import { ApiKeyGuard } from '../../common/guards/api-key.guard';
 import { MasterKeyGuard } from '../../common/guards/master-key.guard';
 import { Scopes } from '../../common/decorators/scopes.decorator';
 import { PrismaService } from '../../database/prisma.service';
+import { BYTES_PER_GB } from '../../common/utils/units';
 
 /** Agrégat GLOBAL (tous les comptes) — clé maître uniquement, cf. /api/v1/me/balance pour l'équivalent self-service. */
 @ApiTags('legacy-user')
@@ -35,8 +36,8 @@ export class UserController {
       (acc, u) => acc + (u.trafficLimit ? Number(u.trafficLimit) : 0),
       0,
     );
-    const gbUsed = Math.round((totalBytes / 1024 ** 3) * 10000) / 10000;
-    const gbLimit = totalLimit ? Math.round((totalLimit / 1024 ** 3) * 10000) / 10000 : 0;
+    const gbUsed = Math.round((totalBytes / BYTES_PER_GB) * 10000) / 10000;
+    const gbLimit = totalLimit ? Math.round((totalLimit / BYTES_PER_GB) * 10000) / 10000 : 0;
     return {
       status: 'success',
       data: {

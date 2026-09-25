@@ -31,6 +31,7 @@ import {
   DialogTrigger,
 } from '@/components/dialog';
 import { toast } from '@/lib/toast';
+import { BYTES_PER_GB } from '@/lib/utils';
 
 interface SubUser {
   id: string;
@@ -57,12 +58,12 @@ interface SubUser {
 }
 
 function fmtGb(bytes: number) {
-  return (bytes / 1024 ** 3).toFixed(3) + ' Go';
+  return (bytes / BYTES_PER_GB).toFixed(3) + ' Go';
 }
 
 function fmtLimit(limit: number | null) {
   if (!limit) return '∞';
-  return (limit / 1024 ** 3).toFixed(1) + ' Go';
+  return (limit / BYTES_PER_GB).toFixed(1) + ' Go';
 }
 
 // blocked_domains est une simple liste CSV côté API — affichée/éditée une
@@ -673,10 +674,10 @@ const EXPIRY_PRESETS = [
 type Period = 'week' | 'month' | 'year' | 'all';
 
 function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} o`;
-  if (bytes < 1024 ** 2) return `${(bytes / 1024).toFixed(1)} Ko`;
-  if (bytes < 1024 ** 3) return `${(bytes / 1024 ** 2).toFixed(1)} Mo`;
-  return `${(bytes / 1024 ** 3).toFixed(2)} Go`;
+  if (bytes < 1000) return `${bytes} o`;
+  if (bytes < 1000 ** 2) return `${(bytes / 1000).toFixed(1)} Ko`;
+  if (bytes < BYTES_PER_GB) return `${(bytes / 1000 ** 2).toFixed(1)} Mo`;
+  return `${(bytes / BYTES_PER_GB).toFixed(2)} Go`;
 }
 
 function StatsDialog({ subUser, onClose }: { subUser: SubUser; onClose: () => void }) {
@@ -908,7 +909,7 @@ function parseCsv(text: string): ParsedRow[] {
         username: username || undefined,
         password: password || undefined,
         threads_limit: threads ? Number(threads) : 100,
-        traffic_limit_bytes: quotaGb ? Math.round(Number(quotaGb) * 1024 ** 3) : undefined,
+        traffic_limit_bytes: quotaGb ? Math.round(Number(quotaGb) * BYTES_PER_GB) : undefined,
       };
     })
     .filter((r) => r.label);
@@ -1075,7 +1076,7 @@ function CreateDialog({ onCreated }: { onCreated: () => void }) {
     setError('');
     try {
       const traffic_limit_bytes = form.traffic_limit_gb > 0
-        ? Math.round(form.traffic_limit_gb * 1024 ** 3)
+        ? Math.round(form.traffic_limit_gb * BYTES_PER_GB)
         : undefined;
       await api.post('/subusers', {
         label: form.label,
@@ -1165,7 +1166,7 @@ function EditDialog({
   const [form, setForm] = useState({
     label: subUser.label,
     threads_limit: subUser.threads_limit,
-    traffic_limit_gb: subUser.traffic_limit ? subUser.traffic_limit / 1024 ** 3 : 0,
+    traffic_limit_gb: subUser.traffic_limit ? subUser.traffic_limit / BYTES_PER_GB : 0,
     country_filter: subUser.country_filter || '',
     sticky_session_ttl: subUser.sticky_session_ttl,
     custom_proxies: subUser.custom_proxies || '',
@@ -1186,7 +1187,7 @@ function EditDialog({
     setError('');
     try {
       const traffic_limit_bytes = form.traffic_limit_gb > 0
-        ? Math.round(form.traffic_limit_gb * 1024 ** 3)
+        ? Math.round(form.traffic_limit_gb * BYTES_PER_GB)
         : 0;
       await api.patch(`/subusers/${subUser.id}`, {
         label: form.label,

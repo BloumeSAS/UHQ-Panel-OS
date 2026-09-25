@@ -19,6 +19,7 @@ import { ProxyServerService } from '../../proxy-engine/proxy-server.service';
 import { buildStickyList, formatSubUser } from '../../../common/utils/proxy-format';
 import { buildPoolEndpointMap, resolveConnectionEndpoint, resolveHostPortSync } from '../../../common/utils/connection-endpoint';
 import { t } from '../../../common/utils/i18n';
+import { BYTES_PER_GB } from '../../../common/utils/units';
 
 type Period = 'week' | 'month' | 'year' | 'all';
 function periodStart(period: Period): Date {
@@ -114,7 +115,7 @@ export class PanelMeController {
       total_stats: {
         bytesSent: sent,
         bytesReceived: received,
-        totalGb: Math.round(((sent + received) / 1024 ** 3) * 10000) / 10000,
+        totalGb: Math.round(((sent + received) / BYTES_PER_GB) * 10000) / 10000,
         requests,
         active_threads: active,
         threads_limit: proxy.threadsLimit,

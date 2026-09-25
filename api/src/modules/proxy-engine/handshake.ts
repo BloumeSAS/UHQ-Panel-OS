@@ -3,12 +3,74 @@ import { promises as dnsPromises } from 'dns';
 import { UpstreamProxy } from './types';
 
 /**
- * Open a raw TCP socket with a connect timeout. Equivalent of
- * `asyncio.wait_for(asyncio.open_connection(...), timeout)`.
+ * Cache DNS (60 s) des noms résolus par le moteur : passerelles upstream
+ * données par nom d'hôte (reseller, listes privées, fallback) et cibles
+ * résolues localement pour SOCKS. Node ne met RIEN en cache (chaque
+ * `connect({ host })` refait un getaddrinfo, sans cache non plus sous musl/
+ * Alpine) — soit un aller-retour DNS de plus à chaque connexion proxy.
  */
-export function tcpConnect(host: string, port: number, timeoutMs: number): Promise<Socket> {
+const DNS_TTL_MS = 60_000;
+const dnsCache = new Map<string, { address: string; family: number; expires: number }>();
+
+async function cachedLookup(host: string, family?: 4): Promise<{ address: string; family: number }> {
+  const key = family ? `${host}|4` : host;
+  const hit = dnsCache.get(key);
+  if (hit && hit.expires > Date.now()) return hit;
+  const res = family ? await dnsPromises.lookup(host, { family }) : await dnsPromises.lookup(host);
+  if (dnsCache.size > 5000) dnsCache.clear();
+  dnsCache.set(key, { ...res, expires: Date.now() + DNS_TTL_MS });
+  return res;
+}
+
+/** Oublie une entrée (échec de connexion : l'IP a peut-être changé). */
+function forgetLookup(host: string): void {
+  dnsCache.delete(host);
+  dnsCache.delete(`${host}|4`);
+}
+
+/**
+ * Open a raw TCP socket with a connect timeout. Equivalent of
+ * `asyncio.wait_for(asyncio.open_connection(...), timeout)`. Les noms d'hôte
+ * passent par le cache DNS ci-dessus (inclus dans le timeout).
+ */
+export async function tcpConnect(host: string, port: number, timeoutMs: number): Promise<Socket> {
+  const started = Date.now();
+  let address = host;
+  if (!isIP(host)) {
+    try {
+      address = (await withTimeout(cachedLookup(host), timeoutMs, `DNS timeout for ${host}`)).address;
+    } catch (e) {
+      forgetLookup(host);
+      throw e;
+    }
+  }
+  const remaining = Math.max(1, timeoutMs - (Date.now() - started));
+  return connectIp(address, port, remaining, host).catch((e) => {
+    if (address !== host) forgetLookup(host);
+    throw e;
+  });
+}
+
+function withTimeout<T>(p: Promise<T>, ms: number, msg: string): Promise<T> {
   return new Promise((resolve, reject) => {
-    const socket = netConnect({ host, port });
+    const t = setTimeout(() => reject(new Error(msg)), ms);
+    p.then(
+      (v) => {
+        clearTimeout(t);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(t);
+        reject(e);
+      },
+    );
+  });
+}
+
+function connectIp(address: string, port: number, timeoutMs: number, label: string): Promise<Socket> {
+  const host = label;
+  return new Promise((resolve, reject) => {
+    const socket = netConnect({ host: address, port });
     // Filet de sécurité PERMANENT : le `.once('error', ...)` ci-dessous ne
     // couvre que la phase de connexion et s'auto-retire après son premier
     // déclenchement (même une fois `settled`, où il ne fait rien). Une erreur
@@ -192,7 +254,7 @@ function writeAndDrain(socket: Socket, data: Buffer): Promise<void> {
 async function resolve4(host: string): Promise<string | null> {
   if (isIP(host) === 4) return host;
   try {
-    const { address } = await dnsPromises.lookup(host, { family: 4 });
+    const { address } = await cachedLookup(host, 4);
     return address;
   } catch {
     return null;

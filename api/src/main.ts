@@ -13,6 +13,7 @@ import { ProxyServerService } from './modules/proxy-engine/proxy-server.service'
 import { BundledAddonsService } from './modules/addons/bundled-addons.service';
 import { AddonProxyMiddleware } from './modules/addons/addon-proxy.middleware';
 import { PrismaService } from './database/prisma.service';
+import { TrafficService } from './modules/traffic/traffic.service';
 import { RingBufferLogger } from './modules/logs/ring-buffer.logger';
 import { applyDatabaseEnv } from './database/db-config';
 import { translateValidationErrors } from './common/utils/i18n';
@@ -209,13 +210,19 @@ async function bootstrap() {
   await app.listen(apiPort, '0.0.0.0');
   Logger.log(`API listening on :${apiPort}`, 'Bootstrap');
   // Build marker — bump this string on every deploy you want to confirm is live.
-  Logger.log('BUILD MARKER: panel-os-v2.4.64', 'Bootstrap');
+  Logger.log('BUILD MARKER: panel-os-v2.4.65', 'Bootstrap');
 
   // Le moteur proxy TCP n'a de sens qu'avec une base connectée (auth des
   // sous-utilisateurs). On ne le démarre donc pas tant que la base n'est pas
   // configurée — l'assistant de configuration reste accessible.
   const prisma = app.get(PrismaService);
   if (db.configured && prisma.isConnected) {
+    // Conversion unique Gio → Go décimal AVANT tout trafic (cf. TrafficService).
+    try {
+      await app.get(TrafficService).ensureDecimalUnits();
+    } catch (e) {
+      Logger.error(`Conversion des unités de trafic échouée : ${e}`, 'Bootstrap');
+    }
     const proxyServer = app.get(ProxyServerService);
     await proxyServer.start();
 
