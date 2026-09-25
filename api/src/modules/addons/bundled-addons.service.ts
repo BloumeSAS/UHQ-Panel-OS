@@ -139,6 +139,12 @@ export class BundledAddonsService implements OnModuleDestroy {
         }
         await this.spawnAddon(entry);
         this.logger.log(`Addon embarqué "${entry.slug}" relancé automatiquement (était activé avant redémarrage).`);
+        // Le manifest d'un addon embarqué est livré AVEC l'image : on le
+        // recharge dès le boot (sinon l'ancienne copie en base — pages,
+        // widgets… — restait affichée jusqu'au refresh horaire), et la
+        // nouvelle version est déjà appliquée (pas de badge "mise à jour").
+        await this.addonsService.refreshManifest(row.id);
+        await this.addonsService.applyUpdate(row.id);
       } catch (e) {
         this.logger.error(`Échec du redémarrage auto de "${entry.slug}" : ${e}`);
       }
