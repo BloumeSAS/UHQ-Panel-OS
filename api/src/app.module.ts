@@ -46,7 +46,7 @@ import { BannedIpsModule } from './modules/banned-ips/banned-ips.module';
  *   2. <runtime>/web/dist        (layout image Docker : web/dist copié à côté de dist/)
  *   3. <repo>/web/dist           (monorepo local : api/ et web/ frères)
  */
-function resolveWebDist(): string {
+export function resolveWebDist(): string {
   const candidates = [
     process.env.WEB_DIST,
     join(__dirname, '..', 'web', 'dist'),

@@ -65,6 +65,11 @@ function CapWidget({ endpoint, onSolve }: { endpoint: string; onSolve: (token: s
 
   useEffect(() => {
     let mounted = true;
+    // Nonce CSP de la page (injecté par l'API dans <meta name="csp-nonce">) :
+    // CAP le pose sur le script inline de son iframe d'instrumentation, sinon
+    // bloqué par la CSP (widget figé sur "Verifying…").
+    const nonce = document.querySelector<HTMLMetaElement>('meta[name="csp-nonce"]')?.content;
+    if (nonce) (window as any).CAP_SCRIPT_NONCE = nonce;
     // @ts-ignore — pas de types officiels pour ce sous-module
     import('@cap.js/widget').then(() => { if (mounted) setLoading(false); });
     return () => { mounted = false; };

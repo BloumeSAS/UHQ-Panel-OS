@@ -8,7 +8,8 @@ import helmet from 'helmet';
 import { randomBytes } from 'crypto';
 import { json, urlencoded } from 'express';
 import { join } from 'path';
-import { AppModule } from './app.module';
+import { readFileSync, statSync } from 'fs';
+import { AppModule, resolveWebDist } from './app.module';
 import { ProxyServerService } from './modules/proxy-engine/proxy-server.service';
 import { BundledAddonsService } from './modules/addons/bundled-addons.service';
 import { AddonProxyMiddleware } from './modules/addons/addon-proxy.middleware';
@@ -173,6 +174,41 @@ async function bootstrap() {
   const addonProxy = new AddonProxyMiddleware();
   app.use((req: any, res: any, next: any) => addonProxy.use(req, res, next));
 
+  // Page HTML du panel (SPA) servie AVEC le nonce CSP de la réponse, dans
+  // <meta name="csp-nonce">. Le widget captcha CAP exécute un script inline
+  // (défi "instrumentation", contenu fourni par le serveur CAP) dans une
+  // iframe `srcdoc` qui hérite de la CSP de la page : sans nonce il était
+  // bloqué ("Executing inline script violates ... script-src") et le widget
+  // restait sur "Verifying…". Le panel lit ce meta et le passe à CAP via
+  // `window.CAP_SCRIPT_NONCE` (cf. CaptchaWidget.tsx). Mêmes exclusions que
+  // ServeStaticModule (app.module.ts) + fichiers réels (assets, favicon…).
+  const indexPath = join(resolveWebDist(), 'index.html');
+  let indexCache: { mtimeMs: number; html: string } | null = null;
+  const readIndex = (): string | null => {
+    try {
+      const { mtimeMs } = statSync(indexPath);
+      if (!indexCache || indexCache.mtimeMs !== mtimeMs) {
+        indexCache = { mtimeMs, html: readFileSync(indexPath, 'utf8') };
+      }
+      return indexCache.html;
+    } catch {
+      return null;
+    }
+  };
+  app.use((req: any, res: any, next: any) => {
+    if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+    const path: string = req.path;
+    if (/^\/(api|docs|static|addon-proxy|health)(\/|$)/.test(path)) return next();
+    if (/\.[a-z0-9]+$/i.test(path)) return next(); // vrai fichier → ServeStatic
+    if (!String(req.headers.accept ?? '').includes('text/html')) return next();
+    const html = readIndex();
+    if (!html) return next();
+    const nonce = res.locals.cspNonce as string;
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.send(html.replace(/<head>/i, `<head><meta name="csp-nonce" content="${nonce}">`));
+  });
+
   // Body-parser par défaut de Nest = 100kb → "entity too large" dès qu'on
   // importe une grosse liste de proxies manuellement depuis le panel.
   app.use(json({ limit: '25mb' }));
@@ -233,7 +269,7 @@ async function bootstrap() {
   await app.listen(apiPort, '0.0.0.0');
   Logger.log(`API listening on :${apiPort}`, 'Bootstrap');
   // Build marker — bump this string on every deploy you want to confirm is live.
-  Logger.log('BUILD MARKER: panel-os-v2.4.68', 'Bootstrap');
+  Logger.log('BUILD MARKER: panel-os-v2.4.69', 'Bootstrap');
 
   // Le moteur proxy TCP n'a de sens qu'avec une base connectée (auth des
   // sous-utilisateurs). On ne le démarre donc pas tant que la base n'est pas
