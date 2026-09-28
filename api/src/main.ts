@@ -13,6 +13,7 @@ import { ProxyServerService } from './modules/proxy-engine/proxy-server.service'
 import { BundledAddonsService } from './modules/addons/bundled-addons.service';
 import { AddonProxyMiddleware } from './modules/addons/addon-proxy.middleware';
 import { PrismaService } from './database/prisma.service';
+import { SettingsService } from './config/settings.service';
 import { TrafficService } from './modules/traffic/traffic.service';
 import { RingBufferLogger } from './modules/logs/ring-buffer.logger';
 import { applyDatabaseEnv } from './database/db-config';
@@ -68,9 +69,28 @@ async function bootstrap() {
   //     React du panel (pas de nonce possible sur un attribut `style=""`,
   //     seulement sur des balises `<style>` — pas de refonte réaliste ici).
   //   - connect-src / frame-src : domaines des providers captcha (CAP,
-  //     hCaptcha, reCAPTCHA, Turnstile) — un CAP auto-hébergé ailleurs que
-  //     cap.trycap.dev devra élargir `connect-src` ici.
+  //     hCaptcha, reCAPTCHA, Turnstile). Pour CAP, l'origine de l'instance
+  //     configurée (Paramètres → `captchaCapEndpoint`, souvent auto-hébergée)
+  //     est ajoutée dynamiquement à chaque requête (cf. `capOrigin`).
+  //   - worker-src 'self' blob: + script-src 'wasm-unsafe-eval' : le widget
+  //     CAP résout sa preuve de travail dans un Web Worker créé depuis un
+  //     blob: et compile un module WebAssembly. 'wasm-unsafe-eval' n'autorise
+  //     QUE la compilation WebAssembly — pas eval()/new Function() en JS.
+  //     Sans ces deux règles (v2.4.60 → v2.4.67), le captcha CAP était
+  //     entièrement bloqué ("Failed to fetch", "cap wasm load failed").
   //   - img-src : flagcdn.com (drapeaux pays, Pool/Analytics).
+  const settings = app.get(SettingsService);
+  /** Origine (schéma://hôte[:port]) de l'instance CAP configurée — 'self' si absente/invalide. */
+  const capOrigin = (): string => {
+    const raw = (settings.get('captchaCapEndpoint') || '').trim();
+    if (!raw) return "'self'";
+    try {
+      const u = new URL(raw);
+      return u.protocol === 'https:' || u.protocol === 'http:' ? u.origin : "'self'";
+    } catch {
+      return "'self'";
+    }
+  };
   app.use(
     helmet({
       contentSecurityPolicy: {
@@ -78,9 +98,11 @@ async function bootstrap() {
           defaultSrc: ["'self'"],
           scriptSrc: [
             "'self'",
+            "'wasm-unsafe-eval'",
             'https://cdn.jsdelivr.net',
             (req: any, res: any) => `'nonce-${res.locals.cspNonce}'`,
           ],
+          workerSrc: ["'self'", 'blob:'],
           styleSrc: ["'self'", "'unsafe-inline'", 'https://cdn.jsdelivr.net'],
           imgSrc: ["'self'", 'data:', 'https://flagcdn.com', 'https://cdn.jsdelivr.net'],
           fontSrc: ["'self'", 'data:', 'https://cdn.jsdelivr.net'],
@@ -88,6 +110,7 @@ async function bootstrap() {
             "'self'",
             'https://cdn.jsdelivr.net',
             'https://cap.trycap.dev',
+            () => capOrigin(),
             'https://hcaptcha.com',
             'https://*.hcaptcha.com',
             'https://www.google.com',
@@ -210,7 +233,7 @@ async function bootstrap() {
   await app.listen(apiPort, '0.0.0.0');
   Logger.log(`API listening on :${apiPort}`, 'Bootstrap');
   // Build marker — bump this string on every deploy you want to confirm is live.
-  Logger.log('BUILD MARKER: panel-os-v2.4.67', 'Bootstrap');
+  Logger.log('BUILD MARKER: panel-os-v2.4.68', 'Bootstrap');
 
   // Le moteur proxy TCP n'a de sens qu'avec une base connectée (auth des
   // sous-utilisateurs). On ne le démarre donc pas tant que la base n'est pas
