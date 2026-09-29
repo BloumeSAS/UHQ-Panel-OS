@@ -1,9 +1,10 @@
 {
   "name": "uhq-panel-os",
-  "version": "2.4.69",
+  "version": "2.4.71",
   "description": "UHQ Panel OS — Panel principal",
   "private": true,
   "scripts": {
-    "version": "node bump-version.js && git add api/package.json web/package.json"
+    "version": "node bump-version.js && git add api/package.json web/package.json",
+    "release": "node scripts/release.mjs"
   }
 }
