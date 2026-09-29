@@ -102,6 +102,11 @@ async function bootstrap() {
             "'wasm-unsafe-eval'",
             'https://cdn.jsdelivr.net',
             (req: any, res: any) => `'nonce-${res.locals.cspNonce}'`,
+            // Défi "instrumentation" de CAP : le script fourni par le serveur CAP
+            // évalue du JS (eval/new Function) dans l'iframe srcdoc qui hérite de
+            // cette CSP. Sans 'unsafe-eval' → "instr_timeout" puis 429 sur /redeem.
+            // Ouvert UNIQUEMENT quand le provider actif est CAP.
+            () => (settings.get('captchaProvider') === 'cap' ? "'unsafe-eval'" : "'self'"),
           ],
           workerSrc: ["'self'", 'blob:'],
           styleSrc: ["'self'", "'unsafe-inline'", 'https://cdn.jsdelivr.net'],
@@ -269,7 +274,7 @@ async function bootstrap() {
   await app.listen(apiPort, '0.0.0.0');
   Logger.log(`API listening on :${apiPort}`, 'Bootstrap');
   // Build marker — bump this string on every deploy you want to confirm is live.
-  Logger.log('BUILD MARKER: panel-os-v2.4.69', 'Bootstrap');
+  Logger.log('BUILD MARKER: panel-os-v2.4.70', 'Bootstrap');
 
   // Le moteur proxy TCP n'a de sens qu'avec une base connectée (auth des
   // sous-utilisateurs). On ne le démarre donc pas tant que la base n'est pas
