@@ -3,6 +3,8 @@ import { ApiBearerAuth, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import type { JwtUser } from '../../common/guards/jwt-auth.guard';
 import { AnalyticsService, clampDays, safeTz } from './analytics.service';
 
 /**
@@ -21,8 +23,8 @@ export class AnalyticsController {
   @ApiQuery({ name: 'days', required: false, type: Number })
   @ApiQuery({ name: 'tz', required: false, type: String })
   @Get('overview')
-  async overview(@Query('days') days?: string, @Query('tz') tz?: string) {
-    return { status: 'success', data: await this.analytics.overview(clampDays(days), safeTz(tz)) };
+  async overview(@CurrentUser() me: JwtUser, @Query('days') days?: string, @Query('tz') tz?: string) {
+    return { status: 'success', data: await this.analytics.overview(clampDays(days), safeTz(tz), me.role === 'ADMIN') };
   }
 
   @ApiQuery({ name: 'days', required: false, type: Number })
@@ -33,6 +35,7 @@ export class AnalyticsController {
   @ApiQuery({ name: 'status', required: false, enum: ['blocked', 'expired', 'overquota', 'nearquota', 'inactive', 'active'] })
   @Get('accounts')
   async accounts(
+    @CurrentUser() me: JwtUser,
     @Query('days') days?: string,
     @Query('tz') tz?: string,
     @Query('q') q?: string,
@@ -53,13 +56,14 @@ export class AnalyticsController {
       offset: parseInt(offset ?? '', 10) || undefined,
       pool,
       status,
+      isAdmin: me.role === 'ADMIN',
     });
     return { status: 'success', ...data };
   }
 
   @Get('accounts/:id')
-  async account(@Param('id') id: string, @Query('days') days?: string, @Query('tz') tz?: string) {
-    return { status: 'success', data: await this.analytics.accountDetail(id, clampDays(days), safeTz(tz)) };
+  async account(@CurrentUser() me: JwtUser, @Param('id') id: string, @Query('days') days?: string, @Query('tz') tz?: string) {
+    return { status: 'success', data: await this.analytics.accountDetail(id, clampDays(days), safeTz(tz), me.role === 'ADMIN') };
   }
 
   @Get('activity')
@@ -96,7 +100,7 @@ export class AnalyticsController {
   }
 
   @Get('security')
-  async security(@Query('days') days?: string) {
-    return { status: 'success', data: await this.analytics.security(clampDays(days)) };
+  async security(@CurrentUser() me: JwtUser, @Query('days') days?: string) {
+    return { status: 'success', data: await this.analytics.security(clampDays(days), me.role === 'ADMIN') };
   }
 }

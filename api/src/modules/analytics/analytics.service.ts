@@ -85,7 +85,7 @@ export class AnalyticsService {
   }
 
   // ===================================================================== overview
-  async overview(days: number, tz = 'UTC') {
+  async overview(days: number, tz = 'UTC', isAdmin = true) {
     const since = dayStart(days);
     const prevSince = dayStart(days, days);
     const today = dayStart(1);
@@ -208,15 +208,17 @@ export class AnalyticsService {
       },
       topAccounts,
       topDomains,
-      topOwners,
+      // E-mails des propriétaires : la liste des utilisateurs est réservée aux ADMIN.
+      topOwners: isAdmin ? topOwners : [],
     };
   }
 
   // ===================================================================== accounts
   async accounts(opts: {
     days: number; tz: string; q?: string; sort?: string; order?: string; limit?: number; offset?: number;
-    pool?: string; status?: string;
+    pool?: string; status?: string; isAdmin?: boolean;
   }) {
+    const isAdmin = opts.isAdmin ?? true;
     const since = dayStart(opts.days);
     const hourSince = new Date(Date.now() - opts.days * 86400_000);
     const limit = Math.max(1, Math.min(500, opts.limit ?? 50));
@@ -225,7 +227,10 @@ export class AnalyticsService {
     const conds: Prisma.Sql[] = [];
     if (opts.q?.trim()) {
       const like = `%${opts.q.trim().replace(/[%_\\]/g, (m) => `\\${m}`)}%`;
-      conds.push(Prisma.sql`(u.username ILIKE ${like} OR u.name ILIKE ${like} OR o.email ILIKE ${like})`);
+      // La recherche par e-mail de propriétaire est réservée aux ADMIN (sinon un SUPPORT pourrait sonder les e-mails).
+      conds.push(isAdmin
+        ? Prisma.sql`(u.username ILIKE ${like} OR u.name ILIKE ${like} OR o.email ILIKE ${like})`
+        : Prisma.sql`(u.username ILIKE ${like} OR u.name ILIKE ${like})`);
     }
     if (opts.pool) conds.push(opts.pool === DEFAULT_POOL ? Prisma.sql`u.pool IS NULL` : Prisma.sql`u.pool = ${opts.pool}`);
     switch (opts.status) {
@@ -290,6 +295,8 @@ export class AnalyticsService {
       offset,
       data: rows.map((r: any) => ({
         ...r,
+        ownerEmail: isAdmin ? r.ownerEmail : null,
+        ownerId: isAdmin ? r.ownerId : null,
         bytes: r.sent + r.received,
         quotaPct: r.totalGb > 0 ? Math.round((r.usedGb / r.totalGb) * 1000) / 10 : null,
         status: r.isBlocked ? 'blocked'
@@ -302,7 +309,7 @@ export class AnalyticsService {
   }
 
   // ===================================================================== account detail
-  async accountDetail(id: string, days: number, tz: string) {
+  async accountDetail(id: string, days: number, tz: string, isAdmin = true) {
     const acc = await this.prisma.userProxy.findUnique({
       where: { id },
       select: {
@@ -335,7 +342,8 @@ export class AnalyticsService {
     return {
       account: {
         ...acc,
-        ownerEmail: acc.owner?.email ?? null,
+        ownerEmail: isAdmin ? acc.owner?.email ?? null : null,
+        ownerId: isAdmin ? acc.ownerId : null,
         owner: undefined,
         quotaPct: acc.totalGb > 0 ? Math.round((acc.usedGb / acc.totalGb) * 1000) / 10 : null,
         liveThreads: this.engine.getActiveThreads().get(acc.username) ?? 0,
@@ -663,7 +671,7 @@ export class AnalyticsService {
   }
 
   // ===================================================================== security
-  async security(days: number) {
+  async security(days: number, isAdmin = true) {
     const since = dayStart(days);
     const sinceTs = new Date(Date.now() - days * 86400_000);
     const [bans, recentBans, errors, errorHosts, auditActions, auditDaily, auditUsers, sessions, keys, blocks, errorsDaily] = await Promise.all([
@@ -690,7 +698,8 @@ export class AnalyticsService {
           FROM "ProxyUsageError" WHERE date >= ${since} GROUP BY date ORDER BY date`),
     ]);
     return {
-      bans: bans[0], recentBans, errors, errorHosts, errorsDaily,
+      // Adresses IP bannies : la gestion des bans est réservée aux ADMIN.
+      bans: bans[0], recentBans: isAdmin ? recentBans : [], errors, errorHosts, errorsDaily,
       audit: { actions: auditActions, daily: auditDaily, users: auditUsers },
       sessions: sessions[0], apiKeys: keys[0], targetBlocks: blocks[0]?.total ?? 0,
     };
