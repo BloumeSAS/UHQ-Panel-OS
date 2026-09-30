@@ -85,12 +85,14 @@ export class AnalyticsService {
   }
 
   // ===================================================================== overview
-  async overview(days: number) {
+  async overview(days: number, tz = 'UTC') {
     const since = dayStart(days);
     const prevSince = dayStart(days, days);
     const today = dayStart(1);
+    const timelineSince = new Date(Date.now() - 72 * 3600_000);
 
-    const [totals, prev, todayT, daily, topAccounts, topDomains, accounts, pool, users, topOwners] = await Promise.all([
+    const [totals, prev, todayT, daily, topAccounts, topDomains, accounts, pool, users, topOwners,
+      prevDaily, timeline, newAccounts, consumption, quotaDist, movers, flow] = await Promise.all([
       this.q(Prisma.sql`SELECT COALESCE(SUM("bytesSent"),0) AS sent, COALESCE(SUM("bytesReceived"),0) AS received,
           COALESCE(SUM(requests),0) AS requests, COUNT(DISTINCT "userProxyId") AS "activeAccounts", COUNT(DISTINCT hostname) AS domains
           FROM "ProxyUsage" WHERE date >= ${since}`),
@@ -132,7 +134,41 @@ export class AnalyticsService {
           FROM "PanelUser" o JOIN "UserProxy" u ON u."ownerId" = o.id
           LEFT JOIN "ProxyUsage" p ON p."userProxyId" = u.id AND p.date >= ${since}
           GROUP BY o.id ORDER BY bytes DESC LIMIT 10`),
+      // Période précédente (même durée) pour superposer les courbes.
+      this.q(Prisma.sql`SELECT to_char(("date" AT TIME ZONE 'UTC') AT TIME ZONE ${SERVER_TZ}::text, 'YYYY-MM-DD') AS day,
+          SUM("bytesSent"+"bytesReceived") AS bytes, SUM(requests) AS requests, COUNT(DISTINCT "userProxyId") AS accounts
+          FROM "ProxyUsage" WHERE date >= ${prevSince} AND date < ${since} GROUP BY date ORDER BY date`),
+      // Chronologie heure par heure des 72 dernières heures.
+      this.q(Prisma.sql`SELECT hour, SUM("bytesSent") AS sent, SUM("bytesReceived") AS received, SUM(requests) AS requests,
+          COUNT(DISTINCT "userProxyId") AS accounts FROM "ProxyUsageHourly" WHERE hour >= ${timelineSince} GROUP BY hour ORDER BY hour`),
+      this.q(Prisma.sql`SELECT to_char(("createdAt" AT TIME ZONE 'UTC') AT TIME ZONE ${tz}::text, 'YYYY-MM-DD') AS day, COUNT(*) AS count
+          FROM "UserProxy" WHERE "createdAt" >= ${since} GROUP BY 1 ORDER BY 1`),
+      // Répartition des comptes par volume consommé sur la période.
+      this.q(Prisma.sql`SELECT CASE WHEN b < 1e8 THEN 0 WHEN b < 1e9 THEN 1 WHEN b < 1e10 THEN 2 WHEN b < 1e11 THEN 3 ELSE 4 END AS bucket,
+          COUNT(*) AS accounts, SUM(b) AS bytes FROM (
+            SELECT SUM("bytesSent"+"bytesReceived") AS b FROM "ProxyUsage" WHERE date >= ${since} GROUP BY "userProxyId") t GROUP BY 1 ORDER BY 1`),
+      // Répartition des comptes à quota par taux de consommation.
+      this.q(Prisma.sql`SELECT CASE WHEN "usedGb"/"totalGb" < 0.25 THEN 0 WHEN "usedGb"/"totalGb" < 0.5 THEN 1 WHEN "usedGb"/"totalGb" < 0.8 THEN 2
+          WHEN "usedGb"/"totalGb" < 1 THEN 3 ELSE 4 END AS bucket, COUNT(*) AS accounts
+          FROM "UserProxy" WHERE "totalGb" > 0 GROUP BY 1 ORDER BY 1`),
+      // Plus fortes hausses / baisses vs période précédente.
+      this.q(Prisma.sql`SELECT u.id, u.name, u.username, x.cur, x.prev FROM (
+            SELECT "userProxyId", SUM(CASE WHEN date >= ${since} THEN "bytesSent"+"bytesReceived" ELSE 0 END) AS cur,
+                   SUM(CASE WHEN date < ${since} THEN "bytesSent"+"bytesReceived" ELSE 0 END) AS prev
+            FROM "ProxyUsage" WHERE date >= ${prevSince} GROUP BY 1) x JOIN "UserProxy" u ON u.id = x."userProxyId"`),
+      // Flux de comptes : gagnés / conservés / perdus entre les deux périodes.
+      this.q(Prisma.sql`SELECT COUNT(*) FILTER (WHERE cur > 0 AND prev = 0) AS gained, COUNT(*) FILTER (WHERE cur > 0 AND prev > 0) AS kept,
+          COUNT(*) FILTER (WHERE prev > 0 AND cur = 0) AS lost FROM (
+            SELECT SUM(CASE WHEN date >= ${since} THEN "bytesSent"+"bytesReceived" ELSE 0 END) AS cur,
+                   SUM(CASE WHEN date < ${since} THEN "bytesSent"+"bytesReceived" ELSE 0 END) AS prev
+            FROM "ProxyUsage" WHERE date >= ${prevSince} GROUP BY "userProxyId") t`),
     ]);
+
+    const moverRows = (movers as { id: string; name: string; username: string; cur: number; prev: number }[])
+      .map((m) => ({ ...m, delta: m.cur - m.prev }));
+    const growers = moverRows.filter((m) => m.delta > 0).sort((a, b) => b.delta - a.delta).slice(0, 6);
+    const decliners = moverRows.filter((m) => m.delta < 0).sort((a, b) => a.delta - b.delta).slice(0, 6);
+    const domainTotal = (topDomains as { bytes: number }[]).reduce((n, d) => n + d.bytes, 0);
 
     const categories = await this.prisma.proxyPool.count();
     const threads = this.engine.getActiveThreads();
@@ -158,6 +194,18 @@ export class AnalyticsService {
       panelUsers: users,
       live: { accounts: liveAccounts, threads: liveThreads, sentBps, receivedBps },
       daily,
+      prevDaily,
+      timeline,
+      newAccounts,
+      consumption,
+      quotaDist,
+      movers: { growers, decliners },
+      flow: flow[0],
+      domainShare: {
+        top1: topDomains[0] && t.sent + t.received > 0 ? topDomains[0].bytes / (t.sent + t.received) : 0,
+        top5: t.sent + t.received > 0 ? (topDomains as { bytes: number }[]).slice(0, 5).reduce((n, d) => n + d.bytes, 0) / (t.sent + t.received) : 0,
+        top15: t.sent + t.received > 0 ? domainTotal / (t.sent + t.received) : 0,
+      },
       topAccounts,
       topDomains,
       topOwners,
@@ -331,7 +379,11 @@ export class AnalyticsService {
     const pFrom = Prisma.sql`FROM "ProxyUsage" p JOIN "UserProxy" u ON u.id = p."userProxyId"`;
     const local = Prisma.sql`(h.hour AT TIME ZONE 'UTC') AT TIME ZONE ${tz}::text`;
 
-    const [grid, avgAccounts, hourlyDaily, daily, weekdayDaily, meta] = await Promise.all([
+    const tlHours = Math.min(days, 14) * 24;
+    const tlSince = new Date(Date.now() - tlHours * 3600_000);
+    const tlConds = hConds.map((c) => c).filter((c) => c !== hConds[0]);
+    const tlWhere = Prisma.join([Prisma.sql`h.hour >= ${tlSince}`, ...tlConds], ' AND ');
+    const [grid, avgAccounts, hourlyDaily, daily, weekdayDaily, meta, timeline] = await Promise.all([
       this.q<{ dow: number; hr: number; bytes: number; requests: number }>(Prisma.sql`
         SELECT EXTRACT(DOW FROM ${local})::int AS dow, EXTRACT(HOUR FROM ${local})::int AS hr,
                SUM(h."bytesSent"+h."bytesReceived") AS bytes, SUM(h.requests) AS requests
@@ -352,6 +404,11 @@ export class AnalyticsService {
                SUM(p."bytesSent"+p."bytesReceived") AS bytes, SUM(p.requests) AS requests, COUNT(DISTINCT p.date) AS days
         ${pFrom} WHERE ${pWhere} GROUP BY 1`),
       this.q<{ first: Date | null; n: number }>(Prisma.sql`SELECT MIN(hour) AS first, COUNT(*) AS n FROM "ProxyUsageHourly"`),
+      // Chronologie heure par heure (14 jours max) du périmètre demandé.
+      this.q<{ hour: Date; sent: number; received: number; requests: number; accounts: number }>(Prisma.sql`
+        SELECT h.hour, SUM(h."bytesSent") AS sent, SUM(h."bytesReceived") AS received, SUM(h.requests) AS requests,
+               COUNT(DISTINCT h."userProxyId") AS accounts
+        ${hFrom} WHERE ${tlWhere} GROUP BY h.hour ORDER BY h.hour`),
     ]);
 
     const hasHourly = grid.length > 0;
@@ -403,8 +460,27 @@ export class AnalyticsService {
       }
     }
 
+    // Tranches de la journée et semaine / week-end (dans le fuseau demandé).
+    const part = (from: number, to: number) => {
+      let b = 0;
+      let r = 0;
+      for (let d = 0; d < 7; d++) for (let h = from; h < to; h++) { b += heatBytes[d][h]; r += heatReq[d][h]; }
+      return { bytes: b, requests: r };
+    };
+    const dayparts = { night: part(0, 6), morning: part(6, 12), afternoon: part(12, 18), evening: part(18, 24) };
+    const sumDays = (list: number[]) => list.reduce((n, d) => n + heatBytes[d].reduce((a, b) => a + b, 0), 0);
+    const weekend = {
+      weekday: sumDays([1, 2, 3, 4, 5]),
+      weekend: sumDays([0, 6]),
+      weekdayDays: dayCounts[1] + dayCounts[2] + dayCounts[3] + dayCounts[4] + dayCounts[5],
+      weekendDays: dayCounts[0] + dayCounts[6],
+    };
+
     return {
       period: { days, tz, serverTz: SERVER_TZ },
+      dayparts,
+      weekend,
+      timeline,
       hasHourly,
       hourlySince: meta[0]?.first ?? null,
       hourlyRows: meta[0]?.n ?? 0,

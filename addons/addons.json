@@ -42,5 +42,26 @@
     ],
     "bundlePort": 3102,
     "extraEnv": { "WALLET_URL": "http://127.0.0.1:3101" }
+  },
+  {
+    "name": "Analytics",
+    "slug": "analytics",
+    "version": "1.0.0",
+    "description": "Analyse complète du panel : statistiques par compte, catégorie, pool, checker et scraper, heures et jours les plus actifs, constats automatiques.",
+    "icon": "BarChart3",
+    "free": true,
+    "official": true,
+    "license": "MIT",
+    "author": { "name": "Bloume SAS", "url": "https://bloume.fr" },
+    "repository": "https://github.com/BloumeSAS/UHQ-Addon-Analytics",
+    "homepage": "https://uhq-panel-os-docs.bloume.fr/addons/official/analytics",
+    "tags": ["analytics", "statistics", "monitoring"],
+    "features": [
+      "Plus de 70 graphiques",
+      "Heures et jours les plus actifs",
+      "Constats et alertes automatiques",
+      "Page Mon activité pour chaque utilisateur"
+    ],
+    "bundlePort": 3103
   }
 ]

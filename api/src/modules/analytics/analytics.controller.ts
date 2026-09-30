@@ -19,9 +19,10 @@ export class AnalyticsController {
   constructor(private readonly analytics: AnalyticsService) {}
 
   @ApiQuery({ name: 'days', required: false, type: Number })
+  @ApiQuery({ name: 'tz', required: false, type: String })
   @Get('overview')
-  async overview(@Query('days') days?: string) {
-    return { status: 'success', data: await this.analytics.overview(clampDays(days)) };
+  async overview(@Query('days') days?: string, @Query('tz') tz?: string) {
+    return { status: 'success', data: await this.analytics.overview(clampDays(days), safeTz(tz)) };
   }
 
   @ApiQuery({ name: 'days', required: false, type: Number })
