@@ -566,12 +566,12 @@ export class AnalyticsService {
           percentile_cont(0.5) WITHIN GROUP (ORDER BY "averageLatency") FILTER (WHERE "isWorking" AND "averageLatency" IS NOT NULL) AS "medianLatencyMs",
           COALESCE(SUM("successCount"),0) AS successes, COALESCE(SUM("failureCount"),0) AS failures
           FROM "BackendProxy"`),
-      this.q(Prisma.sql`SELECT COALESCE(provider, 'Inconnu') AS provider, COUNT(*) AS total,
+      this.q(Prisma.sql`SELECT provider, COUNT(*) AS total,
           COUNT(*) FILTER (WHERE "isWorking" AND NOT "isBlacklisted") AS working,
           COUNT(*) FILTER (WHERE "isBlacklisted") AS blacklisted,
           AVG("averageLatency") FILTER (WHERE "isWorking" AND "averageLatency" IS NOT NULL) AS "avgLatencyMs",
           COALESCE(SUM("successCount"),0) AS successes, COALESCE(SUM("failureCount"),0) AS failures
-          FROM "BackendProxy" GROUP BY 1 ORDER BY working DESC, total DESC`),
+          FROM "BackendProxy" GROUP BY provider ORDER BY working DESC, total DESC`),
       this.q(Prisma.sql`SELECT protocol, COUNT(*) AS total, COUNT(*) FILTER (WHERE "isWorking" AND NOT "isBlacklisted") AS working,
           AVG("averageLatency") FILTER (WHERE "isWorking" AND "averageLatency" IS NOT NULL) AS "avgLatencyMs"
           FROM "BackendProxy" GROUP BY 1 ORDER BY total DESC`),
@@ -656,9 +656,9 @@ export class AnalyticsService {
           COALESCE(SUM(ok),0) AS "sourcesOk", COALESCE(SUM(failed),0) AS "sourcesFailed"
           FROM "JobRun" WHERE kind = 'scraper' AND "startedAt" >= ${since}`),
     ]);
-    const other = await this.q(Prisma.sql`SELECT COALESCE(provider, 'Inconnu') AS provider, COUNT(*) AS total,
+    const other = await this.q(Prisma.sql`SELECT provider, COUNT(*) AS total,
         COUNT(*) FILTER (WHERE "isWorking" AND NOT "isBlacklisted") AS working
-        FROM "BackendProxy" WHERE provider IS NULL OR provider NOT IN (SELECT name FROM "ScraperSource") GROUP BY 1 ORDER BY total DESC`);
+        FROM "BackendProxy" WHERE provider IS NULL OR provider NOT IN (SELECT name FROM "ScraperSource") GROUP BY provider ORDER BY total DESC`);
     return { status: this.scraper.getStatus(), summary: agg[0], sources, otherProviders: other, runs };
   }
 
@@ -679,7 +679,7 @@ export class AnalyticsService {
       this.q(Prisma.sql`SELECT action, COUNT(*) AS count FROM "AuditLog" WHERE "createdAt" >= ${sinceTs} GROUP BY action ORDER BY count DESC LIMIT 15`),
       this.q(Prisma.sql`SELECT to_char(("createdAt" AT TIME ZONE 'UTC') AT TIME ZONE ${SERVER_TZ}::text, 'YYYY-MM-DD') AS day, COUNT(*) AS count
           FROM "AuditLog" WHERE "createdAt" >= ${sinceTs} GROUP BY 1 ORDER BY 1`),
-      this.q(Prisma.sql`SELECT COALESCE("userEmail", 'système') AS email, COUNT(*) AS count FROM "AuditLog" WHERE "createdAt" >= ${sinceTs}
+      this.q(Prisma.sql`SELECT "userEmail" AS email, COUNT(*) AS count FROM "AuditLog" WHERE "createdAt" >= ${sinceTs}
           GROUP BY 1 ORDER BY count DESC LIMIT 10`),
       this.q(Prisma.sql`SELECT COUNT(*) AS total, COUNT(*) FILTER (WHERE "lastSeen" >= now() - interval '24 hours') AS "active24h" FROM "ActiveSession"`),
       this.q(Prisma.sql`SELECT COUNT(*) AS total, COUNT(*) FILTER (WHERE "isActive") AS active,

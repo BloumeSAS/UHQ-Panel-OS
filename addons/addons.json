@@ -46,7 +46,7 @@
   {
     "name": "Analytics",
     "slug": "analytics",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "description": "Analyse complète du panel : statistiques par compte, catégorie, pool, checker et scraper, heures et jours les plus actifs, constats automatiques.",
     "icon": "BarChart3",
     "free": true,
