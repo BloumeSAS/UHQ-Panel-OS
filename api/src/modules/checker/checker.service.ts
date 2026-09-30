@@ -242,6 +242,7 @@ export class CheckerService implements OnModuleInit {
       const results: CheckResult[] = [];
       let cursor = 0;
       let processed = 0;
+      let aliveCount = 0; // historique des cycles (JobRun) — addon Analyse
       // `workersDone` is the explicit termination signal for the committer.
       // It mirrors `asyncio.Event` used in the Python original (`checker.py`).
       let workersDone = false;
@@ -254,6 +255,7 @@ export class CheckerService implements OnModuleInit {
           // d'un parse synchrone de tout le lot.
           const r = await this.checkSingle({ ...p, auth: parseProxyAuth(p.url) });
           results.push({ id: p.id, url: p.url, ...r });
+          if (r.alive) aliveCount += 1;
           processed += 1;
           this.processedCount = processed;
           if (processed % 1000 === 0) {
@@ -283,6 +285,19 @@ export class CheckerService implements OnModuleInit {
       this.lastRunTimestamp = new Date();
       this.lastRunDurationMs = Date.now() - startTime;
       this.lastRunProcessed = processed;
+      // Historique : best-effort, ne doit jamais faire échouer un cycle.
+      this.prisma.jobRun
+        .create({
+          data: {
+            kind: 'checker',
+            startedAt: new Date(startTime),
+            durationMs: this.lastRunDurationMs,
+            processed,
+            ok: aliveCount,
+            failed: processed - aliveCount,
+          },
+        })
+        .catch((e) => this.logger.debug(`JobRun(checker) non enregistré : ${e}`));
     } finally {
       this.running = false;
       this.jobs.release('checker');

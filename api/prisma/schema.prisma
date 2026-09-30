@@ -30,6 +30,7 @@ model UserProxy {
   ownerId            String?
   owner              PanelUser? @relation(fields: [ownerId], references: [id], onDelete: SetNull)
   usageStats         ProxyUsage[]
+  usageHourly        ProxyUsageHourly[]
   usageErrors        ProxyUsageError[]
   // Tags (comma-separated list of tag IDs or names stored as JSON array string)
   tags               String?
@@ -407,6 +408,42 @@ model ProxyUsage {
   @@index([userProxyId, date])
   // Requêtes globales par plage de dates sans compte précis (monitoring/live).
   @@index([date])
+}
+
+// Consommation par compte et par HEURE (octets FACTURÉS au compte, donc
+// multiplicateur de catégorie inclus — même base que ProxyUsage). Alimente
+// l'addon Analyse (heures/jours les plus actifs). `hour` = début de l'heure
+// en UTC ; les lecteurs convertissent dans le fuseau voulu. Purgé au-delà de
+// `usageHourlyRetentionDays` (défaut 90 j).
+model ProxyUsageHourly {
+  id            String    @id @default(cuid())
+  userProxyId   String
+  hour          DateTime
+  bytesSent     Float     @default(0)
+  bytesReceived Float     @default(0)
+  requests      Int       @default(0)
+  userProxy     UserProxy @relation(fields: [userProxyId], references: [id], onDelete: Cascade)
+
+  @@unique([userProxyId, hour])
+  @@index([hour])
+}
+
+// Historique des cycles du checker et du scraper (une ligne par cycle
+// terminé) — le panel n'en gardait que le dernier, en mémoire.
+//   checker : processed = proxies testés, ok = vivants, failed = morts
+//   scraper : processed = proxies uniques collectés, ok/failed = sources
+//             réussies/en échec, extra = { collected: nombre brut }
+model JobRun {
+  id         String   @id @default(cuid())
+  kind       String   // "checker" | "scraper"
+  startedAt  DateTime @default(now())
+  durationMs Int      @default(0)
+  processed  Int      @default(0)
+  ok         Int      @default(0)
+  failed     Int      @default(0)
+  extra      Json?
+
+  @@index([kind, startedAt])
 }
 
 // Compteur d'erreurs détectées sur le trafic HTTP en clair (sniff de chaîne

@@ -39,6 +39,17 @@ export class TrafficSnapshotService {
       const retentionDays = this.settings.getPositiveNumber('trafficSnapshotRetentionDays') || 7;
       const cutoff = new Date(Date.now() - retentionDays * 24 * 3600_000);
       await this.prisma.trafficSnapshot.deleteMany({ where: { createdAt: { lt: cutoff } } });
+
+      // Historique horaire de consommation + historique des cycles checker/
+      // scraper (addon Analyse) : rétention propre à chacun, purge en passant.
+      const hourlyDays = this.settings.getPositiveNumber('usageHourlyRetentionDays') || 90;
+      await this.prisma.proxyUsageHourly.deleteMany({
+        where: { hour: { lt: new Date(Date.now() - hourlyDays * 24 * 3600_000) } },
+      });
+      const runDays = this.settings.getPositiveNumber('jobRunRetentionDays') || 90;
+      await this.prisma.jobRun.deleteMany({
+        where: { startedAt: { lt: new Date(Date.now() - runDays * 24 * 3600_000) } },
+      });
     } catch (err) {
       this.logger.error(`Traffic snapshot failed: ${err.message}`);
     }

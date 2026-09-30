@@ -13,6 +13,14 @@ interface HostStats {
   reqs: number;
 }
 
+interface HourStats {
+  /** Début de l'heure (ms epoch, UTC). */
+  hour: number;
+  sent: number;
+  received: number;
+  reqs: number;
+}
+
 interface UserStats {
   /** Octets FACTURÉS au compte (× multiplicateur de sa catégorie). */
   sent: number;
@@ -22,6 +30,8 @@ interface UserStats {
   realReceived: number;
   /** Clé = `${day}|${hostname}`. */
   hosts: Map<string, HostStats>;
+  /** Clé = début d'heure (ms) — alimente ProxyUsageHourly. */
+  hours: Map<number, HourStats>;
 }
 
 /** Fenêtre glissante du débit "live" (secondes complètes). */
@@ -108,7 +118,7 @@ export class TrafficService implements OnModuleInit, BeforeApplicationShutdown {
 
     let user = this.buffer.get(username);
     if (!user) {
-      user = { sent: 0, received: 0, realSent: 0, realReceived: 0, hosts: new Map() };
+      user = { sent: 0, received: 0, realSent: 0, realReceived: 0, hosts: new Map(), hours: new Map() };
       this.buffer.set(username, user);
     }
     // Multiplicateur de catégorie : tout ce qui est imputé AU COMPTE (conso,
@@ -130,6 +140,16 @@ export class TrafficService implements OnModuleInit, BeforeApplicationShutdown {
     host.sent += billedSent;
     host.received += billedReceived;
     if (isNewReq) host.reqs += 1;
+
+    const hourStart = Math.floor(now / 3_600_000) * 3_600_000;
+    let hr = user.hours.get(hourStart);
+    if (!hr) {
+      hr = { hour: hourStart, sent: 0, received: 0, reqs: 0 };
+      user.hours.set(hourStart, hr);
+    }
+    hr.sent += billedSent;
+    hr.received += billedReceived;
+    if (isNewReq) hr.reqs += 1;
 
     this.recordRate(username, now, sent, received);
   }
@@ -252,6 +272,7 @@ export class TrafficService implements OnModuleInit, BeforeApplicationShutdown {
     const totalBytes = data.sent + data.received;
     const gbIncrement = totalBytes / GiB;
     const hosts = [...data.hosts.values()];
+    const hours = [...data.hours.values()];
     const reqs = hosts.reduce((n, h) => n + h.reqs, 0);
 
     const [updated] = await this.prisma.$transaction([
@@ -292,13 +313,33 @@ export class TrafficService implements OnModuleInit, BeforeApplicationShutdown {
           },
         }),
       ),
+      // Historique horaire (addon Analyse) — APRÈS les éléments ci-dessus :
+      // `[updated]` ci-dessous doit rester la mise à jour du compte.
+      ...hours.map((h) =>
+        this.prisma.proxyUsageHourly.upsert({
+          where: { userProxyId_hour: { userProxyId, hour: new Date(h.hour) } },
+          create: {
+            userProxyId,
+            hour: new Date(h.hour),
+            bytesSent: h.sent,
+            bytesReceived: h.received,
+            requests: h.reqs,
+          },
+          update: {
+            bytesSent: { increment: h.sent },
+            bytesReceived: { increment: h.received },
+            requests: { increment: h.reqs },
+          },
+        }),
+      ),
     ]);
 
     // Même tick que le commit : on publie le nouveau `usedGb` ET on retire ces
     // octets du "pending", pour que (usedGb + pending) ne compte jamais deux
     // fois — ni zéro fois — le lot qui vient d'être écrit.
-    const newUsed = (updated as { usedGb: number; totalGb: number }).usedGb;
-    const totalGb = (updated as { usedGb: number; totalGb: number }).totalGb;
+    const account = updated as unknown as { usedGb: number; totalGb: number };
+    const newUsed = account.usedGb;
+    const totalGb = account.totalGb;
     this.usageListener?.(username, newUsed);
     snapshot.delete(username);
 
@@ -388,13 +429,23 @@ export class TrafficService implements OnModuleInit, BeforeApplicationShutdown {
   private requeue(username: string, data: UserStats): void {
     let user = this.buffer.get(username);
     if (!user) {
-      user = { sent: 0, received: 0, realSent: 0, realReceived: 0, hosts: new Map() };
+      user = { sent: 0, received: 0, realSent: 0, realReceived: 0, hosts: new Map(), hours: new Map() };
       this.buffer.set(username, user);
     }
     user.sent += data.sent;
     user.received += data.received;
     user.realSent += data.realSent;
     user.realReceived += data.realReceived;
+    for (const [key, h] of data.hours) {
+      const cur = user.hours.get(key);
+      if (cur) {
+        cur.sent += h.sent;
+        cur.received += h.received;
+        cur.reqs += h.reqs;
+      } else {
+        user.hours.set(key, { ...h });
+      }
+    }
     for (const [key, h] of data.hosts) {
       const cur = user.hosts.get(key);
       if (cur) {

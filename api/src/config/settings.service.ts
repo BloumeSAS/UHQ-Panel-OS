@@ -35,6 +35,10 @@ export const SETTING_DEFS = {
   // naturellement peu de proxies, sinon ça boucle en permanence.
   scraperMinPoolSize: { def: '5000', env: 'SCRAPER_MIN_POOL_SIZE', secret: false },
   proxyCheckInterval: { def: '900', env: 'PROXY_CHECK_INTERVAL', secret: false },
+  // Rétention (jours) de l'historique horaire de consommation (ProxyUsageHourly)
+  // et de l'historique des cycles checker/scraper (JobRun) — addon Analyse.
+  usageHourlyRetentionDays: { def: '90', env: undefined, secret: false },
+  jobRunRetentionDays: { def: '90', env: undefined, secret: false },
   geoResolveInterval: { def: '600', env: 'GEO_RESOLVE_INTERVAL', secret: false },
   checkerConcurrency: { def: '500', env: 'CHECKER_CONCURRENCY', secret: false },
   // Délai max (s) accordé à un proxy pour le health-check (connect + handshake).

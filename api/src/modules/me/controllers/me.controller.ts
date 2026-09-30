@@ -20,6 +20,7 @@ import { buildStickyList, formatSubUser } from '../../../common/utils/proxy-form
 import { buildPoolEndpointMap, resolveConnectionEndpoint, resolveHostPortSync } from '../../../common/utils/connection-endpoint';
 import { t } from '../../../common/utils/i18n';
 import { BYTES_PER_GB } from '../../../common/utils/units';
+import { AnalyticsService, clampDays, safeTz } from '../../analytics/analytics.service';
 
 type Period = 'week' | 'month' | 'year' | 'all';
 function periodStart(period: Period): Date {
@@ -46,6 +47,7 @@ export class PanelMeController {
     private readonly prisma: PrismaService,
     private readonly settings: SettingsService,
     private readonly engine: ProxyServerService,
+    private readonly analytics: AnalyticsService,
   ) {}
 
   @Get('proxies')
@@ -137,6 +139,25 @@ export class PanelMeController {
         requests: d._sum.requests ?? 0,
         bytes: (d._sum.bytesSent ?? 0) + (d._sum.bytesReceived ?? 0),
       })),
+    };
+  }
+
+  /**
+   * Activité d'un de MES comptes : heures/jours les plus actifs, tendance
+   * journalière (page « Mon activité » de l'addon Analyse). `tz` = fuseau du navigateur.
+   */
+  @ApiParam({ name: 'id', description: 'ID du sous-utilisateur proxy' })
+  @Get('proxies/:id/activity')
+  async activity(
+    @CurrentUser() me: JwtUser,
+    @Param('id') id: string,
+    @Query('days') days?: string,
+    @Query('tz') tz?: string,
+  ) {
+    const proxy = await this.ownedProxy(me, id);
+    return {
+      status: 'success',
+      data: await this.analytics.activity({ days: clampDays(days), tz: safeTz(tz), accountId: proxy.id }),
     };
   }
 

@@ -103,6 +103,8 @@ export class ScraperService implements OnModuleInit {
     this.sourcesTotal = 0;
     this.sourcesDone = 0;
     this.itemsCollected = 0;
+    let sourcesOk = 0; // historique des cycles (JobRun) — addon Analyse
+    let sourcesFailed = 0;
     try {
       this.logger.log('Starting proxy scraping cycle...');
 
@@ -140,7 +142,9 @@ export class ScraperService implements OnModuleInit {
           const items = await groq.fetch();
           this.logger.log(`[GroqAI] → ${items.length} proxies`);
           await this.foldInto(dedup, items, counters);
+          sourcesOk += 1;
         } catch (e) {
+          sourcesFailed += 1;
           this.logger.warn(`[GroqAI] ERREUR: ${e}`);
         } finally {
           this.sourcesDone += 1;
@@ -175,7 +179,9 @@ export class ScraperService implements OnModuleInit {
             where: { id: s.id },
             data: { failCount: 0, lastError: null, lastSuccess: new Date() },
           }).catch(() => undefined);
+          sourcesOk += 1;
         } else {
+          sourcesFailed += 1;
           const msg = fetchError ?? '0 proxies trouvés';
           const newFail = (s.failCount ?? 0) + 1;
           this.logger.warn(`[${s.name}] ÉCHEC: ${msg.slice(0, 120)} (${newFail}/${this.FAIL_THRESHOLD})`);
@@ -211,6 +217,19 @@ export class ScraperService implements OnModuleInit {
       this.lastRunTimestamp = new Date();
       this.lastRunDurationMs = Date.now() - startTime;
       this.lastRunCollected = merged.length;
+      this.prisma.jobRun
+        .create({
+          data: {
+            kind: 'scraper',
+            startedAt: new Date(startTime),
+            durationMs: this.lastRunDurationMs,
+            processed: merged.length,
+            ok: sourcesOk,
+            failed: sourcesFailed,
+            extra: { collected: counters.collected, duplicates: dupes, sources: this.sourcesTotal },
+          },
+        })
+        .catch((e) => this.logger.debug(`JobRun(scraper) non enregistré : ${e}`));
     } finally {
       this.running = false;
       this.jobs.release('scraper');

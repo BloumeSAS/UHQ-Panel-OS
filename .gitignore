@@ -37,6 +37,7 @@ web/dist/
 # Wallet addon local runtime and dependencies
 addons/wallet
 addons/orders
+addons/analytics
 docs/
 
 claude/
