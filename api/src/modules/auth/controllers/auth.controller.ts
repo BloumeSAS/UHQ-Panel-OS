@@ -23,6 +23,7 @@ import { t } from '../../../common/utils/i18n';
 import { verifyCaptcha, type CaptchaProvider } from '../../../common/utils/captcha.util';
 import { getClientIp } from '../../../common/utils/client-ip';
 import { MailService } from '../../mail/mail.service';
+import { RestoreService } from '../../restore/restore.service';
 import { RateLimiterService } from '../../../common/rate-limiter.service';
 import { authenticator } from '@otplib/preset-default';
 import { consumeRecoveryCode } from '../../../common/utils/recovery-codes';
@@ -44,6 +45,7 @@ export class PanelAuthController {
     private readonly notificationService: NotificationService,
     private readonly auditService: AuditService,
     private readonly rateLimiter: RateLimiterService,
+    private readonly restore: RestoreService,
   ) {}
 
   // Cf. common/utils/client-ip.ts : priorise CF-Connecting-IP (Cloudflare)
@@ -85,6 +87,8 @@ export class PanelAuthController {
     if (meta?.setupCompleted && adminCount > 0) {
       throw new ForbiddenException(t('errors.setupDone'));
     }
+    // Une restauration est en cours : ne pas créer de 1er admin en parallèle.
+    if (this.restore.isActive()) throw new ForbiddenException(t('errors.restore.busy'));
 
     const admin = await this.prisma.panelUser.create({
       data: {

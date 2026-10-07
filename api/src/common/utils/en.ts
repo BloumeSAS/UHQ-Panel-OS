@@ -26,7 +26,29 @@ const en = {
     adminOnly: "Administrators only",
     tokenRequired: "Missing token",
     captchaFailed: "Captcha verification failed",
-    addonNotFound: "Addon not found"
+    addonNotFound: "Addon not found",
+    restore: {
+      dbNotConfigured: "Configure the database first.",
+      locked: "Installation already completed — restoring is no longer available.",
+      busy: "A restore is already in progress.",
+      badSize: "Invalid file size.",
+      tooLarge: "Archive too large.",
+      noSpace: "Not enough free disk space for the restore",
+      unknownUpload: "Unknown or expired upload — start again.",
+      badOffset: "Upload out of sync — resuming.",
+      badChunk: "Invalid upload chunk.",
+      uploadFailed: "Upload interrupted.",
+      incomplete: "Upload incomplete.",
+      notArchive: "This file is not a valid .tar.gz archive.",
+      notPgdata: "This archive does not contain a PostgreSQL data directory (PG_VERSION not found).",
+      badVersion: "Unsupported PostgreSQL version (PostgreSQL 16 required)",
+      noPostgres: "PostgreSQL tools are missing from this image.",
+      pgStartFailed: "The backup's database could not be started",
+      pgStartTimeout: "Recovery of the backup took too long.",
+      noPanelData: "No UHQ Panel OS data found in this backup.",
+      restoreFailed: "Restore failed (nothing was changed)",
+      failed: "Restore failed"
+    }
   },
   info: {
     emailRequired: "Email address required.",

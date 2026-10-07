@@ -125,7 +125,7 @@ export class DatabaseConfigService {
   }
 
   /** Applique le schéma à la base cible (idempotent). */
-  private async pushSchema(url: string): Promise<void> {
+  async pushSchema(url: string): Promise<void> {
     await execFileAsync(
       'npx',
       ['prisma', 'db', 'push', '--skip-generate', '--accept-data-loss'],

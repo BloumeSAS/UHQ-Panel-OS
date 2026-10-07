@@ -1,7 +1,7 @@
 {
   "name": "uhq-panel-os-web",
   "private": true,
-  "version": "2.4.75",
+  "version": "2.4.76",
   "type": "module",
   "scripts": {
     "dev": "vite",

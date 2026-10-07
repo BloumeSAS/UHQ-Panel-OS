@@ -64,8 +64,10 @@ ENV DATA_DIR=/app/data
 # holds thousands of concurrent sockets.
 ENV UV_THREADPOOL_SIZE=16
 
-# OpenSSL for the Prisma engine, curl for the HEALTHCHECK
-RUN apk add --no-cache openssl curl
+# OpenSSL for the Prisma engine, curl for the HEALTHCHECK.
+# postgresql16 (+ client) : UNIQUEMENT pour la restauration d'une sauvegarde depuis /setup
+# (instance temporaire sur le dossier de données + pg_dump/psql) — jamais lancé en service.
+RUN apk add --no-cache openssl curl postgresql16 postgresql16-client
 
 # Non-root user (good hygiene + Coolify-friendly)
 RUN addgroup -S app && adduser -S app -G app

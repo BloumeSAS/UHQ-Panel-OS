@@ -7,6 +7,7 @@ import { useT } from '@/lib/i18n';
 import { Info } from 'lucide-react';
 import { Button, Card, CardContent, CardHeader, CardTitle, Input, Label, Switch } from '@/components/ui';
 import { Footer } from '@/components/Footer';
+import { RestoreBackup } from '@/components/RestoreBackup';
 
 export default function Setup() {
   const { db, status, refresh } = useSite();
@@ -26,6 +27,7 @@ export default function Setup() {
     proxyCheckInterval: '',
     checkerConcurrency: '',
   });
+  const [mode, setMode] = useState<'new' | 'restore'>('new');
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -68,6 +70,23 @@ export default function Setup() {
           <p className="text-sm text-muted-foreground">{t('setup.subtitle')}</p>
         </CardHeader>
         <CardContent>
+          <div className="mb-4 grid grid-cols-2 gap-1 rounded-lg bg-muted p-1 text-sm">
+            {(['new', 'restore'] as const).map((m) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => setMode(m)}
+                className={`rounded-md px-3 py-1.5 font-medium transition ${
+                  mode === m ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                {m === 'new' ? t('setup.modeNew') : t('setup.modeRestore')}
+              </button>
+            ))}
+          </div>
+          {mode === 'restore' ? (
+            <RestoreBackup />
+          ) : (
           <form onSubmit={submit} className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label={t('setup.siteName')} value={form.siteName} onChange={(v) => set('siteName', v)} placeholder={t('setup.siteNamePlaceholder')} />
@@ -116,6 +135,7 @@ export default function Setup() {
               {t('setup.submit')}
             </Button>
           </form>
+          )}
         </CardContent>
       </Card>
       <Footer className="absolute inset-x-0 bottom-0" />

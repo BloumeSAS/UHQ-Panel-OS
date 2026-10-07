@@ -26,7 +26,29 @@ const fr = {
     adminOnly: "Accès réservé aux administrateurs",
     tokenRequired: "Token manquant",
     captchaFailed: "Vérification captcha échouée",
-    addonNotFound: "Extension introuvable"
+    addonNotFound: "Addon introuvable",
+    restore: {
+      dbNotConfigured: "Configurez d'abord la base de données.",
+      locked: "Installation déjà terminée — la restauration n'est plus disponible.",
+      busy: "Une restauration est déjà en cours.",
+      badSize: "Taille de fichier invalide.",
+      tooLarge: "Archive trop volumineuse.",
+      noSpace: "Espace disque insuffisant pour la restauration",
+      unknownUpload: "Envoi inconnu ou expiré — recommencez.",
+      badOffset: "Envoi désynchronisé — reprise.",
+      badChunk: "Morceau d'envoi invalide.",
+      uploadFailed: "Envoi interrompu.",
+      incomplete: "Envoi incomplet.",
+      notArchive: "Ce fichier n'est pas une archive .tar.gz valide.",
+      notPgdata: "Cette archive ne contient pas un dossier de données PostgreSQL (PG_VERSION introuvable).",
+      badVersion: "Version de PostgreSQL non prise en charge (PostgreSQL 16 requis)",
+      noPostgres: "Les outils PostgreSQL sont absents de cette image.",
+      pgStartFailed: "La base de la sauvegarde n'a pas pu démarrer",
+      pgStartTimeout: "La récupération de la sauvegarde a pris trop de temps.",
+      noPanelData: "Aucune donnée UHQ Panel OS trouvée dans cette sauvegarde.",
+      restoreFailed: "Restauration échouée (rien n'a été modifié)",
+      failed: "Restauration échouée"
+    }
   },
   info: {
     emailRequired: "Adresse e-mail requise.",
