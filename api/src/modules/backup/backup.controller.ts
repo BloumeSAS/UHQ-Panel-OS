@@ -50,8 +50,9 @@ export class BackupController {
     }
 
     try {
-      await this.backupService.importSettings(rawJson);
-      return { status: 'success', message: 'Settings imported successfully.' };
+      const count = await this.backupService.importSettings(rawJson);
+      if (!count) return { status: 'error', message: 'Aucun réglage reconnu dans ce fichier.' };
+      return { status: 'success', imported: count, message: `${count} settings imported successfully.` };
     } catch (err) {
       return { status: 'error', message: `Import failed: ${err.message}` };
     }

@@ -134,7 +134,7 @@ export function RestoreBackup() {
       <input
         ref={input}
         type="file"
-        accept=".gz,.tgz,.tar.gz,application/gzip,application/x-gzip"
+        accept=".json,.gz,.tgz,.tar.gz,application/json,application/gzip,application/x-gzip"
         className="hidden"
         disabled={busy}
         onChange={(e) => {

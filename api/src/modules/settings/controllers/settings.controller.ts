@@ -6,6 +6,7 @@ import { anyColorToHslTriplet } from '../../../common/utils/color-convert';
 import { THEME_VAR_KEYS } from '../../../common/utils/theme-vars';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../../common/guards/roles.guard';
+import { extractSettings } from '../../../common/utils/settings-import';
 import { Roles } from '../../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../../common/decorators/current-user.decorator';
 import type { JwtUser } from '../../../common/guards/jwt-auth.guard';
@@ -255,13 +256,8 @@ export class PanelSettingsController {
     @Body() body: { settings?: Record<string, string>; scraperSources?: any[] },
     @CurrentUser() me: JwtUser,
   ) {
-    const patch: Record<string, string> = {};
-    for (const [k, v] of Object.entries(body.settings || {})) {
-      if (!(k in SETTING_DEFS)) continue;
-      if ((SETTING_DEFS as any)[k].secret) continue; // jamais de secret importé
-      if (k === 'apiKey' || k === 'updateCheckUrl') continue;
-      if (typeof v === 'string') patch[k] = v;
-    }
+    // TOUS les réglages connus (secrets et clé API compris) : import volontaire d'un admin.
+    const patch = extractSettings(body);
     await this.settings.setMany(patch as any);
 
     let importedSources = 0;

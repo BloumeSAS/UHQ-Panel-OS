@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { SettingsService } from '../../config/settings.service';
+import { extractSettings } from '../../common/utils/settings-import';
 import { JobCoordinatorService } from '../../common/job-coordinator.service';
 import { ProxyServerService } from '../proxy-engine/proxy-server.service';
 import { SchedulerRegistry } from '@nestjs/schedule';
@@ -552,8 +553,15 @@ export class BackupService implements OnModuleInit {
       content = fs.readFileSync(filePath, 'utf8');
     }
 
-    const payload = JSON.parse(content);
-    if (!payload.data) {
+    await this.restoreFromPayload(JSON.parse(content));
+  }
+
+  /**
+   * Restaure depuis un objet de sauvegarde déjà lu (`{ version, exportedAt, data }`).
+   * Utilisé par la restauration classique ET par la restauration depuis /setup.
+   */
+  async restoreFromPayload(payload: any): Promise<void> {
+    if (!payload?.data) {
       throw new Error('Invalid backup file structure: missing data field.');
     }
 
@@ -566,16 +574,21 @@ export class BackupService implements OnModuleInit {
     await this.prisma.$transaction(
       async (tx) => {
         // 1. Delete all existing records in reverse relation order
-        await tx.targetBlock.deleteMany();
-        await tx.backendProxy.deleteMany();
-        await tx.proxyUsage.deleteMany();
-        await tx.passwordResetToken.deleteMany();
-        await tx.userProxy.deleteMany();
-        await tx.panelUser.deleteMany();
-        await tx.scraperSource.deleteMany();
-        await tx.setting.deleteMany();
-        await tx.appMeta.deleteMany();
-        await tx.addon.deleteMany();
+        // Fichier PARTIEL (ex. réglages seuls) : on ne vide QUE les tables présentes
+        // dans le fichier — les autres (comptes, proxies…) restent intactes.
+        const has = (k: string) => data[k] !== undefined;
+        if (has('targetBlock')) await tx.targetBlock.deleteMany();
+        if (has('backendProxy')) await tx.backendProxy.deleteMany();
+        if (has('proxyUsage')) await tx.proxyUsage.deleteMany();
+        if (has('passwordResetToken')) await tx.passwordResetToken.deleteMany();
+        if (has('userProxy')) await tx.userProxy.deleteMany();
+        if (has('panelUser')) await tx.panelUser.deleteMany();
+        if (has('scraperSource')) await tx.scraperSource.deleteMany();
+        // Les marqueurs internes (`__migration.*`) ne font pas partie des réglages
+        // utilisateur : les effacer rejouerait la conversion des Go sur le trafic en cours.
+        if (has('setting')) await tx.setting.deleteMany({ where: { NOT: { key: { startsWith: '__' } } } });
+        if (has('appMeta')) await tx.appMeta.deleteMany();
+        if (has('addon')) await tx.addon.deleteMany();
 
         // 2. Insert records in positive relation order
         if (data.appMeta && data.appMeta.length > 0) {
@@ -589,10 +602,12 @@ export class BackupService implements OnModuleInit {
 
         if (data.setting && data.setting.length > 0) {
           await tx.setting.createMany({
-            data: data.setting.map((x: any) => ({
-              ...x,
-              updatedAt: parseDateRequired(x.updatedAt),
-            })),
+            data: data.setting
+              .filter((x: any) => !String(x.key).startsWith('__'))
+              .map((x: any) => ({
+                ...x,
+                updatedAt: parseDateRequired(x.updatedAt),
+              })),
           });
         }
 
@@ -693,7 +708,7 @@ export class BackupService implements OnModuleInit {
 
     // Sauvegarde antérieure au passage en Go décimal (sans son marqueur) :
     // convertit ses compteurs restaurés pour garder les mêmes chiffres affichés.
-    await this.traffic
+    if (data.userProxy !== undefined) await this.traffic
       .ensureDecimalUnits(false)
       .catch((e) => this.logger.error(`Conversion des unités après restauration échouée : ${e}`));
 
@@ -811,27 +826,28 @@ export class BackupService implements OnModuleInit {
   /**
    * Import settings from a JSON structure.
    */
-  async importSettings(settingsJson: string): Promise<void> {
-    let imported: Record<string, string>;
+  async importSettings(settingsJson: string): Promise<number> {
+    let parsed: any;
     try {
-      imported = JSON.parse(settingsJson);
+      parsed = JSON.parse(settingsJson);
     } catch (e) {
       throw new Error('Invalid JSON file format.');
     }
 
-    // Filter valid keys only to avoid database pollution
+    // TOUS les réglages connus (secrets et clé API compris) : import volontaire d'un admin.
+    const imported = extractSettings(parsed);
     for (const [key, value] of Object.entries(imported)) {
-      if (key === 'apiKey') continue; // Safeguard the API key
       await this.prisma.setting.upsert({
         where: { key },
-        create: { key, value: String(value) },
-        update: { value: String(value) },
+        create: { key, value },
+        update: { value },
       });
     }
 
     // Refresh cache and reschedule backups
     await this.settings.reload();
     this.reschedule();
-    this.logger.log('Successfully imported settings from JSON file.');
+    this.logger.log(`Successfully imported ${Object.keys(imported).length} settings from JSON file.`);
+    return Object.keys(imported).length;
   }
 }

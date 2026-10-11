@@ -25,12 +25,14 @@ import { PrismaService } from '../../database/prisma.service';
 import { DatabaseConfigService } from '../../database/database-config.service';
 import { dataDir, resolveDatabaseUrl } from '../../database/db-config';
 import { t } from '../../common/utils/i18n';
+import { BackupService } from '../backup/backup.service';
 
 const SINGLETON = 'singleton';
 const TEMP_PORT = 54329;
 /** Taille max d'un morceau d'upload (le client en envoie ~8 Mo : reste sous les limites des proxies/CDN). */
 export const MAX_CHUNK_BYTES = 16 * 1024 * 1024;
 const MAX_ARCHIVE_BYTES = 8 * 1024 ** 3;
+const MAX_JSON_BYTES = 400 * 1024 ** 2; // JSON.parse en mémoire
 const MAX_UNPACKED_BYTES = 40 * 1024 ** 3;
 const MAX_ENTRIES = 200_000;
 const RECOVERY_TIMEOUT_MS = 15 * 60_000;
@@ -95,6 +97,7 @@ export class RestoreService implements OnModuleInit {
   constructor(
     private readonly prisma: PrismaService,
     private readonly dbConfig: DatabaseConfigService,
+    private readonly backup: BackupService,
   ) {}
 
   private get root(): string {
@@ -285,6 +288,11 @@ export class RestoreService implements OnModuleInit {
       mkdirSync(sock, { recursive: true, mode: 0o700 });
 
       this.setPhase('analyzing');
+      if (this.looksLikeJson(up.file)) {
+        await this.restoreJson(up);
+        await this.finish2();
+        return;
+      }
       const strip = await this.analyze(up.file);
 
       this.setPhase('extracting');
@@ -311,20 +319,7 @@ export class RestoreService implements OnModuleInit {
       await this.stopPostgres(pg);
       pg = null;
 
-      this.setPhase('schema');
-      const target = resolveDatabaseUrl().url;
-      if (target) {
-        try {
-          await this.dbConfig.pushSchema(target);
-        } catch (e) {
-          // Le schéma sera réappliqué au démarrage (CMD du conteneur).
-          this.logger.warn(`prisma db push après restauration : ${(e as Error).message}`);
-        }
-      }
-
-      this.setPhase('restarting');
-      this.logger.warn('Restauration terminée — redémarrage du process.');
-      setTimeout(() => process.exit(0), 2500);
+      await this.finish2();
     } catch (e) {
       const err =
         e instanceof RestoreError ? e : new RestoreError('failed', String((e as Error)?.message ?? e).slice(0, 400));
@@ -338,6 +333,63 @@ export class RestoreService implements OnModuleInit {
       } catch {
         /* ignore */
       }
+    }
+  }
+
+  /** Fin commune : schéma à jour puis redémarrage du process (relu au boot). */
+  private async finish2() {
+    this.setPhase('schema');
+    const target = resolveDatabaseUrl().url;
+    if (target) {
+      try {
+        await this.dbConfig.pushSchema(target);
+      } catch (e) {
+        // Le schéma sera réappliqué au démarrage (CMD du conteneur).
+        this.logger.warn(`prisma db push après restauration : ${(e as Error).message}`);
+      }
+    }
+    this.setPhase('restarting');
+    this.logger.warn('Restauration terminée — redémarrage du process.');
+    setTimeout(() => process.exit(0), 2500);
+  }
+
+  /** Sauvegarde JSON du panel (`backup-db-*.json`) : premier octet utile = `{`. */
+  private looksLikeJson(file: string): boolean {
+    const buf = Buffer.alloc(64);
+    const fd = openSync(file, 'r');
+    try {
+      const n = readSync(fd, buf, 0, 64, 0);
+      const head = buf.subarray(0, n).toString('utf8').replace(/^﻿/, '').trimStart();
+      return head.startsWith('{');
+    } finally {
+      closeSync(fd);
+    }
+  }
+
+  /** Restauration d'une sauvegarde JSON du panel, en une transaction (tout ou rien). */
+  private async restoreJson(up: Upload) {
+    if (up.size > MAX_JSON_BYTES) throw new RestoreError('tooLarge');
+    let payload: any;
+    try {
+      payload = JSON.parse(readFileSync(up.file, 'utf8').replace(/^﻿/, ''));
+    } catch {
+      throw new RestoreError('notArchive');
+    }
+    rmSync(up.file, { force: true });
+    const d = payload?.data;
+    if (!d || typeof d !== 'object' || (!Array.isArray(d.panelUser) && !Array.isArray(d.setting))) {
+      throw new RestoreError('noPanelData');
+    }
+    this.job.stats = {
+      users: Array.isArray(d.panelUser) ? d.panelUser.length : 0,
+      accounts: Array.isArray(d.userProxy) ? d.userProxy.length : 0,
+      proxies: Array.isArray(d.backendProxy) ? d.backendProxy.length : 0,
+    };
+    this.setPhase('restoring');
+    try {
+      await this.backup.restoreFromPayload(payload);
+    } catch (e) {
+      throw new RestoreError('restoreFailed', String((e as Error)?.message ?? e).slice(0, 300));
     }
   }
 
