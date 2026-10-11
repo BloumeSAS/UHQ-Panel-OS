@@ -13,6 +13,7 @@ import { AppModule, resolveWebDist } from './app.module';
 import { ProxyServerService } from './modules/proxy-engine/proxy-server.service';
 import { BundledAddonsService } from './modules/addons/bundled-addons.service';
 import { AddonProxyMiddleware } from './modules/addons/addon-proxy.middleware';
+import { PrismaClient } from '@prisma/client';
 import { PrismaService } from './database/prisma.service';
 import { SettingsService } from './config/settings.service';
 import { TrafficService } from './modules/traffic/traffic.service';
@@ -30,10 +31,44 @@ process.on('uncaughtException', (err) => {
   Logger.error(`Uncaught exception: ${err?.stack ?? err}`, 'Process');
 });
 
+/**
+ * Attend que la base réponde AVANT de construire l'application. Sans ça, après
+ * un redémarrage du serveur (mise à jour de paquets, reboot Docker) où le panel
+ * repart avant PostgreSQL, tous les modules s'initialisaient sur une base
+ * injoignable : réglages (thème, clé API…) vides, addons non relancés, moteur
+ * proxy jamais démarré. Borné à 10 min ; au-delà on démarre quand même (mode
+ * dégradé : l'assistant reste accessible).
+ */
+async function waitForDatabase(): Promise<void> {
+  const deadline = Date.now() + 10 * 60_000;
+  let attempt = 0;
+  for (;;) {
+    const client = new PrismaClient({ log: [] });
+    try {
+      await client.$queryRaw`SELECT 1`;
+      if (attempt > 0) Logger.log(`Base de données joignable après ${attempt} tentative(s).`, 'Bootstrap');
+      return;
+    } catch (e) {
+      attempt++;
+      if (attempt === 1 || attempt % 10 === 0) {
+        Logger.warn('Base de données pas encore prête — nouvelle tentative…', 'Bootstrap');
+      }
+      if (Date.now() > deadline) {
+        Logger.error('Base toujours injoignable après 10 min — démarrage en mode dégradé.', 'Bootstrap');
+        return;
+      }
+    } finally {
+      await client.$disconnect().catch(() => undefined);
+    }
+    await new Promise((r) => setTimeout(r, 3000));
+  }
+}
+
 async function bootstrap() {
   // Résout l'URL de base (env → fichier persistant → placeholder) AVANT que
   // Nest n'instancie PrismaClient. Démarre même sans base configurée.
   const db = applyDatabaseEnv();
+  if (db.configured) await waitForDatabase();
 
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     // Logger custom : conserve les logs en mémoire pour le flux SSE du panel.
@@ -274,7 +309,7 @@ async function bootstrap() {
   await app.listen(apiPort, '0.0.0.0');
   Logger.log(`API listening on :${apiPort}`, 'Bootstrap');
   // Build marker — bump this string on every deploy you want to confirm is live.
-  Logger.log('BUILD MARKER: panel-os-v2.4.76', 'Bootstrap');
+  Logger.log('BUILD MARKER: panel-os-v2.4.77', 'Bootstrap');
 
   // Le moteur proxy TCP n'a de sens qu'avec une base connectée (auth des
   // sous-utilisateurs). On ne le démarre donc pas tant que la base n'est pas

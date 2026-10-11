@@ -276,7 +276,7 @@ export class NotificationService {
     }
     this.proxyDeadCache.set(proxyUrl, now);
 
-    this.logger.warn(`Proxy dead alert triggered for: ${proxyUrl}`);
+    this.logger.warn(`Proxy dead alert triggered for: ${proxyUrl.replace(/\/\/[^@/]*@/, '//***@')}`);
 
     const title = '🚨 Proxy Offline / Dead';
     const desc = `The backend proxy **${proxyUrl}** has failed health check verification.`;

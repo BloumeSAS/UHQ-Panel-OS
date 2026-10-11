@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit, ServiceUnavailableException } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
 import { randomString } from '../common/utils/proxy-format';
 
@@ -166,6 +166,8 @@ export const SECRET_MASK = '••••••••';
 export class SettingsService implements OnModuleInit {
   private readonly logger = new Logger(SettingsService.name);
   private cache = new Map<string, string>();
+  /** Vrai seulement si le cache a été lu depuis la base (sinon les valeurs sont des défauts, pas la réalité). */
+  private loaded = false;
 
   constructor(private readonly prisma: PrismaService) {}
 
@@ -178,6 +180,7 @@ export class SettingsService implements OnModuleInit {
     try {
       const rows = await this.prisma.setting.findMany();
       this.cache = new Map(rows.map((r) => [r.key, r.value]));
+      this.loaded = true;
       this.logger.log(`Loaded ${rows.length} settings from DB.`);
     } catch (e) {
       this.logger.warn(`Could not load settings (DB not ready?): ${e}`);
@@ -243,6 +246,10 @@ export class SettingsService implements OnModuleInit {
 
   /** Garantit l'existence d'une clé API (génère au 1er besoin). Renvoie la clé. */
   async ensureApiKey(): Promise<string> {
+    // Cache jamais lu depuis la base (base injoignable au démarrage) : on NE génère
+    // surtout pas de clé — elle écraserait celle qui est réellement en base.
+    if (!this.loaded) await this.reload();
+    if (!this.loaded) throw new ServiceUnavailableException('Base de données indisponible');
     const existing = this.get('apiKey');
     if (existing) return existing;
     return this.regenerateApiKey();
