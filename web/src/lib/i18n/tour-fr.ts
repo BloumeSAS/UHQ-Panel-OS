@@ -123,7 +123,7 @@ export const tourFr: Record<string, string> = {
   'tour.security.t': 'Sécurité du compte',
   'tour.security.b': "Activez l'authentification à deux facteurs (application d'authentification + codes de secours) et gérez vos sessions actives en les déconnectant une à une. Fortement recommandé, obligatoire pour les admins si vous l'activez dans Paramètres → Sécurité.",
   'tour.about.t': 'À propos',
-  'tour.about.b': "La version installée, les informations système et la vérification de mise à jour. Pour mettre à jour avec Coolify : « Redeploy », puis contrôlez que la version du pied de page correspond à la dernière release.",
+  'tour.about.b': "La version installée, l'historique des versions et la mise à jour. Si une nouvelle version existe, le bouton « Mettre à jour maintenant » demande à votre plateforme (Coolify) de reconstruire et redémarrer le panel, avec écran de progression et reconnexion automatique. À configurer une fois dans Paramètres → Général → Mise à jour automatique.",
   'tour.finish.t': "C'est terminé ! ✅",
   'tour.finish.b':
     "Vous connaissez maintenant tout le panel. Récapitulatif :\n• hôte/port publics → Paramètres → Moteur proxy ;\n• alimenter le pool → Sources scraper ou Pool de proxies ;\n• catégories → règles par groupe de proxies ;\n• comptes proxy → ce que vous donnez à vos clients ;\n• sauvegardes → Paramètres → Sauvegardes.\n\nVous pouvez relancer cette visite à tout moment avec l'icône ? en haut à droite.",

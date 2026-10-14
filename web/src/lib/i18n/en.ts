@@ -1,12 +1,14 @@
 import { Language } from './translations';
 import { tourEn } from './tour-en';
 import { launchEn } from './launch-en';
+import { updateEn } from './update-en';
 
 const en: Language = {
   meta: { code: 'en', name: 'English', nativeName: 'English', flag: '🇬🇧' },
   t: {
     ...tourEn,
     ...launchEn,
+    ...updateEn,
     'app.loading': 'Loading…',
     'common.save': 'Save',
     'common.cancel': 'Cancel',

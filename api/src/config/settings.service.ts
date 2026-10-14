@@ -18,6 +18,10 @@ export const SETTING_DEFS = {
   // URL JSON renvoyant { "version": "x.y.z" } pour la vérification de MAJ.
   // Vide = utilisation automatique des releases GitHub officielles.
   updateCheckUrl: { def: '', env: 'UPDATE_CHECK_URL', secret: false },
+  // Mise à jour automatique : webhook de déploiement (ex. Coolify « Deploy Webhook »).
+  updateWebhookUrl: { def: '', env: 'UPDATE_WEBHOOK_URL', secret: false },
+  updateWebhookToken: { def: '', env: 'UPDATE_WEBHOOK_TOKEN', secret: true },
+  updateWebhookMethod: { def: 'GET', env: undefined, secret: false },
   publicProxyHost: { def: 'prx.uhq.monster', env: 'PUBLIC_PROXY_HOST', secret: false },
   publicProxyPort: { def: '990', env: 'PUBLIC_PROXY_PORT', secret: false },
   proxyTimeout: { def: '3', env: 'PROXY_TIMEOUT', secret: false },

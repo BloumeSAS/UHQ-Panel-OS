@@ -45,6 +45,7 @@ import { AddonTopbarSlots, TopbarSlotItem } from '@/components/AddonTopbarSlots'
 import { GlobalSearch } from '@/components/GlobalSearch';
 import { useConfirm } from '@/components/ConfirmDialog';
 import { useTour } from '@/components/GuidedTour';
+import { UpdateOverlay } from '@/components/UpdateOverlay';
 import { cn } from '@/lib/utils';
 
 interface NavItem {
@@ -325,6 +326,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen bg-background">
+      {user?.role === 'ADMIN' && <UpdateOverlay />}
       {/* Sidebar */}
       <aside
         data-tour="sidebar"

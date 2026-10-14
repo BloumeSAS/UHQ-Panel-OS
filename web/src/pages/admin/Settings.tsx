@@ -439,6 +439,31 @@ export default function Settings() {
               </F>
             )}
 
+            <Separator label={t('settings.autoUpdate')} />
+            <p className="text-xs text-muted-foreground leading-relaxed">{t('settings.autoUpdateHint')}</p>
+            <F label={t('settings.updateWebhookUrl')} hint={t('settings.updateWebhookUrlHint')}>
+              <Input
+                value={form.updateWebhookUrl ?? ''}
+                onChange={(e) => set('updateWebhookUrl', e.target.value)}
+                placeholder="https://coolify.example.com/api/v1/deploy?uuid=..."
+              />
+            </F>
+            <Row>
+              <F label={t('settings.updateWebhookToken')} hint={t('settings.updateWebhookTokenHint')}>
+                <SecretField k="updateWebhookToken" form={form} set={set} placeholder="Bearer token" />
+              </F>
+              <F label={t('settings.updateWebhookMethod')}>
+                <select
+                  value={form.updateWebhookMethod || 'GET'}
+                  onChange={(e) => set('updateWebhookMethod', e.target.value)}
+                  className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+                >
+                  <option value="GET">GET</option>
+                  <option value="POST">POST</option>
+                </select>
+              </F>
+            </Row>
+
             <Separator label={t('settings.configImportExport')} />
             <ConfigImportExport />
           </>

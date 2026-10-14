@@ -123,7 +123,7 @@ export const tourEn: Record<string, string> = {
   'tour.security.t': 'Account security',
   'tour.security.b': "Enable two-factor authentication (authenticator app + recovery codes) and manage your active sessions by signing them out one by one. Strongly recommended, and mandatory for admins if you enable it in Settings → Security.",
   'tour.about.t': 'About',
-  'tour.about.b': "The installed version, system information and update check. To update with Coolify: “Redeploy”, then check that the footer version matches the latest release.",
+  'tour.about.b': "The installed version, version history and update. When a new version exists, the “Update now” button asks your platform (Coolify) to rebuild and restart the panel, with a progress screen and automatic reconnection. Set it up once in Settings → General → Automatic update.",
   'tour.finish.t': "All done! ✅",
   'tour.finish.b':
     "You now know the whole panel. Recap:\n• public host/port → Settings → Proxy engine;\n• feed the pool → Scraper sources or Proxy pool;\n• categories → rules per group of proxies;\n• proxy accounts → what you give your customers;\n• backups → Settings → Backups.\n\nYou can restart this tour any time with the ? icon at the top right.",

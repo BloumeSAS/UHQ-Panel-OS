@@ -160,6 +160,9 @@ export class UpdateSettingsDto {
   // Maintenance Mode
   @ApiPropertyOptional() @IsOptional() @IsBoolean() @Transform(({ value }) => value === undefined || value === null ? value : (value === 'true' || value === true)) maintenanceModeEnabled?: boolean;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(300) panelUrl?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(500) updateWebhookUrl?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(500) updateWebhookToken?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(8) updateWebhookMethod?: string;
   // Page d'état publique
   @ApiPropertyOptional() @IsOptional() @IsBoolean() @Transform(({ value }) => value === undefined || value === null ? value : (value === 'true' || value === true)) statusPageEnabled?: boolean;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(500) statusPageMessage?: string;

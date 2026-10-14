@@ -1,7 +1,16 @@
-import { Controller, Get, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, HttpException, Post, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { request } from 'undici';
+import { lookup } from 'dns/promises';
+import { isIP } from 'net';
+import { Logger } from '@nestjs/common';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
+import type { JwtUser } from '../../../common/guards/jwt-auth.guard';
+import { RolesGuard } from '../../../common/guards/roles.guard';
+import { Roles } from '../../../common/decorators/roles.decorator';
+import { CurrentUser } from '../../../common/decorators/current-user.decorator';
+import { AuditService } from '../../audit/audit.service';
+import { BackupService } from '../../backup/backup.service';
 import { SettingsService } from '../../../config/settings.service';
 import { APP_VERSION } from '../../../version';
 
@@ -15,7 +24,14 @@ const GITHUB_URL = `https://github.com/${GITHUB_REPO}`;
 @UseGuards(JwtAuthGuard)
 @Controller('api/panel/about')
 export class AboutController {
-  constructor(private readonly settings: SettingsService) {}
+  constructor(
+    private readonly settings: SettingsService,
+    private readonly backup: BackupService,
+    private readonly audit: AuditService,
+  ) {}
+
+  private lastUpdateAt = 0;
+  private readonly logger = new Logger('PanelUpdate');
 
   /** Cache mémoire des releases GitHub (5 min) — évite de cogner la limite anonyme (60 req/h/IP). */
   private releasesCache: { at: number; data: any[] } | null = null;
@@ -30,8 +46,87 @@ export class AboutController {
         website: 'https://bloume.fr',
         githubUrl: GITHUB_URL,
         version: CURRENT_VERSION,
+        autoUpdateConfigured: !!this.settings.get('updateWebhookUrl').trim(),
       },
     };
+  }
+
+  /**
+   * Mise à jour automatique : appelle le webhook de déploiement configuré (Coolify « Deploy Webhook »,
+   * Portainer, Watchtower…). Le conteneur ne peut pas se reconstruire lui-même : c'est la plateforme
+   * qui reconstruit et redémarre ; le panel affiche la progression et se reconnecte (cf. UpdateOverlay).
+   * Sauvegarde préalable optionnelle. Réservé ADMIN, une fois par minute.
+   */
+  @UseGuards(RolesGuard)
+  @Roles('ADMIN')
+  @Post('update')
+  async update(@Body() body: { backupFirst?: boolean }, @CurrentUser() me: JwtUser) {
+    const raw = this.settings.get('updateWebhookUrl').trim();
+    if (!raw) throw new BadRequestException('NOT_CONFIGURED');
+    let url: URL;
+    try {
+      url = new URL(raw);
+    } catch {
+      throw new BadRequestException('BAD_URL');
+    }
+    // http(s) uniquement. Les adresses privées restent AUTORISÉES (Coolify est en général sur le même
+    // serveur / réseau privé) ; seules les adresses lien-local (métadonnées cloud) sont refusées, y compris
+    // derrière un nom DNS. Redirections non suivies (comportement par défaut d'undici.request).
+    if (!/^https?:$/.test(url.protocol)) throw new BadRequestException('BAD_URL');
+    const linkLocal = (ip: string) => /^169\.254\./.test(ip) || /^fe[89ab]/i.test(ip) || /^fd00:ec2:/i.test(ip);
+    const bareHost = url.hostname.replace(/^\[|\]$/g, '');
+    if (isIP(bareHost) && linkLocal(bareHost)) throw new BadRequestException('BAD_URL');
+    try {
+      const addrs = await lookup(bareHost, { all: true });
+      if (addrs.some((a) => linkLocal(a.address))) throw new BadRequestException('BAD_URL');
+    } catch (e) {
+      if (e instanceof BadRequestException) throw e;
+      // résolution impossible : la requête échouera plus bas avec WEBHOOK_UNREACHABLE
+    }
+    if (Date.now() - this.lastUpdateAt < 60_000) throw new HttpException('TOO_SOON', 429);
+    this.lastUpdateAt = Date.now();
+
+    let backup: 'skipped' | 'done' = 'skipped';
+    if (body?.backupFirst && this.settings.getBool('backupDatabaseEnabled')) {
+      try {
+        await Promise.race([
+          this.backup.runBackup(),
+          new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 240_000)),
+        ]);
+        backup = 'done';
+      } catch (e) {
+        this.lastUpdateAt = 0;
+        throw new HttpException({ message: 'BACKUP_FAILED', detail: String((e as Error)?.message ?? e).slice(0, 200) }, 502);
+      }
+    }
+
+    const token = this.settings.get('updateWebhookToken');
+    const method = this.settings.get('updateWebhookMethod').toUpperCase() === 'POST' ? 'POST' : 'GET';
+    try {
+      const res = await request(url.toString(), {
+        method,
+        headersTimeout: 15_000,
+        bodyTimeout: 15_000,
+        headers: { 'User-Agent': 'UHQ-Panel-OS', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      });
+      // Le corps de la réponse n'est JAMAIS renvoyé au navigateur (évite de lire le contenu d'un service interne).
+      const text = (await res.body.text().catch(() => '')).slice(0, 200);
+      if (res.statusCode < 200 || res.statusCode >= 300) {
+        this.lastUpdateAt = 0;
+        this.logger.warn(`Webhook de mise à jour refusé : HTTP ${res.statusCode} ${text.replace(/\s+/g, ' ')}`);
+        throw new HttpException({ message: 'WEBHOOK_FAILED', status: res.statusCode }, 502);
+      }
+    } catch (e) {
+      if (e instanceof HttpException) throw e;
+      this.lastUpdateAt = 0;
+      this.logger.warn(`Webhook de mise à jour injoignable : ${String((e as Error)?.message ?? e).slice(0, 200)}`);
+      throw new HttpException({ message: 'WEBHOOK_UNREACHABLE', detail: String((e as NodeJS.ErrnoException)?.code ?? '').slice(0, 40) }, 502);
+    }
+
+    void this.audit
+      .log({ userId: me.id, userEmail: me.email, action: 'panel.update', details: { from: CURRENT_VERSION, backup, host: url.host } })
+      .catch(() => undefined);
+    return { status: 'success', fromVersion: CURRENT_VERSION, backup };
   }
 
   /**
@@ -81,7 +176,36 @@ export class AboutController {
     if (customUrl) {
       return this.checkCustomUrl(customUrl, current);
     }
-    return this.checkGhcr(current);
+    const gh = await this.checkGithub(current);
+    return gh ?? this.checkGhcr(current);
+  }
+
+  /** Dernière release publiée sur GitHub (source de vérité des versions) ; null si injoignable. */
+  private async checkGithub(current: string) {
+    try {
+      const res = await request(`https://api.github.com/repos/${GITHUB_REPO}/releases/latest`, {
+        method: 'GET',
+        headersTimeout: 8000,
+        bodyTimeout: 8000,
+        headers: { 'User-Agent': 'UHQ-Panel-OS', Accept: 'application/vnd.github+json' },
+      });
+      if (res.statusCode !== 200) return null;
+      const body = (await res.body.json()) as { tag_name?: string; html_url?: string };
+      const latest = body?.tag_name ? String(body.tag_name).replace(/^v/, '') : null;
+      if (!latest) return null;
+      return {
+        status: 'success',
+        configured: true,
+        current,
+        latest,
+        updateAvailable: isNewer(latest, current),
+        url: body.html_url ?? `${GITHUB_URL}/releases`,
+        source: 'github',
+        autoUpdateConfigured: !!this.settings.get('updateWebhookUrl').trim(),
+      };
+    } catch {
+      return null;
+    }
   }
 
   private async checkCustomUrl(url: string, current: string) {

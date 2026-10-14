@@ -5,6 +5,7 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RolesGuard } from './guards/roles.guard';
 import { Roles } from './decorators/roles.decorator';
 import { PrismaService } from '../database/prisma.service';
+import { APP_VERSION } from '../version';
 
 /**
  * Health check. `/` est laissé au panel React (ServeStaticModule) ; le health
@@ -19,6 +20,8 @@ export class HealthController {
   health() {
     return {
       status: 'running',
+      // Utilisé par le panel pour détecter la fin d'une mise à jour automatique.
+      version: APP_VERSION,
       service: 'UHQ Panel OS',
       company: 'Bloume SAS',
     };
