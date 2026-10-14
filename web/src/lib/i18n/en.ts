@@ -2,6 +2,7 @@ import { Language } from './translations';
 import { tourEn } from './tour-en';
 import { launchEn } from './launch-en';
 import { updateEn } from './update-en';
+import { featEn } from './feat-en';
 
 const en: Language = {
   meta: { code: 'en', name: 'English', nativeName: 'English', flag: '🇬🇧' },
@@ -9,6 +10,7 @@ const en: Language = {
     ...tourEn,
     ...launchEn,
     ...updateEn,
+    ...featEn,
     'app.loading': 'Loading…',
     'common.save': 'Save',
     'common.cancel': 'Cancel',

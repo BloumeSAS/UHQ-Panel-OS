@@ -1,4 +1,5 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { NotificationService } from '../notifications/notification.service';
 import { PrismaService } from '../../database/prisma.service';
 import { SettingsService } from '../../config/settings.service';
@@ -523,16 +524,9 @@ export class BackupService implements OnModuleInit {
     }
   }
 
-  /**
-   * Restore database from a specific file.
-   */
-  async restoreBackup(rawFilename: string): Promise<void> {
-    // `filename` vient directement du body de la requête admin
-    // (POST /backup/restore) et était concaténé tel quel dans un
-    // `path.join` — un nom comme `../../../../etc/passwd` sort du
-    // répertoire de backups. `path.basename` neutralise tout séparateur
-    // de chemin (y compris `..`), donc le fichier lu reste toujours
-    // dans `backupLocalPath` quel que soit ce qu'envoie le client.
+  /** Lit le contenu brut d'un fichier de sauvegarde (stockage local ou S3). */
+  private async readBackupContent(rawFilename: string): Promise<string> {
+    // `filename` vient du body d'une requête admin : `path.basename` neutralise toute traversée de dossier.
     const filename = path.basename(rawFilename);
     let content = '';
     const storageType = this.settings.get('backupStorageType') || 'local';
@@ -564,6 +558,127 @@ export class BackupService implements OnModuleInit {
       content = fs.readFileSync(filePath, 'utf8');
     }
 
+    return content;
+  }
+
+  /**
+   * Vérifie qu'une sauvegarde est RESTAURABLE sans toucher à la base : JSON valide, structure complète, champs conformes au
+   * schéma actuel (un champ inconnu ou manquant ferait échouer la restauration), dates valides, identifiants uniques,
+   * cohérence entre tables (propriétaires, historiques), présence d'un administrateur.
+   */
+  async verifyBackup(rawFilename: string) {
+    const t0 = Date.now();
+    const issues: { level: 'error' | 'warn'; message: string }[] = [];
+    const bad = (level: 'error' | 'warn', message: string) => {
+      if (issues.length < 40) issues.push({ level, message });
+    };
+    let content: string;
+    try {
+      content = await this.readBackupContent(rawFilename);
+    } catch (e) {
+      return { ok: false, issues: [{ level: 'error' as const, message: String((e as Error)?.message ?? e) }], tables: {}, durationMs: Date.now() - t0 };
+    }
+    let payload: any;
+    try {
+      payload = JSON.parse(content);
+    } catch {
+      return { ok: false, issues: [{ level: 'error' as const, message: 'Fichier JSON invalide ou tronqué.' }], tables: {}, sizeBytes: content.length, durationMs: Date.now() - t0 };
+    }
+    const data = payload?.data;
+    if (!data || typeof data !== 'object') {
+      return { ok: false, issues: [{ level: 'error' as const, message: 'Structure invalide : champ « data » absent.' }], tables: {}, sizeBytes: content.length, durationMs: Date.now() - t0 };
+    }
+
+    const MODELS: Record<string, string> = {
+      appMeta: 'AppMeta', setting: 'Setting', scraperSource: 'ScraperSource', panelUser: 'PanelUser', userProxy: 'UserProxy',
+      passwordResetToken: 'PasswordResetToken', proxyUsage: 'ProxyUsage', backendProxy: 'BackendProxy', targetBlock: 'TargetBlock', addon: 'Addon',
+    };
+    const dmmf = Prisma.dmmf.datamodel.models;
+    const tables: Record<string, number> = {};
+    const ids: Record<string, Set<string>> = {};
+
+    for (const [key, modelName] of Object.entries(MODELS)) {
+      const rows = data[key];
+      if (rows === undefined) continue;
+      if (!Array.isArray(rows)) {
+        bad('error', `Table « ${key} » : format invalide (tableau attendu).`);
+        continue;
+      }
+      tables[key] = rows.length;
+      const model = dmmf.find((m) => m.name === modelName);
+      if (!model) continue;
+      const fields = model.fields.filter((f) => f.kind === 'scalar' || f.kind === 'enum');
+      const known = new Set(fields.map((f) => f.name));
+      const required = fields.filter((f) => f.isRequired && !f.hasDefaultValue && !f.isId && !f.isUpdatedAt);
+      const dates = fields.filter((f) => f.type === 'DateTime');
+      const idField = fields.find((f) => f.isId)?.name;
+      const seen = new Set<string>();
+      const unknown = new Set<string>();
+      let missing = 0;
+      let badDate = 0;
+      let dup = 0;
+      for (const row of rows) {
+        if (!row || typeof row !== 'object') {
+          missing++;
+          continue;
+        }
+        for (const k of Object.keys(row)) if (!known.has(k)) unknown.add(k);
+        for (const f of required) if (row[f.name] === undefined || row[f.name] === null) missing++;
+        for (const f of dates) if (row[f.name] != null && Number.isNaN(new Date(row[f.name]).getTime())) badDate++;
+        if (idField && row[idField] != null) {
+          const id = String(row[idField]);
+          if (seen.has(id)) dup++;
+          else seen.add(id);
+        }
+      }
+      ids[key] = seen;
+      if (unknown.size) bad('error', `Table « ${key} » : champ(s) inconnus du schéma actuel (${[...unknown].slice(0, 5).join(', ')}) — la restauration échouerait.`);
+      if (missing) bad('error', `Table « ${key} » : ${missing} valeur(s) obligatoire(s) manquante(s).`);
+      if (badDate) bad('error', `Table « ${key} » : ${badDate} date(s) invalide(s).`);
+      if (dup) bad('error', `Table « ${key} » : ${dup} identifiant(s) en double.`);
+    }
+
+    // Cohérence entre tables : une clé étrangère orpheline ferait échouer l'insertion.
+    const users = ids.panelUser;
+    if (users && Array.isArray(data.userProxy)) {
+      const orphans = data.userProxy.filter((u: any) => u.ownerId && !users.has(String(u.ownerId))).length;
+      if (orphans) bad('error', `${orphans} compte(s) proxy référencent un propriétaire absent de la sauvegarde.`);
+    }
+    const accounts = ids.userProxy;
+    if (accounts && Array.isArray(data.proxyUsage)) {
+      const orphans = data.proxyUsage.filter((u: any) => !accounts.has(String(u.userProxyId))).length;
+      if (orphans) bad('error', `${orphans} ligne(s) d'historique référencent un compte absent de la sauvegarde.`);
+    }
+    if (Array.isArray(data.panelUser)) {
+      if (!data.panelUser.some((u: any) => u.role === 'ADMIN')) bad('warn', 'Aucun administrateur dans cette sauvegarde : vous ne pourriez pas vous connecter après restauration.');
+    } else {
+      bad('warn', 'Cette sauvegarde ne contient pas la table des utilisateurs du panel.');
+    }
+    if (!Array.isArray(data.setting)) bad('warn', 'Cette sauvegarde ne contient pas les réglages.');
+    if (!Array.isArray(data.userProxy)) bad('warn', 'Cette sauvegarde ne contient pas les comptes proxy.');
+
+    return {
+      ok: !issues.some((i) => i.level === 'error'),
+      exportedAt: payload.exportedAt ?? null,
+      version: payload.version ?? null,
+      sizeBytes: content.length,
+      tables,
+      issues,
+      durationMs: Date.now() - t0,
+    };
+  }
+
+  /**
+   * Restore database from a specific file.
+   */
+  async restoreBackup(rawFilename: string): Promise<void> {
+    // `filename` vient directement du body de la requête admin
+    // (POST /backup/restore) et était concaténé tel quel dans un
+    // `path.join` — un nom comme `../../../../etc/passwd` sort du
+    // répertoire de backups. `path.basename` neutralise tout séparateur
+    // de chemin (y compris `..`), donc le fichier lu reste toujours
+    // dans `backupLocalPath` quel que soit ce qu'envoie le client.
+    const content = await this.readBackupContent(rawFilename);
     await this.restoreFromPayload(JSON.parse(content));
   }
 

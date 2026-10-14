@@ -9,6 +9,7 @@ import { Button, Card, CardContent, CardHeader, CardTitle, Input, Label, Switch 
 import { Footer } from '@/components/Footer';
 import { RestoreBackup } from '@/components/RestoreBackup';
 import { SetupTokenField } from '@/components/SetupTokenField';
+import { PreflightCheck } from '@/components/PreflightCheck';
 
 export default function Setup() {
   const { db, status, refresh } = useSite();
@@ -105,6 +106,8 @@ export default function Setup() {
               <Field label={t('setup.proxyHost')} value={form.publicProxyHost} onChange={(v) => set('publicProxyHost', v)} placeholder="prx.exemple.com" />
               <Field label={t('setup.proxyPort')} value={form.publicProxyPort} onChange={(v) => set('publicProxyPort', v)} placeholder={t('setup.proxyPortPlaceholder')} />
             </div>
+
+            <PreflightCheck host={form.publicProxyHost} port={form.publicProxyPort} />
 
             <div className="flex items-start gap-2 rounded-md border border-primary/20 bg-primary/5 p-3 text-xs text-muted-foreground">
               <Info className="h-4 w-4 shrink-0 text-primary mt-0.5" />

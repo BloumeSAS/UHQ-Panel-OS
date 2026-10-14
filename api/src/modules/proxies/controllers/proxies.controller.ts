@@ -388,6 +388,16 @@ export class PanelSubUserController {
     }
   }
 
+  /** Hôte, port et identifiants EFFECTIFS d'un compte (domaine/port dédiés du compte ou de sa catégorie, sinon globaux). */
+  @ApiParam({ name: 'id', description: 'ID du sous-utilisateur proxy' })
+  @Get(':id/connection')
+  async connection(@Param('id') id: string) {
+    const user = await this.prisma.userProxy.findUnique({ where: { id } });
+    if (!user) throw new NotFoundException(t('errors.proxyNotFound'));
+    const { host, port } = await resolveConnectionEndpoint(this.prisma, this.settings, user);
+    return { status: 'success', data: { host, port, username: user.username, password: user.password, label: user.name } };
+  }
+
   @ApiParam({ name: 'id', description: 'ID du sous-utilisateur proxy' })
   @ApiQuery({ name: 'count', required: false, type: Number, description: 'Nombre de proxies à générer (1-1000, défaut 100)' })
   @Get(':id/sticky-list')

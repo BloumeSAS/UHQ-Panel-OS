@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Copy, List, Pencil, Activity, Download, RefreshCw, Zap } from 'lucide-react';
+import { Copy, List, Pencil, Activity, Download, RefreshCw, Zap, Code2, LifeBuoy } from 'lucide-react';
 import { api, apiError } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { formatBytes } from '@/lib/utils';
@@ -15,6 +15,8 @@ import {
   Input,
   Label,
 } from '@/components/ui';
+import { ConnectionDialog } from '@/components/ConnectionDialog';
+import { FailuresDialog } from '@/components/FailuresDialog';
 import {
   Dialog,
   DialogContent,
@@ -51,6 +53,8 @@ export default function MyProxies() {
   });
 
   const [generatorFor, setGeneratorFor] = useState<MyProxy | null>(null);
+  const [connFor, setConnFor] = useState<MyProxy | null>(null);
+  const [failFor, setFailFor] = useState<MyProxy | null>(null);
   const [statsFor, setStatsFor] = useState<MyProxy | null>(null);
   const [editFor, setEditFor] = useState<MyProxy | null>(null);
 
@@ -103,7 +107,27 @@ export default function MyProxies() {
                 <Row label={t('me.usage')} value={formatBytes(p.bytes_sent + p.bytes_received)} />
               </div>
 
-              <div className="grid grid-cols-3 gap-2 pt-2 border-t">
+              <div className="grid grid-cols-2 gap-2 border-t pt-2 sm:grid-cols-5">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setConnFor(p)}
+                  title={t('conn.btn')}
+                  className="flex flex-col h-auto py-2 px-1 text-xs gap-1"
+                >
+                  <Code2 className="h-4 w-4 text-emerald-500" />
+                  {t('conn.title')}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setFailFor(p)}
+                  title={t('fail.btn')}
+                  className="flex flex-col h-auto py-2 px-1 text-xs gap-1"
+                >
+                  <LifeBuoy className="h-4 w-4 text-amber-500" />
+                  {t('nav.help')}
+                </Button>
                 <Button
                   variant="outline"
                   size="sm"
@@ -158,9 +182,12 @@ export default function MyProxies() {
       )}
 
       {/* Generator Dialog */}
-      {generatorFor && (
-        <GeneratorDialog proxy={generatorFor} onClose={() => setGeneratorFor(null)} />
-      )}
+      {generatorFor && <GeneratorDialog proxy={generatorFor} onClose={() => setGeneratorFor(null)} />}
+      <FailuresDialog target={failFor ? { mode: 'me', id: failFor.id, username: failFor.username, label: failFor.label } : null} onClose={() => setFailFor(null)} />
+      <ConnectionDialog
+        info={connFor ? { host: connFor.effective_host, port: connFor.effective_port, username: connFor.username, password: connFor.password, label: connFor.label } : null}
+        onClose={() => setConnFor(null)}
+      />
     </div>
   );
 }

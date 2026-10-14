@@ -19,6 +19,8 @@ model UserProxy {
   trafficLimit       BigInt?
   usedGb             Float    @default(0)
   totalGb            Float    @default(0)
+  // Alertes client déjà envoyées (JSON : quota 80 % / 100 %, expiration proche / atteinte) — évite les doublons.
+  alertState         String?
   countryFilter      String?
   isBlocked          Boolean  @default(false)
   stickySessionTtl   Int      @default(1800)

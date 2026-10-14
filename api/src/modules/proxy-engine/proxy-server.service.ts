@@ -1,4 +1,5 @@
 import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
+import { FailureLog, type FailureReason } from './failure-log';
 import { createServer, Server as NetServer, Socket } from 'net';
 import { URL } from 'url';
 import { timingSafeEqual } from 'crypto';
@@ -115,6 +116,8 @@ export class ProxyServerService implements OnModuleDestroy {
   >();
   /** Memory-only auth: every UserProxy keyed by username */
   private userListCache = new Map<string, any>();
+  /** Connexions refusées récentes (en mémoire) — « pourquoi ça ne marche pas ? ». */
+  private readonly failures = new FailureLog();
   /** Connexions NON encore authentifiées, par IP (plafonné : protège les descripteurs de fichiers). */
   private readonly preAuthByIp = new Map<string, number>();
   private static readonly MAX_PREAUTH_PER_IP = 40;
@@ -508,6 +511,14 @@ export class ProxyServerService implements OnModuleDestroy {
     return priv && !this.settings.getBool('allowPrivateUpstreams');
   }
 
+  getAccountFailures(username: string, limit = 50) {
+    return this.failures.forUser(username, limit);
+  }
+
+  getRecentFailures(limit = 100) {
+    return this.failures.recent(limit);
+  }
+
   private isIpBanned(ip: string): boolean {
     return !!ip && this.bannedIpSet.has(ip);
   }
@@ -665,6 +676,7 @@ export class ProxyServerService implements OnModuleDestroy {
     // protocole du client (HTTP proxy le plus souvent) n'est pas encore connu.
     const clientIp = client.remoteAddress?.replace(/^::ffff:/, '') ?? '';
     if (this.isIpBanned(clientIp)) {
+      this.failures.record('(IP)', false, { ip: clientIp, reason: 'banned_ip', port: boundPort });
       client.write('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\nIP banned.\r\n');
       client.end();
       return;
@@ -743,10 +755,12 @@ export class ProxyServerService implements OnModuleDestroy {
         }
       }
 
-      user = await this.authenticate(clientIp, authHeader);
+      const authFail: { reason?: FailureReason; username?: string; known?: boolean } = {};
+      user = await this.authenticate(clientIp, authHeader, authFail);
       releasePreAuth(); // authentifié ou refusé : cette connexion n'est plus « en attente »
       if (!user) {
         this.logger.log(`Auth failed for ${clientIp}`);
+        this.failures.record(authFail.username ?? '(?)', !!authFail.known, { ip: clientIp, reason: authFail.reason ?? 'no_credentials', port: boundPort });
         void this.registerAuthFailure(clientIp);
         client.write(
           'HTTP/1.1 407 Proxy Authentication Required\r\nProxy-Authenticate: Basic realm="Proxy"\r\n\r\n',
@@ -766,6 +780,7 @@ export class ProxyServerService implements OnModuleDestroy {
         const checkHost = method === 'CONNECT' ? path : this.extractHost(path, headers);
         if (isDomainBlocked(checkHost, user.blockedDomains)) {
           this.logger.warn(`Domain blocked for ${user.username}: ${checkHost}`);
+          this.failures.record(user.username, true, { ip: clientIp, reason: 'domain_blocked', port: boundPort, hint: String(checkHost).slice(0, 80) });
           client.write('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\nDomain blocked for this account.\r\n');
           client.end();
           return;
@@ -810,6 +825,7 @@ export class ProxyServerService implements OnModuleDestroy {
       const dedicatedOwner = this.portUserMap.get(boundPort);
       if (dedicatedOwner && dedicatedOwner !== user.username) {
         this.logger.warn(`Port ${boundPort} is dedicated to another account, rejecting ${username}`);
+        this.failures.record(user.username, true, { ip: clientIp, reason: 'wrong_port', port: boundPort, hint: String(user.port ?? this.poolPortMap.get(user.pool) ?? this.port) });
         client.write(
           'HTTP/1.1 407 Proxy Authentication Required\r\nProxy-Authenticate: Basic realm="Proxy"\r\n\r\n',
         );
@@ -826,6 +842,7 @@ export class ProxyServerService implements OnModuleDestroy {
           this.logger.warn(
             `User ${username} belongs to pool "${user.pool}" dedicated to port ${requiredPoolPort}, rejecting on port ${boundPort}`,
           );
+          this.failures.record(user.username, true, { ip: clientIp, reason: 'wrong_port', port: boundPort, hint: String(requiredPoolPort) });
           client.write(
             'HTTP/1.1 407 Proxy Authentication Required\r\nProxy-Authenticate: Basic realm="Proxy"\r\n\r\n',
           );
@@ -848,6 +865,7 @@ export class ProxyServerService implements OnModuleDestroy {
         if (vpn) {
           this.logger.warn(`VPN detected for ${clientIp} on pool "${effectivePool}" — rejecting + banning`);
           void this.banVpnIp(clientIp, effectivePool);
+          this.failures.record(user.username, true, { ip: clientIp, reason: 'vpn', port: boundPort, hint: effectivePool });
           client.write('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\nVPN detected.\r\n');
           client.end();
           return;
@@ -876,6 +894,7 @@ export class ProxyServerService implements OnModuleDestroy {
       const currentThreads = this.activeThreads.get(acct) ?? 0;
       if (currentThreads >= limit) {
         this.logger.warn(`User ${acct} reached thread limit (${currentThreads}/${limit})`);
+        this.failures.record(user.username, true, { ip: clientIp, reason: 'thread_limit', port: boundPort, hint: `${currentThreads}/${limit}` });
         client.write(
           'HTTP/1.1 429 Too Many Requests\r\nConnection: close\r\n\r\nThread limit reached.\r\n',
         );
@@ -1033,6 +1052,7 @@ export class ProxyServerService implements OnModuleDestroy {
 
       if (!winner) {
         this.logger.error(`All upstream attempts failed for ${path}`);
+        this.failures.record(user.username, true, { ip: clientIp, reason: 'no_upstream', port: boundPort, hint: String(method === 'CONNECT' ? path : this.extractHost(path, headers)).slice(0, 80) });
         if (!client.destroyed) {
           client.write('HTTP/1.1 502 Bad Gateway\r\n\r\n');
           client.end();
@@ -1548,6 +1568,18 @@ export class ProxyServerService implements OnModuleDestroy {
 
   // ===== Auth ==========================================================
 
+  /** Cause pour laquelle un compte authentifié est refusé (null = éligible). */
+  private eligibilityFailure(user: any, clientIp: string): FailureReason | null {
+    if (user.isBlocked) return 'blocked';
+    if (user.expiresAt && new Date(user.expiresAt) < new Date()) return 'expired';
+    if (this.isOverQuota(user)) return 'quota';
+    if (user.ipWhitelist && user.ipWhitelist !== '*') {
+      const whitelist = user.ipWhitelist.split(',').map((s: string) => s.trim());
+      if (!whitelist.includes(clientIp)) return 'ip_not_allowed';
+    }
+    return null;
+  }
+
   private checkUserEligible(user: any, clientIp: string, username: string): boolean {
     if (user.isBlocked) {
       this.logger.warn(`Blocked user ${username} attempted connection.`);
@@ -1571,8 +1603,15 @@ export class ProxyServerService implements OnModuleDestroy {
     return true;
   }
 
-  private async authenticate(clientIp: string, authHeader: string | null): Promise<any | null> {
-    if (!authHeader || !authHeader.startsWith('Basic ')) return null;
+  private async authenticate(
+    clientIp: string,
+    authHeader: string | null,
+    fail: { reason?: FailureReason; username?: string; known?: boolean } = {},
+  ): Promise<any | null> {
+    if (!authHeader || !authHeader.startsWith('Basic ')) {
+      fail.reason = 'no_credentials';
+      return null;
+    }
     try {
       const decoded = Buffer.from(authHeader.substring(6), 'base64').toString('utf8');
       const sepIdx = decoded.lastIndexOf(':');
@@ -1580,6 +1619,7 @@ export class ProxyServerService implements OnModuleDestroy {
       const rawUser = decoded.substring(0, sepIdx);
       const password = decoded.substring(sepIdx + 1);
       let username = rawUser.includes(':') ? rawUser.split(':')[0] : rawUser;
+      fail.username = username;
 
       // Formes supportées pour le "username" côté client :
       //   - "user"                    → compte simple
@@ -1601,13 +1641,27 @@ export class ProxyServerService implements OnModuleDestroy {
       // upstream, cf. `generateStaticSessionProxies`.
       const temp = this.tempCredentials.get(username);
       if (temp) {
-        if (temp.expiresAt < Date.now() || !safeEqual(temp.password, password)) return null;
+        if (temp.expiresAt < Date.now() || !safeEqual(temp.password, password)) {
+          fail.reason = 'wrong_password';
+          fail.username = temp.parentUsername;
+          fail.known = true;
+          return null;
+        }
         let parent = this.userListCache.get(temp.parentUsername);
         if (!parent) {
           parent = await this.prisma.userProxy.findUnique({ where: { username: temp.parentUsername } });
           if (parent) this.userListCache.set(temp.parentUsername, parent);
         }
-        if (!parent || !this.checkUserEligible(parent, clientIp, username)) return null;
+        if (!parent) {
+          fail.reason = 'unknown_user';
+          return null;
+        }
+        fail.username = parent.username;
+        fail.known = true;
+        if (!this.checkUserEligible(parent, clientIp, username)) {
+          fail.reason = this.eligibilityFailure(parent, clientIp) ?? 'blocked';
+          return null;
+        }
         return { ...parent, __tempSessionAnchor: username };
       }
 
@@ -1616,8 +1670,19 @@ export class ProxyServerService implements OnModuleDestroy {
         user = await this.prisma.userProxy.findUnique({ where: { username } });
         if (user) this.userListCache.set(username, user);
       }
-      if (!user || !safeEqual(user.password, password)) return null;
-      if (!this.checkUserEligible(user, clientIp, username)) return null;
+      if (!user) {
+        fail.reason = 'unknown_user';
+        return null;
+      }
+      fail.known = true;
+      if (!safeEqual(user.password, password)) {
+        fail.reason = 'wrong_password';
+        return null;
+      }
+      if (!this.checkUserEligible(user, clientIp, username)) {
+        fail.reason = this.eligibilityFailure(user, clientIp) ?? 'blocked';
+        return null;
+      }
       return usernameSessionId ? { ...user, __usernameSessionId: usernameSessionId } : user;
     } catch {
       return null;

@@ -26,6 +26,9 @@ import { ImportProxiesDto } from '../../../common/dto/panel.dto';
 import { PoolHealthSnapshotService } from '../pool-health-snapshot.service';
 import { TrafficSnapshotService } from '../traffic-snapshot.service';
 import { LiveSnapshotService } from '../live-snapshot.service';
+import { SettingsService } from '../../../config/settings.service';
+import { resolveConnectionEndpoint } from '../../../common/utils/connection-endpoint';
+import { accountStatus } from '../../../common/utils/account-status';
 import { AuditService } from '../../audit/audit.service';
 import { BYTES_PER_GB } from '../../../common/utils/units';
 
@@ -47,6 +50,7 @@ export class PanelMonitoringController {
     private readonly auditService: AuditService,
     private readonly traffic: TrafficService,
     private readonly liveSnapshots: LiveSnapshotService,
+    private readonly settings: SettingsService,
   ) {}
 
   /** Historique de trafic (volume/requêtes par intervalle de 15 min) — time series. */
@@ -67,6 +71,21 @@ export class PanelMonitoringController {
   @Get('active-accounts')
   async activeAccounts() {
     return { status: 'success', data: (await this.liveSnapshots.get()).active_accounts };
+  }
+
+  /** Connexions refusées d'UN compte (par identifiant) ou, sans paramètre, les plus récentes tous comptes confondus. */
+  @Roles('ADMIN', 'SUPPORT')
+  @ApiQuery({ name: 'username', required: false, type: String })
+  @Get('failures')
+  async failures(@Query('username') username?: string) {
+    if (!username) return { status: 'success', data: { events: this.engine.getRecentFailures(150) } };
+    const acc = await this.prisma.userProxy.findUnique({ where: { username } });
+    if (!acc) throw new BadRequestException('Unknown account');
+    const endpoint = await resolveConnectionEndpoint(this.prisma, this.settings, acc);
+    return {
+      status: 'success',
+      data: { events: this.engine.getAccountFailures(username, 50), account: accountStatus(acc as any), endpoint },
+    };
   }
 
   /** Historique de la santé du pool (time series). */

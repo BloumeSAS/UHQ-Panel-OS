@@ -32,6 +32,7 @@ import {
   Rows4,
   HelpCircle,
   Stethoscope,
+  LifeBuoy,
 } from 'lucide-react';
 import * as LucideIcons from 'lucide-react';
 import { useAuth } from '@/lib/auth';
@@ -46,6 +47,7 @@ import { GlobalSearch } from '@/components/GlobalSearch';
 import { useConfirm } from '@/components/ConfirmDialog';
 import { useTour } from '@/components/GuidedTour';
 import { UpdateOverlay } from '@/components/UpdateOverlay';
+import { WhatsNew } from '@/components/WhatsNew';
 import { cn } from '@/lib/utils';
 
 interface NavItem {
@@ -196,6 +198,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       label: t('nav.sectionAccount'),
       items: [
         { to: '/api-keys', label: t('nav.apiKeys'), icon: KeyRound },
+        { to: '/help', label: t('nav.help'), icon: LifeBuoy },
         { to: '/about', label: t('nav.about'), icon: Info },
       ],
     },
@@ -206,6 +209,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       label: t('nav.sectionAccount'),
       items: [
         { to: '/api-keys', label: t('nav.apiKeys'), icon: KeyRound },
+        { to: '/help', label: t('nav.help'), icon: LifeBuoy },
         { to: '/about', label: t('nav.about'), icon: Info },
       ],
     },
@@ -226,7 +230,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
     },
     {
       label: t('nav.sectionAccount'),
-      items: [{ to: '/about', label: t('nav.about'), icon: Info }],
+      items: [
+        { to: '/help', label: t('nav.help'), icon: LifeBuoy },
+        { to: '/about', label: t('nav.about'), icon: Info },
+      ],
     },
   ];
 
@@ -327,6 +334,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-background">
       {user?.role === 'ADMIN' && <UpdateOverlay />}
+      {user?.role === 'ADMIN' && <WhatsNew />}
       {/* Sidebar */}
       <aside
         data-tour="sidebar"

@@ -7,6 +7,7 @@ import { SettingsService } from '../../config/settings.service';
 import { BackupService } from '../backup/backup.service';
 import { NotificationService } from '../notifications/notification.service';
 import { dataDir } from '../../database/db-config';
+import { APP_VERSION } from '../../version';
 
 interface CheckResult {
   id: string;
@@ -23,6 +24,7 @@ interface State {
 }
 
 const TICK_MS = 60_000;
+const VERSION_CHECK_MS = 6 * 3600_000;
 const REALERT_MS = 6 * 3600_000;
 const BACKUP_CHECK_MS = 30 * 60_000;
 
@@ -69,6 +71,7 @@ export class HealthWatchService implements OnModuleInit, OnModuleDestroy {
   private starter: NodeJS.Timeout | null = null;
   private readonly states = new Map<string, State>();
   private backupCache: { at: number; result: CheckResult } | null = null;
+  private lastVersionCheck = 0;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -157,6 +160,7 @@ export class HealthWatchService implements OnModuleInit, OnModuleDestroy {
         await this.checkBackup(),
       ];
       for (const r of results) await this.apply(r);
+      if (db.ok) await this.checkNewVersion();
 
       // Heartbeat : seulement si tout l'essentiel va bien (sinon l'absence de signal déclenche l'alerte externe).
       const hb = this.settings.get('heartbeatUrl').trim();
@@ -169,6 +173,46 @@ export class HealthWatchService implements OnModuleInit, OnModuleDestroy {
       }
     } catch (e) {
       this.logger.error(`Surveillance : ${e}`);
+    }
+  }
+
+  /** Cloche « nouvelle version disponible » — une seule fois par version (mémorisée en base). */
+  private async checkNewVersion() {
+    if (Date.now() - this.lastVersionCheck < VERSION_CHECK_MS) return;
+    this.lastVersionCheck = Date.now();
+    try {
+      const res = await request('https://api.github.com/repos/BloumeSAS/UHQ-Panel-OS/releases/latest', {
+        method: 'GET',
+        headersTimeout: 8000,
+        bodyTimeout: 8000,
+        headers: { 'User-Agent': 'UHQ-Panel-OS', Accept: 'application/vnd.github+json' },
+      });
+      if (res.statusCode !== 200) return void (await res.body.dump());
+      const body = (await res.body.json()) as { tag_name?: string };
+      const latest = String(body?.tag_name ?? '').replace(/^v/, '');
+      if (!/^\d+\.\d+\.\d+$/.test(latest)) return;
+      const newer = (a: string, b: string) => {
+        const pa = a.split('.').map(Number);
+        const pb = b.split('.').map(Number);
+        for (let i = 0; i < 3; i++) if ((pa[i] ?? 0) !== (pb[i] ?? 0)) return (pa[i] ?? 0) > (pb[i] ?? 0);
+        return false;
+      };
+      if (!newer(latest, APP_VERSION)) return;
+      const key = '__notified.version';
+      const seen = await this.prisma.setting.findUnique({ where: { key } });
+      if (seen?.value === latest) return;
+      await this.prisma.setting.upsert({ where: { key }, create: { key, value: latest }, update: { value: latest } });
+      await this.notifications.createInApp({
+        type: 'info',
+        title: this.lang() === 'en' ? `🆕 Version ${latest} available` : `🆕 Version ${latest} disponible`,
+        message:
+          this.lang() === 'en'
+            ? `You are on ${APP_VERSION}. See what's new and update from the About page.`
+            : `Vous êtes en ${APP_VERSION}. Découvrez les nouveautés et mettez à jour depuis la page À propos.`,
+        link: '/about',
+      });
+    } catch {
+      /* GitHub injoignable : réessaiera plus tard */
     }
   }
 

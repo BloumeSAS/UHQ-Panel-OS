@@ -2,6 +2,7 @@ import { Language } from './translations';
 import { tourFr } from './tour-fr';
 import { launchFr } from './launch-fr';
 import { updateFr } from './update-fr';
+import { featFr } from './feat-fr';
 
 const fr: Language = {
   meta: { code: 'fr', name: 'French', nativeName: 'Français', flag: '🇫🇷' },
@@ -9,6 +10,7 @@ const fr: Language = {
     ...tourFr,
     ...launchFr,
     ...updateFr,
+    ...featFr,
     'app.loading': 'Chargement…',
     'common.save': 'Enregistrer',
     'common.cancel': 'Annuler',

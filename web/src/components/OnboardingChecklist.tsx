@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, CheckCircle2, Circle, Rocket, X } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { useAuth } from '@/lib/auth';
 import { Button, Card, CardContent } from '@/components/ui';
 import { cn } from '@/lib/utils';
+import { toast } from '@/lib/toast';
 
 const HIDE_KEY = 'uhq_onb_hidden';
 const BACKUP_LATER_KEY = 'uhq_onb_backup_later';
@@ -32,6 +33,7 @@ interface Onboarding {
   done: number;
   total: number;
   backup: { enabled: boolean; storage: string };
+  demo?: boolean;
 }
 
 /**
@@ -41,6 +43,8 @@ interface Onboarding {
 export function OnboardingChecklist() {
   const t = useT();
   const { user } = useAuth();
+  const qc = useQueryClient();
+  const [demoBusy, setDemoBusy] = useState(false);
   const [hidden, setHidden] = useState(read(HIDE_KEY) === '1');
   const [snoozeUntil, setSnoozeUntil] = useState(Number(read(BACKUP_LATER_KEY) ?? 0));
 
@@ -52,6 +56,21 @@ export function OnboardingChecklist() {
   });
   if (!data) return null;
 
+  const toggleDemo = async (create: boolean) => {
+    setDemoBusy(true);
+    try {
+      if (create) await api.post('/system/demo');
+      else await api.delete('/system/demo');
+      toast.success(t(create ? 'onb.demo.done' : 'onb.demo.removed'));
+      await qc.invalidateQueries();
+    } catch {
+      toast.error(t('common.error'));
+    } finally {
+      setDemoBusy(false);
+    }
+  };
+
+  const accountDone = data.items.find((i) => i.id === 'account')?.done;
   const showBackupBanner = !data.backup.enabled && Date.now() > snoozeUntil;
   const complete = data.done >= data.total;
 
@@ -139,6 +158,21 @@ export function OnboardingChecklist() {
                 </li>
               ))}
             </ul>
+            {data.demo ? (
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-violet-500/30 bg-violet-500/5 p-3 text-xs">
+                <span>{t('onb.demo.active')}</span>
+                <Button type="button" size="sm" variant="outline" disabled={demoBusy} onClick={() => toggleDemo(false)}>
+                  {t('onb.demo.remove')}
+                </Button>
+              </div>
+            ) : !accountDone ? (
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-dashed p-3 text-xs text-muted-foreground">
+                <span className="max-w-xl">{t('onb.demo.hint')}</span>
+                <Button type="button" size="sm" variant="outline" disabled={demoBusy} onClick={() => toggleDemo(true)}>
+                  {t('onb.demo.btn')}
+                </Button>
+              </div>
+            ) : null}
           </CardContent>
         </Card>
       )}

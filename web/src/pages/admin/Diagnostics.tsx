@@ -3,6 +3,9 @@ import { AlertCircle, CheckCircle2, Info, Loader2, RefreshCw, XCircle } from 'lu
 import { api } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { Button, Card, CardContent } from '@/components/ui';
+import { SupportInfoButton } from '@/components/SupportInfoButton';
+import { fillText } from '@/lib/diagMessage';
+import { ago, failureText } from '@/components/FailuresDialog';
 import { cn } from '@/lib/utils';
 
 type Status = 'ok' | 'warn' | 'fail' | 'info';
@@ -23,14 +26,7 @@ const ICON: Record<Status, { icon: React.ElementType; cls: string }> = {
   info: { icon: Info, cls: 'text-muted-foreground' },
 };
 
-/** Remplace {clé} par la valeur correspondante (tableaux joints par une virgule). */
-function fill(text: string, data?: Record<string, any>) {
-  return text.replace(/\{(\w+)\}/g, (_, k) => {
-    if (k === 'heartbeat') return data?.heartbeat ? ' + heartbeat' : '';
-    const v = data?.[k];
-    return v === undefined || v === null ? '—' : Array.isArray(v) ? v.join(', ') : String(v);
-  });
-}
+const fill = fillText;
 
 export default function Diagnostics() {
   const t = useT();
@@ -39,6 +35,12 @@ export default function Diagnostics() {
     queryFn: async () => (await api.get('/system/diagnostics', { timeout: 40000 })).data as Result,
     refetchOnWindowFocus: false,
     staleTime: 0,
+  });
+
+  const { data: failures } = useQuery({
+    queryKey: ['failures-recent'],
+    queryFn: async () => (await api.get('/monitoring/failures')).data.data.events as { ts: number; ip: string; reason: string; hint?: string; count: number; username: string; known: boolean }[],
+    refetchInterval: 15000,
   });
 
   const message = (c: Check) => {
@@ -64,10 +66,13 @@ export default function Diagnostics() {
           <h1 className="text-2xl font-bold">{t('diag.title')}</h1>
           <p className="text-sm text-muted-foreground">{t('diag.subtitle')}</p>
         </div>
-        <Button type="button" variant="outline" onClick={() => refetch()} disabled={isFetching}>
-          {isFetching ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
-          {t('diag.run')}
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <SupportInfoButton />
+          <Button type="button" variant="outline" onClick={() => refetch()} disabled={isFetching}>
+            {isFetching ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+            {t('diag.run')}
+          </Button>
+        </div>
       </div>
 
       {sum && (
@@ -110,6 +115,41 @@ export default function Diagnostics() {
         })}
       </div>
       {data && <p className="text-xs text-muted-foreground">{t('diag.note')}</p>}
+
+      <Card>
+        <CardContent className="space-y-3 p-4">
+          <h2 className="text-sm font-semibold">{t('fail.recent')}</h2>
+          {!failures || failures.length === 0 ? (
+            <p className="text-sm text-muted-foreground">{t('fail.recentEmpty')}</p>
+          ) : (
+            <div className="max-h-96 overflow-y-auto">
+              <table className="w-full text-xs">
+                <thead className="sticky top-0 bg-card text-muted-foreground">
+                  <tr>
+                    <th className="py-1.5 text-left font-medium">{t('fail.col.time')}</th>
+                    <th className="py-1.5 text-left font-medium">{t('fail.col.account')}</th>
+                    <th className="py-1.5 text-left font-medium">{t('fail.col.cause')}</th>
+                    <th className="py-1.5 text-left font-medium">{t('fail.col.ip')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {failures.map((e, i) => (
+                    <tr key={`${e.ts}-${i}`} className="border-t border-border/60">
+                      <td className="py-1.5 whitespace-nowrap">{ago(e.ts)}</td>
+                      <td className="py-1.5 font-mono">{e.known ? e.username : <span className="text-muted-foreground">{t('fail.unknownAccount')}</span>}</td>
+                      <td className="py-1.5">
+                        {failureText(t, e.reason, e.hint).title}
+                        {e.count > 1 ? <span className="text-muted-foreground"> ×{e.count}</span> : null}
+                      </td>
+                      <td className="py-1.5 font-mono">{e.ip}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

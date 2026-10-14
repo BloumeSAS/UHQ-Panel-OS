@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2, List, Copy, Check, Pencil, Tag, Calendar, Zap, CheckSquare, Square, RotateCcw, ChevronLeft, ChevronRight, Upload, Link2, Ban, Eye, BarChart3, Globe2, Search, PlugZap } from 'lucide-react';
+import { Plus, Trash2, List, Copy, Check, Pencil, Tag, Calendar, Zap, CheckSquare, Square, RotateCcw, ChevronLeft, ChevronRight, Upload, Link2, Ban, Eye, BarChart3, Globe2, Search, PlugZap, Code2, LifeBuoy, Network as NetworkIcon } from 'lucide-react';
 import { SlideOver } from '@/components/SlideOver';
 import { AddonPageBar } from '@/components/AddonPageBar';
 import { CountryFlag } from '@/components/CountryFlag';
@@ -33,6 +33,10 @@ import {
 import { toast } from '@/lib/toast';
 import { BYTES_PER_GB } from '@/lib/utils';
 import { TestAccountDialog } from '@/components/TestAccountDialog';
+import { ConnectionDialog, type ConnectionInfo } from '@/components/ConnectionDialog';
+import { FailuresDialog } from '@/components/FailuresDialog';
+import { EmptyState } from '@/components/EmptyState';
+import { InfoTip } from '@/components/InfoTip';
 
 interface SubUser {
   id: string;
@@ -128,6 +132,16 @@ export default function SubUsers() {
   const [sharingFor, setSharingFor] = useState<SubUser | null>(null);
   const [quickViewFor, setQuickViewFor] = useState<SubUser | null>(null);
   const [testing, setTesting] = useState<SubUser | null>(null);
+  const [conn, setConn] = useState<ConnectionInfo | null>(null);
+  const [failFor, setFailFor] = useState<SubUser | null>(null);
+  const openConnection = async (u: SubUser) => {
+    try {
+      const { data } = await api.get(`/subusers/${u.id}/connection`);
+      setConn(data.data);
+    } catch {
+      toast.error(t('common.error'));
+    }
+  };
   const [statsFor, setStatsFor] = useState<SubUser | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -291,6 +305,25 @@ export default function SubUsers() {
               </TR>
             </THead>
             <TBody>
+              {data && data.length === 0 && !search && !selectedTag && (
+                <TR>
+                  <TD colSpan={12}>
+                    <EmptyState
+                      icon={NetworkIcon}
+                      title={t('empty.accounts.t')}
+                      body={t('empty.accounts.b')}
+                      helpQuery="compte"
+                      action={{
+                        label: t('empty.accounts.demo'),
+                        onClick: async () => {
+                          await api.post('/system/demo');
+                          invalidate();
+                        },
+                      }}
+                    />
+                  </TD>
+                </TR>
+              )}
               {data?.map((u) => {
                 const isExpired = u.expires_at && new Date(u.expires_at) < new Date();
                 return (
@@ -387,6 +420,12 @@ export default function SubUsers() {
                       />
                     </TD>
                     <TD className="flex justify-end gap-1">
+                      <Button variant="ghost" size="icon" onClick={() => setFailFor(u)} title={t('fail.btn')}>
+                        <LifeBuoy className="h-4 w-4" />
+                      </Button>
+                      <Button variant="ghost" size="icon" onClick={() => openConnection(u)} title={t('conn.btn')}>
+                        <Code2 className="h-4 w-4" />
+                      </Button>
                       <Button variant="ghost" size="icon" onClick={() => setTesting(u)} title={t('test.btn')}>
                         <PlugZap className="h-4 w-4" />
                       </Button>
@@ -519,6 +558,8 @@ export default function SubUsers() {
 
       {/* Quick view slide-over */}
       <TestAccountDialog account={testing} onClose={() => setTesting(null)} />
+      <ConnectionDialog info={conn} onClose={() => setConn(null)} />
+      <FailuresDialog target={failFor ? { mode: 'admin', id: failFor.id, username: failFor.username, label: failFor.label } : null} onClose={() => setFailFor(null)} />
       <SlideOver open={!!quickViewFor} onClose={() => setQuickViewFor(null)} title={quickViewFor?.label ?? ''}>
         {quickViewFor && (
           <QuickView
@@ -1254,11 +1295,11 @@ function SubUserForm({
 
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-1.5">
-          <Label>{t('sub.threads')}</Label>
+          <Label>{t('sub.threads')}<InfoTip text={t('tip.threads')} /></Label>
           <Input type="number" min={1} value={form.threads_limit} onChange={(e) => set('threads_limit', e.target.value)} placeholder={t('sub.threadsPlaceholder')} />
         </div>
         <div className="space-y-1.5">
-          <Label>{t('sub.trafficLimit')}</Label>
+          <Label>{t('sub.trafficLimit')}<InfoTip text={t('tip.trafficLimit')} /></Label>
           <Input
             type="number"
             min={0}
@@ -1273,11 +1314,11 @@ function SubUserForm({
           <Input value={form.country_filter} onChange={(e) => set('country_filter', e.target.value)} placeholder="FR,DE" />
         </div>
         <div className="space-y-1.5">
-          <Label>{t('sub.stickyTtl')}</Label>
+          <Label>{t('sub.stickyTtl')}<InfoTip text={t('tip.stickyTtl')} /></Label>
           <Input type="number" min={60} value={form.sticky_session_ttl} onChange={(e) => set('sticky_session_ttl', e.target.value)} placeholder={t('sub.stickyTtlPlaceholder')} />
         </div>
         <div className="space-y-1.5">
-          <Label>{t('sub.bandwidthLimit')}</Label>
+          <Label>{t('sub.bandwidthLimit')}<InfoTip text={t('tip.bandwidth')} /></Label>
           <Input
             type="number"
             min={0}
@@ -1297,7 +1338,7 @@ function SubUserForm({
       </div>
 
       <div className="space-y-1.5">
-        <Label>{t('sub.ipWhitelist')}</Label>
+        <Label>{t('sub.ipWhitelist')}<InfoTip text={t('tip.ipWhitelist')} /></Label>
         <Input value={form.allowed_ips} onChange={(e) => set('allowed_ips', e.target.value)} placeholder="1.2.3.4,5.6.7.8" />
       </div>
 
@@ -1311,7 +1352,7 @@ function SubUserForm({
       </div>
 
       <div className="space-y-1.5">
-        <Label>{t('pools.assign')}</Label>
+        <Label>{t('pools.assign')}<InfoTip text={t('tip.pool')} /></Label>
         <select
           value={form.pool}
           onChange={(e) => set('pool', e.target.value)}

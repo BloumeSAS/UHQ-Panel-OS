@@ -21,6 +21,7 @@ import { buildPoolEndpointMap, resolveConnectionEndpoint, resolveHostPortSync } 
 import { t } from '../../../common/utils/i18n';
 import { BYTES_PER_GB } from '../../../common/utils/units';
 import { AnalyticsService, clampDays, safeTz } from '../../analytics/analytics.service';
+import { accountStatus } from '../../../common/utils/account-status';
 
 type Period = 'week' | 'month' | 'year' | 'all';
 function periodStart(period: Period): Date {
@@ -146,6 +147,18 @@ export class PanelMeController {
    * Activité d'un de MES comptes : heures/jours les plus actifs, tendance
    * journalière (page « Mon activité » de l'addon Analyse). `tz` = fuseau du navigateur.
    */
+  /** « Pourquoi ça ne marche pas ? » : dernières connexions refusées de MON compte, avec la cause. */
+  @ApiParam({ name: 'id', description: 'ID du sous-utilisateur proxy' })
+  @Get('proxies/:id/failures')
+  async failures(@CurrentUser() me: JwtUser, @Param('id') id: string) {
+    const proxy = await this.ownedProxy(me, id);
+    const host = await resolveConnectionEndpoint(this.prisma, this.settings, proxy);
+    return {
+      status: 'success',
+      data: { events: this.engine.getAccountFailures(proxy.username, 50), account: accountStatus(proxy as any), endpoint: host },
+    };
+  }
+
   @ApiParam({ name: 'id', description: 'ID du sous-utilisateur proxy' })
   @Get('proxies/:id/activity')
   async activity(

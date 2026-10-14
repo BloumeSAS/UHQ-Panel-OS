@@ -94,6 +94,7 @@ export const TOUR_STEPS: TourStep[] = [
   page('apikeys', 'all', '/api-keys'),
   { id: 'profile', audience: 'all', route: '/profile', focus: 'content' },
   { id: 'security', audience: 'all', route: '/security', focus: 'content' },
+  page('help', 'all', '/help'),
   page('about', 'all', '/about'),
   { id: 'finish', audience: 'all' },
 ];

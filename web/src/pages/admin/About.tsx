@@ -8,6 +8,7 @@ import { useAuth } from '@/lib/auth';
 import { Button, Card, CardContent, CardHeader, CardTitle } from '@/components/ui';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/dialog';
 import { Markdown } from '@/components/Markdown';
+import { SupportInfoButton } from '@/components/SupportInfoButton';
 import { UPDATE_PENDING_KEY, UPDATE_START_EVENT } from '@/components/UpdateOverlay';
 
 interface Release {
@@ -142,6 +143,8 @@ export default function About() {
             <History className="h-4 w-4" />
             {t('about.viewChangelog')}
           </Button>
+
+          {isAdmin && <SupportInfoButton className="w-full" />}
 
           {isAdmin && (
             <Button onClick={checkUpdate} disabled={busy} className="w-full">

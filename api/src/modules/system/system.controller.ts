@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
+import { Controller, Delete, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -22,6 +22,21 @@ export class SystemController {
   @Get('diagnostics')
   async diagnostics(@Req() req: any) {
     return { status: 'success', ...(await this.system.diagnostics({ protocol: req.protocol, hostname: req.hostname })) };
+  }
+
+  @Post('demo')
+  async createDemo() {
+    return { status: 'success', ...(await this.system.createDemo()) };
+  }
+
+  @Delete('demo')
+  async removeDemo() {
+    return { status: 'success', ...(await this.system.removeDemo()) };
+  }
+
+  @Get('support-info')
+  async supportInfo(@Req() req: any) {
+    return { status: 'success', ...(await this.system.supportInfo({ protocol: req.protocol, hostname: req.hostname })) };
   }
 
   @Post('test-account/:id')

@@ -165,6 +165,7 @@ export class UpdateSettingsDto {
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(8) updateWebhookMethod?: string;
   @ApiPropertyOptional() @IsOptional() @IsBoolean() @Transform(({ value }) => value === undefined || value === null ? value : (value === 'true' || value === true)) healthAlertsEnabled?: boolean;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(500) heartbeatUrl?: string;
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() @Transform(({ value }) => value === undefined || value === null ? value : (value === 'true' || value === true)) customerAlertsEnabled?: boolean;
   // Page d'état publique
   @ApiPropertyOptional() @IsOptional() @IsBoolean() @Transform(({ value }) => value === undefined || value === null ? value : (value === 'true' || value === true)) statusPageEnabled?: boolean;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(500) statusPageMessage?: string;

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
+import { EmptyState } from '@/components/EmptyState';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2, FlaskConical, Play, Pencil, Layers, CheckSquare, Square, Wand2, RotateCcw, AlertTriangle, Search, ChevronLeft, ChevronRight, Activity } from 'lucide-react';
+import { Plus, Trash2, FlaskConical, Play, Pencil, Layers, CheckSquare, Square, Wand2, RotateCcw, AlertTriangle, Search, ChevronLeft, ChevronRight, Activity, Radar } from 'lucide-react';
 import { api, apiError } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import {
@@ -223,6 +224,13 @@ export default function Scraper() {
               </TR>
             </THead>
             <TBody>
+              {paged.length === 0 && !search && (
+                <TR>
+                  <TD colSpan={12}>
+                    <EmptyState icon={Radar} title={t('empty.sources.t')} body={t('empty.sources.b')} helpQuery="scraper" />
+                  </TD>
+                </TR>
+              )}
               {paged.map((s) => (
                 <TR key={s.id}>
                   <TD>

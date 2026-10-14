@@ -137,6 +137,8 @@ export const SETTING_DEFS = {
   panelUrl: { def: '', env: 'PANEL_URL', secret: false },
   // Autorise les proxies amont du pool PARTAGÉ sur des adresses privées (RFC 1918). Loopback / lien-local : toujours refusés.
   allowPrivateUpstreams: { def: 'false', env: 'ALLOW_PRIVATE_UPSTREAMS', secret: false },
+  // Alertes e-mail/cloche aux propriétaires de comptes (quota 80/100 %, expiration).
+  customerAlertsEnabled: { def: 'true', env: undefined, secret: false },
   // Surveillance : alertes moteur/base/disque/sauvegardes + heartbeat externe (URL appelée chaque minute si tout va bien).
   healthAlertsEnabled: { def: 'true', env: undefined, secret: false },
   heartbeatUrl: { def: '', env: 'HEARTBEAT_URL', secret: false },

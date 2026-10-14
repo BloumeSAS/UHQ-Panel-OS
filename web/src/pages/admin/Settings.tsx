@@ -14,6 +14,7 @@ import { useTheme } from '@/lib/theme';
 import { hexToHslTriplet, hslTripletToHex, THEME_VARS, type ThemeColors, type ThemeVar } from '@/lib/color';
 import { Button, Input, Label, Switch } from '@/components/ui';
 import { useConfirm } from '@/components/ConfirmDialog';
+import { BackupVerifyDialog } from '@/components/BackupVerifyDialog';
 import { cn } from '@/lib/utils';
 import { toast } from '@/lib/toast';
 
@@ -125,6 +126,7 @@ export default function Settings() {
   });
 
   const [backupBusy, setBackupBusy] = useState(false);
+  const [verifying, setVerifying] = useState<string | null>(null);
   const [s3TestBusy, setS3TestBusy] = useState(false);
   const [manualBackupStorage, setManualBackupStorage] = useState<'local' | 's3'>('local');
 
@@ -164,6 +166,7 @@ export default function Settings() {
         'smtpReportsEnabled',
         'maintenanceModeEnabled',
         'statusPageEnabled',
+        'customerAlertsEnabled',
         'healthAlertsEnabled',
         'discordAlertsEnabled',
         'slackAlertsEnabled',
@@ -359,6 +362,8 @@ export default function Settings() {
             </div>
           );
         })()}
+
+        <BackupVerifyDialog filename={verifying} onClose={() => setVerifying(null)} />
 
         {/* ────── TABLEAU DE BORD (STATS) ────── */}
         {tab === 'dashboard' && <DbStatsCard />}
@@ -670,6 +675,7 @@ export default function Settings() {
             <Separator label={t('settings.notifications')} />
             <div className="grid gap-3 sm:grid-cols-2">
               <Toggle label={t('settings.emailOnRegister')} hint={t('settings.emailOnRegisterHint')} k="emailOnRegister" form={form} set={set} />
+              <Toggle label={t('settings.customerAlerts')} hint={t('settings.customerAlertsHint')} k="customerAlertsEnabled" form={form} set={set} />
               <Toggle label={t('settings.emailOnLogin')}    hint={t('settings.emailOnLoginHint')}    k="emailOnLogin"    form={form} set={set} />
               <Toggle label={t('settings.emailResetEnabled')} hint={t('settings.emailResetEnabledHint')} k="emailResetEnabled" form={form} set={set} />
             </div>
@@ -1033,6 +1039,9 @@ export default function Settings() {
                               onClick={() => handleRestoreBackup(b.filename)}
                             >
                               {t('settings.backupRestore')}
+                            </Button>
+                            <Button type="button" variant="outline" size="sm" onClick={() => setVerifying(b.filename)}>
+                              {t('verify.btn')}
                             </Button>
                             <Button
                               type="button"

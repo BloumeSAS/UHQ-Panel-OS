@@ -112,6 +112,13 @@ export class BackupController {
   /**
    * Restore the database state from a selected backup file.
    */
+  /** Vérifie qu'une sauvegarde est restaurable (lecture seule : la base n'est pas touchée). */
+  @Post('verify')
+  async verifyBackup(@Body() body: { filename: string }) {
+    if (!body?.filename) return { status: 'error', message: 'Backup filename is required.' };
+    return { status: 'success', result: await this.backupService.verifyBackup(body.filename) };
+  }
+
   @Post('restore')
   async restoreBackup(@Body() body: { filename: string }) {
     if (!body.filename) {

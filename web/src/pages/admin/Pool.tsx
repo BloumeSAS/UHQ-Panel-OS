@@ -1,25 +1,7 @@
 import { useState, useEffect } from 'react';
+import { EmptyState } from '@/components/EmptyState';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import {
-  Upload,
-  Trash2,
-  Search,
-  Activity,
-  Database,
-  Network,
-  Copy,
-  Check,
-  RefreshCw,
-  RotateCcw,
-  AlertTriangle,
-  Ban,
-  Download,
-  ChevronLeft,
-  ChevronRight,
-  Gauge,
-  UserCheck,
-  Radar,
-} from 'lucide-react';
+import { Upload, Trash2, Search, Activity, Database, Network, Copy, Check, RefreshCw, RotateCcw, AlertTriangle, Ban, Download, ChevronLeft, ChevronRight, Gauge, UserCheck, Radar, Server } from 'lucide-react';
 import { CountryFlag } from '@/components/CountryFlag';
 import { useConfirm } from '@/components/ConfirmDialog';
 import { api, apiError } from '@/lib/api';
@@ -517,6 +499,13 @@ export default function Pool() {
                 </TR>
               </THead>
               <TBody>
+                {filteredData && filteredData.length === 0 && !search && (
+                  <TR>
+                    <TD colSpan={12}>
+                      <EmptyState icon={Server} title={t('empty.pool.t')} body={t('empty.pool.b')} helpQuery="pool" />
+                    </TD>
+                  </TR>
+                )}
                 {filteredData?.map((p) => {
                   const creds = getCredentials(p.url);
                   const proxyStr = formatAsStandard(p);

@@ -33,6 +33,7 @@ import AddonDocs from '@/pages/admin/AddonDocs';
 import AddonIframe from '@/pages/AddonIframe';
 import Diagnostics from '@/pages/admin/Diagnostics';
 import Status from '@/pages/Status';
+import Help from '@/pages/Help';
 
 import Maintenance from '@/pages/Maintenance';
 import ShareLinkView from '@/pages/ShareLinkView';
@@ -132,6 +133,7 @@ function AppRoutes() {
       {/* User routes (any authenticated) */}
       <Route path="/profile" element={<Protected><ProfilePage /></Protected>} />
       <Route path="/security" element={<Protected><SecurityPage /></Protected>} />
+      <Route path="/help" element={<Protected><Help /></Protected>} />
       <Route path="/api-keys" element={<Protected><ApiKeysPage /></Protected>} />
       <Route path="/addons/:id/:pagePath" element={<Protected><AddonIframe /></Protected>} />
       <Route path="/about" element={<Protected><About /></Protected>} />
