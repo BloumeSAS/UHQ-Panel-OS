@@ -12,6 +12,7 @@ import { allowedPortRange } from '../../common/utils/port-validation';
 import { NotificationService } from '../notifications/notification.service';
 import { RateLimiterService } from '../../common/rate-limiter.service';
 import { VpnDetectionService } from './vpn-detection.service';
+import { errorResponse } from './error-catalog';
 import {
   performHandshake,
   tcpConnect,
@@ -71,8 +72,14 @@ export class ProxyServerService implements OnModuleDestroy {
     return this.settings.getNumber('connectionIdleTimeout') * 1000 || 600_000;
   }
   // Proxy résidentiel de secours (fallback) : config DB (fallback env).
-  private get fallbackProxyUrl(): string | null {
+  private get globalFallbackUrl(): string | null {
     return this.settings.get('scraperProxy') || null;
+  }
+  /** Fallback effectif d'une catégorie : désactivé → null ; sinon le sien, sinon le global. */
+  private fallbackUrlFor(pool: string | null | undefined): string | null {
+    const cfg = pool ? this.poolFallbackCfg.get(pool) : undefined;
+    if (cfg && !cfg.enabled) return null;
+    return cfg?.url || this.globalFallbackUrl;
   }
 
   // State / caches -------------------------------------------------------
@@ -95,6 +102,8 @@ export class ProxyServerService implements OnModuleDestroy {
    * ("{user}__country__{country}"), cf. `getFallbackUpstream`.
    */
   private readonly poolFallbackFormatMap = new Map<string, string>();
+  /** nom de pool → fallback propre (URL) et interrupteur (false = aucun fallback pour cette catégorie). */
+  private readonly poolFallbackCfg = new Map<string, { url: string | null; enabled: boolean }>();
   /** port → username : ce port est exclusif à CE compte (407 pour tout autre). */
   private readonly portUserMap = new Map<number, string>();
   /** Plage publiée par Docker (PROXY_PORT_RANGE="min-max", défaut 9000-9250) — avertissement non-bloquant ici (le blocage dur est fait à l'écriture, cf. `assertPortAvailable`). */
@@ -294,8 +303,8 @@ export class ProxyServerService implements OnModuleDestroy {
         // un format de username fallback custom — la grande majorité des
         // pools partagent le port par défaut et seraient exclues du fetch ci-dessus.
         this.prisma.proxyPool.findMany({
-          where: { fallbackCountryFormat: { not: null } },
-          select: { name: true, fallbackCountryFormat: true },
+          where: { OR: [{ fallbackCountryFormat: { not: null } }, { fallbackProxyUrl: { not: null } }, { fallbackEnabled: false }] },
+          select: { name: true, fallbackCountryFormat: true, fallbackProxyUrl: true, fallbackEnabled: true },
         }),
         this.prisma.proxyPool.findMany({ where: { antiVpnEnabled: true }, select: { name: true } }),
         this.prisma.proxyPool.findMany({
@@ -314,7 +323,11 @@ export class ProxyServerService implements OnModuleDestroy {
       this.alwaysOnlinePoolSet.clear();
       for (const p of alwaysOnlinePools) this.alwaysOnlinePoolSet.add(p.name);
       this.poolFallbackFormatMap.clear();
-      for (const p of fallbackFormatPools) if (p.fallbackCountryFormat) this.poolFallbackFormatMap.set(p.name, p.fallbackCountryFormat);
+      this.poolFallbackCfg.clear();
+      for (const p of fallbackFormatPools) {
+        if (p.fallbackCountryFormat) this.poolFallbackFormatMap.set(p.name, p.fallbackCountryFormat);
+        this.poolFallbackCfg.set(p.name, { url: p.fallbackProxyUrl, enabled: p.fallbackEnabled });
+      }
       this.antiVpnPoolSet.clear();
       for (const p of antiVpnPools) this.antiVpnPoolSet.add(p.name);
       this.poolMultiplierMap.clear();
@@ -677,7 +690,7 @@ export class ProxyServerService implements OnModuleDestroy {
     const clientIp = client.remoteAddress?.replace(/^::ffff:/, '') ?? '';
     if (this.isIpBanned(clientIp)) {
       this.failures.record('(IP)', false, { ip: clientIp, reason: 'banned_ip', port: boundPort });
-      client.write('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\nIP banned.\r\n');
+      client.write(errorResponse('UHQ_IP_BANNED'));
       client.end();
       return;
     }
@@ -762,9 +775,7 @@ export class ProxyServerService implements OnModuleDestroy {
         this.logger.log(`Auth failed for ${clientIp}`);
         this.failures.record(authFail.username ?? '(?)', !!authFail.known, { ip: clientIp, reason: authFail.reason ?? 'no_credentials', port: boundPort });
         void this.registerAuthFailure(clientIp);
-        client.write(
-          'HTTP/1.1 407 Proxy Authentication Required\r\nProxy-Authenticate: Basic realm="Proxy"\r\n\r\n',
-        );
+        client.write(errorResponse('UHQ_AUTH_FAILED'));
         client.end();
         return;
       }
@@ -781,7 +792,7 @@ export class ProxyServerService implements OnModuleDestroy {
         if (isDomainBlocked(checkHost, user.blockedDomains)) {
           this.logger.warn(`Domain blocked for ${user.username}: ${checkHost}`);
           this.failures.record(user.username, true, { ip: clientIp, reason: 'domain_blocked', port: boundPort, hint: String(checkHost).slice(0, 80) });
-          client.write('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\nDomain blocked for this account.\r\n');
+          client.write(errorResponse('UHQ_DOMAIN_BLOCKED'));
           client.end();
           return;
         }
@@ -826,9 +837,7 @@ export class ProxyServerService implements OnModuleDestroy {
       if (dedicatedOwner && dedicatedOwner !== user.username) {
         this.logger.warn(`Port ${boundPort} is dedicated to another account, rejecting ${username}`);
         this.failures.record(user.username, true, { ip: clientIp, reason: 'wrong_port', port: boundPort, hint: String(user.port ?? this.poolPortMap.get(user.pool) ?? this.port) });
-        client.write(
-          'HTTP/1.1 407 Proxy Authentication Required\r\nProxy-Authenticate: Basic realm="Proxy"\r\n\r\n',
-        );
+        client.write(errorResponse('UHQ_WRONG_PORT', { expected_port: user.port ?? this.poolPortMap.get(user.pool) ?? this.port }));
         client.end();
         return;
       }
@@ -843,9 +852,7 @@ export class ProxyServerService implements OnModuleDestroy {
             `User ${username} belongs to pool "${user.pool}" dedicated to port ${requiredPoolPort}, rejecting on port ${boundPort}`,
           );
           this.failures.record(user.username, true, { ip: clientIp, reason: 'wrong_port', port: boundPort, hint: String(requiredPoolPort) });
-          client.write(
-            'HTTP/1.1 407 Proxy Authentication Required\r\nProxy-Authenticate: Basic realm="Proxy"\r\n\r\n',
-          );
+          client.write(errorResponse('UHQ_WRONG_PORT', { expected_port: requiredPoolPort }));
           client.end();
           return;
         }
@@ -866,7 +873,7 @@ export class ProxyServerService implements OnModuleDestroy {
           this.logger.warn(`VPN detected for ${clientIp} on pool "${effectivePool}" — rejecting + banning`);
           void this.banVpnIp(clientIp, effectivePool);
           this.failures.record(user.username, true, { ip: clientIp, reason: 'vpn', port: boundPort, hint: effectivePool });
-          client.write('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\nVPN detected.\r\n');
+          client.write(errorResponse('UHQ_VPN_BLOCKED'));
           client.end();
           return;
         }
@@ -895,9 +902,7 @@ export class ProxyServerService implements OnModuleDestroy {
       if (currentThreads >= limit) {
         this.logger.warn(`User ${acct} reached thread limit (${currentThreads}/${limit})`);
         this.failures.record(user.username, true, { ip: clientIp, reason: 'thread_limit', port: boundPort, hint: `${currentThreads}/${limit}` });
-        client.write(
-          'HTTP/1.1 429 Too Many Requests\r\nConnection: close\r\n\r\nThread limit reached.\r\n',
-        );
+        client.write(errorResponse('UHQ_THREAD_LIMIT'));
         client.end();
         return;
       }
@@ -1018,7 +1023,7 @@ export class ProxyServerService implements OnModuleDestroy {
       }
 
       // --- Final fallback (Phase 10 in Python) ---
-      if (!winner && this.fallbackProxyUrl) {
+      if (!winner && this.fallbackUrlFor(effectivePool)) {
         try {
           const fb = this.getFallbackUpstream(requestedCountry, effectivePool);
           if (fb) {
@@ -1054,7 +1059,7 @@ export class ProxyServerService implements OnModuleDestroy {
         this.logger.error(`All upstream attempts failed for ${path}`);
         this.failures.record(user.username, true, { ip: clientIp, reason: 'no_upstream', port: boundPort, hint: String(method === 'CONNECT' ? path : this.extractHost(path, headers)).slice(0, 80) });
         if (!client.destroyed) {
-          client.write('HTTP/1.1 502 Bad Gateway\r\n\r\n');
+          client.write(errorResponse('UHQ_NO_UPSTREAM'));
           client.end();
         }
         return;
@@ -1129,6 +1134,7 @@ export class ProxyServerService implements OnModuleDestroy {
           winnerCounted,
           throttle,
           effectivePool,
+          { ip: clientIp, port: boundPort },
         );
       }
       // Tunnel "muet" : le client a envoyé des données mais l'upstream n'a
@@ -1144,7 +1150,7 @@ export class ProxyServerService implements OnModuleDestroy {
       this.logger.debug(`Connection error: ${(e as Error)?.message ?? e}`);
       try {
         if (!client.destroyed) {
-          client.write('HTTP/1.1 504 Gateway Timeout\r\n\r\n');
+          client.write(errorResponse('UHQ_GATEWAY_ERROR'));
         }
       } catch {
         /* swallow */
@@ -1915,7 +1921,7 @@ export class ProxyServerService implements OnModuleDestroy {
    * résidentiels attendent une convention précise, pas toujours "__country__".
    */
   private getFallbackUpstream(country: string | null, poolName?: string | null): UpstreamProxy | null {
-    let urlStr = buildProxyUrl(this.fallbackProxyUrl);
+    let urlStr = buildProxyUrl(this.fallbackUrlFor(poolName));
     if (!urlStr) return null;
     try {
       const u = new URL(urlStr);
@@ -2002,6 +2008,7 @@ export class ProxyServerService implements OnModuleDestroy {
     counted: { read: number; written: number },
     throttle: PipeThrottle | undefined,
     pool: string | null,
+    ctx: { ip: string; port: number },
   ): Promise<void> {
     const proto = (upstream.protocol || 'http').toLowerCase();
     let finalPath = path;
@@ -2049,7 +2056,36 @@ export class ProxyServerService implements OnModuleDestroy {
       this.meter(username, hostKey, reqBuf.length, 0, true, pool);
     });
 
+    // Erreur RÉELLE du proxy amont : jamais montrée au client. Pour une requête sans corps (le client
+    // n'attend rien d'autre), on lit l'en-tête de réponse avant de relayer : si c'est une erreur du proxy
+    // amont (407 d'authentification chez le fournisseur, ou 502/503/504 d'un logiciel proxy identifié),
+    // le client reçoit notre erreur JSON, et le détail réel va seulement dans les logs du panel.
+    const hasBody = headers.some((h) => /^(content-length|transfer-encoding):/i.test(h) && !/^content-length:\s*0\s*$/i.test(h));
     let firstResponseChunk = true;
+    if (!hasBody) {
+      let head: Buffer;
+      try {
+        head = await readUntil(upstreamSocket, Buffer.from('\r\n\r\n'), this.timeoutMs, 32 * 1024);
+      } catch {
+        this.failures.record(username, true, { ip: ctx.ip, reason: 'upstream_error', port: ctx.port, hint: 'no response' });
+        if (!client.destroyed) client.write(errorResponse('UHQ_UPSTREAM_FAILED'));
+        return;
+      }
+      const text = head.toString('latin1');
+      const status = Number(/^HTTP\/\d(?:\.\d)? (\d{3})/.exec(text)?.[1] ?? 0);
+      const proxyish = /^(via|x-squid-error|proxy-agent|x-cache-lookup):|^server:\s*(squid|tinyproxy|3proxy|privoxy|haproxy|mitmproxy)/im.test(text);
+      if (status === 407 || ([502, 503, 504].includes(status) && proxyish)) {
+        this.logger.warn(`Erreur amont ${upstream.ip}:${upstream.port} → HTTP ${status} (masquée au client)`);
+        this.failures.record(username, true, { ip: ctx.ip, reason: 'upstream_error', port: ctx.port, hint: `HTTP ${status}` });
+        if (!client.destroyed) client.write(errorResponse('UHQ_UPSTREAM_FAILED'));
+        return;
+      }
+      counted.read += head.length;
+      this.meter(username, hostKey, 0, head.length, false, pool);
+      firstResponseChunk = false;
+      this.sniffTargetBlocking(username, hostKey, head);
+      client.write(head);
+    }
     await bidirectionalPipe(
       client,
       upstreamSocket,

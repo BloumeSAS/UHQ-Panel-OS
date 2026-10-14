@@ -48,6 +48,8 @@ interface ProxyPool {
   fakeIpCountByCountry: Record<string, number> | null;
   fakeIpRotateSeconds: number | null;
   fallbackCountryFormat: string | null;
+  fallbackProxyUrl: string | null;
+  fallbackEnabled: boolean;
   createdAt: string;
 }
 
@@ -175,6 +177,15 @@ export default function ProxyPools() {
                           {t('pools.checkerDisabled')}
                         </Badge>
                       )}
+                      {pool.fallbackEnabled === false ? (
+                        <Badge variant="secondary" className="bg-slate-100 text-slate-700 dark:bg-slate-800/50 dark:text-slate-400 text-[10px]">
+                          {t('pools.fbOffBadge')}
+                        </Badge>
+                      ) : pool.fallbackProxyUrl ? (
+                        <Badge variant="secondary" className="bg-sky-100 text-sky-800 dark:bg-sky-950/30 dark:text-sky-400 text-[10px]">
+                          {t('pools.fbOwnBadge')}
+                        </Badge>
+                      ) : null}
                       {pool.trafficMultiplier != null && pool.trafficMultiplier !== 1 && (
                         <Badge
                           variant="secondary"
@@ -299,6 +310,8 @@ const EMPTY_POOL_FORM = {
   fakeIpRotateEnabled: false,
   fakeIpRotateSeconds: '',
   fallbackCountryFormat: '',
+  fallbackProxyUrl: '',
+  fallbackEnabled: true,
 };
 
 function CreateDialog({ onCreated }: { onCreated: () => void }) {
@@ -330,6 +343,8 @@ function CreateDialog({ onCreated }: { onCreated: () => void }) {
         fakeIpCountMax: fakeMax ? Number(fakeMax) : undefined,
         fakeIpRotateSeconds: form.fakeIpRotateEnabled && form.fakeIpRotateSeconds ? Number(form.fakeIpRotateSeconds) : undefined,
         fallbackCountryFormat: form.fallbackCountryFormat || undefined,
+        fallbackProxyUrl: form.fallbackProxyUrl || undefined,
+        fallbackEnabled: form.fallbackEnabled,
       });
       setOpen(false);
       setForm(EMPTY_POOL_FORM);
@@ -378,6 +393,8 @@ function EditDialog({ pool, onClose, onSaved }: { pool: ProxyPool; onClose: () =
     fakeIpRotateEnabled: pool.fakeIpRotateSeconds != null,
     fakeIpRotateSeconds: pool.fakeIpRotateSeconds != null ? String(pool.fakeIpRotateSeconds) : '',
     fallbackCountryFormat: pool.fallbackCountryFormat ?? '',
+    fallbackProxyUrl: pool.fallbackProxyUrl ?? '',
+    fallbackEnabled: pool.fallbackEnabled ?? true,
   });
   const [error, setError] = useState('');
   const set = (k: string, v: any) => setForm((f) => ({ ...f, [k]: v }));
@@ -413,6 +430,8 @@ function EditDialog({ pool, onClose, onSaved }: { pool: ProxyPool; onClose: () =
         fakeIpCountMax: fakeMax ? Number(fakeMax) : null,
         fakeIpRotateSeconds: form.fakeIpRotateEnabled && form.fakeIpRotateSeconds ? Number(form.fakeIpRotateSeconds) : null,
         fallbackCountryFormat: form.fallbackCountryFormat || null,
+        fallbackProxyUrl: form.fallbackProxyUrl || null,
+        fallbackEnabled: form.fallbackEnabled,
       });
       toast.success(t('pools.updated'));
       onSaved();
@@ -451,6 +470,8 @@ function PoolForm({
     fakeIpFixed: string; fakeIpMin: string; fakeIpMax: string;
     fakeIpRotateEnabled: boolean; fakeIpRotateSeconds: string;
     fallbackCountryFormat: string;
+    fallbackProxyUrl: string;
+    fallbackEnabled: boolean;
   };
   set: (k: string, v: any) => void;
   error: string;
@@ -645,6 +666,31 @@ function PoolForm({
             </Button>
             <p className="text-xs text-muted-foreground">{t('pools.fakeIpRerollHint')}</p>
           </>
+        )}
+      </div>
+
+      <div className="space-y-2 rounded-lg border p-3">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <Label>{t('pools.fbEnabled')}</Label>
+            <p className="text-xs text-muted-foreground">{t('pools.fbEnabledHint')}</p>
+          </div>
+          <Switch checked={form.fallbackEnabled} onCheckedChange={(v) => set('fallbackEnabled', v)} />
+        </div>
+        {form.fallbackEnabled && (
+          <div className="space-y-1.5">
+            <Label>{t('pools.fbUrl')}</Label>
+            <Input
+              type={form.fallbackProxyUrl.includes('•') ? 'password' : 'text'}
+              value={form.fallbackProxyUrl}
+              onChange={(e) => set('fallbackProxyUrl', e.target.value)}
+              onFocus={(e) => form.fallbackProxyUrl.includes('•') && e.currentTarget.select()}
+              placeholder="http://user:pass@gw.example.com:7000"
+              className="font-mono text-xs"
+              autoComplete="off"
+            />
+            <p className="text-xs text-muted-foreground">{t('pools.fbUrlHint')}</p>
+          </div>
         )}
       </div>
 

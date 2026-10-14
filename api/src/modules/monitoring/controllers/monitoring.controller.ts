@@ -30,6 +30,7 @@ import { SettingsService } from '../../../config/settings.service';
 import { resolveConnectionEndpoint } from '../../../common/utils/connection-endpoint';
 import { accountStatus } from '../../../common/utils/account-status';
 import { AuditService } from '../../audit/audit.service';
+import { ERROR_CATALOG } from '../../proxy-engine/error-catalog';
 import { BYTES_PER_GB } from '../../../common/utils/units';
 
 /**
@@ -86,6 +87,13 @@ export class PanelMonitoringController {
       status: 'success',
       data: { events: this.engine.getAccountFailures(username, 50), account: accountStatus(acc as any), endpoint },
     };
+  }
+
+  /** Fiche des erreurs que le moteur renvoie aux clients (code, cause, action, réponse prête à envoyer). */
+  @Roles('ADMIN', 'SUPPORT')
+  @Get('error-catalog')
+  errorCatalog() {
+    return { status: 'success', data: ERROR_CATALOG };
   }
 
   /** Historique de la santé du pool (time series). */

@@ -181,4 +181,27 @@ export const featEn: Record<string, string> = {
   // ── Guided tour: added steps ──
   'tour.help.t': 'Help',
   'tour.help.b': 'The help center answers frequent questions (connecting a customer, error 407, quotas, Cloudflare, backups, updates…) with search, links to the right page, the full documentation and the “Copy support info” button.',
+
+  // ── Error codes, per-category fallback ──
+  'nav.errors': 'Error codes',
+  'errors.title': 'Error codes',
+  'errors.subtitle': 'What each error returned to customers means, what to do in the panel, and a ready-to-send reply.',
+  'errors.rule': 'Customers never see the real error of an upstream proxy (provider, free proxy, fallback): the engine always answers with one of these errors, as JSON, with the X-UHQ-Error header. The real detail is in the logs and in “Why does it not work?”.',
+  'errors.search': 'Search a code (407, UHQ_NO_UPSTREAM, quota…)',
+  'errors.empty': 'No matching error.',
+  'errors.causes': 'What it means',
+  'errors.action': 'What to do in the panel',
+  'errors.customer': 'Reply to send to the customer',
+  'errors.copy': 'Copy reply',
+  'errors.copied': 'Reply copied',
+  'tour.errors.t': 'Error codes',
+  'tour.errors.b': 'The reference of every error your customers can receive: what each code means, what to check, and a ready-to-copy reply for support. Errors are always yours, never the upstream proxies’.',
+  'pools.fbEnabled': 'Fallback proxy',
+  'pools.fbEnabledHint': 'When no pool proxy answers, the connection goes through a fallback proxy. Turn off so this category never uses it (the customer then gets UHQ_NO_UPSTREAM).',
+  'pools.fbUrl': 'Fallback for this category',
+  'pools.fbUrlHint': 'Fallback proxy URL for this category (http://user:pass@host:port, or socks5://…). Empty = use the global fallback (Settings → Scraper). Credentials stay masked.',
+  'pools.fbOffBadge': 'No fallback',
+  'pools.fbOwnBadge': 'Own fallback',
+  'fail.reason.upstream_error.t': 'Upstream proxy error (hidden)',
+  'fail.reason.upstream_error.a': 'The exit proxy answered with an error ({hint}). The customer received our UHQ_UPSTREAM_FAILED error, never the provider’s: see the panel logs (“Upstream error”).',
 };

@@ -32,6 +32,7 @@ import {
   Rows4,
   HelpCircle,
   Stethoscope,
+  ShieldAlert,
   LifeBuoy,
 } from 'lucide-react';
 import * as LucideIcons from 'lucide-react';
@@ -189,6 +190,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       label: t('nav.sectionSystem'),
       items: [
         { to: '/diagnostics', label: t('nav.diagnostics'), icon: Stethoscope },
+        { to: '/errors', label: t('nav.errors'), icon: ShieldAlert },
         { to: '/addons-manage', label: t('nav.addons'), icon: Puzzle },
         { to: '/addon-docs', label: t('nav.addonDocs'), icon: BookOpen },
         { to: '/settings', label: t('nav.settings'), icon: Settings },
@@ -226,6 +228,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         { to: '/logs', label: t('nav.logs'), icon: ScrollText },
         { to: '/reports', label: t('nav.reports'), icon: BarChart3 },
         { to: '/audit', label: t('nav.audit'), icon: ClipboardList },
+        { to: '/errors', label: t('nav.errors'), icon: ShieldAlert },
       ],
     },
     {

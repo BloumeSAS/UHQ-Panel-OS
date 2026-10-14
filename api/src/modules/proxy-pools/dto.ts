@@ -92,6 +92,17 @@ export class CreatePoolDto {
   @IsString()
   @MaxLength(255)
   fallbackCountryFormat?: string;
+
+  @ApiPropertyOptional({ example: 'http://user:pass@gw.example.com:7000', description: "Proxy de secours propre à cette catégorie. Absent/vide = utilise le fallback global." })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  fallbackProxyUrl?: string;
+
+  @ApiPropertyOptional({ description: 'false = aucun fallback pour cette catégorie (même si un fallback global existe). Défaut true.' })
+  @IsOptional()
+  @IsBoolean()
+  fallbackEnabled?: boolean;
 }
 
 export class UpdatePoolDto {
@@ -173,4 +184,15 @@ export class UpdatePoolDto {
   @IsString()
   @MaxLength(255)
   fallbackCountryFormat?: string | null;
+
+  @ApiPropertyOptional({ description: "Proxy de secours propre à la catégorie (null/vide = retire, utilise le fallback global). Les •••• sont ignorés (secret masqué)." })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  fallbackProxyUrl?: string | null;
+
+  @ApiPropertyOptional({ description: 'false = aucun fallback pour cette catégorie.' })
+  @IsOptional()
+  @IsBoolean()
+  fallbackEnabled?: boolean;
 }

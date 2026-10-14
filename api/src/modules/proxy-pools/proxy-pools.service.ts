@@ -27,6 +27,31 @@ function validateFallbackFormat(raw: string | null | undefined): string | null {
   return trimmed;
 }
 
+export const SECRET_MASK = '••••••••';
+
+/**
+ * URL du fallback d'une catégorie (contient des identifiants) : `undefined` = ne pas toucher (champ absent
+ * ou masque renvoyé tel quel), null = retirer, sinon URL validée (http/https/socks4/socks5).
+ */
+function validateFallbackUrl(raw: string | null | undefined): string | null | undefined {
+  if (raw === undefined) return undefined;
+  const trimmed = raw?.trim();
+  if (!trimmed) return null;
+  if (trimmed.includes('•')) return undefined;
+  try {
+    const u = new URL(trimmed.includes('://') ? trimmed : `http://${trimmed}`);
+    if (!['http:', 'https:', 'socks4:', 'socks5:', 'socks5h:'].includes(u.protocol) || !u.hostname) throw new Error();
+  } catch {
+    throw new BadRequestException("L'URL du fallback est invalide (ex. http://user:pass@hote:port).");
+  }
+  return trimmed;
+}
+
+/** Jamais d'identifiants en clair dans les réponses : l'URL du fallback est masquée. */
+function maskPool<T extends { fallbackProxyUrl?: string | null }>(pool: T): T {
+  return { ...pool, fallbackProxyUrl: pool.fallbackProxyUrl ? SECRET_MASK : null };
+}
+
 /** Tire un nombre d'IP indépendant pour CHAQUE pays — pas un total partagé à répartir. */
 function rollAllCountries(countries: string[], min: number, max: number, priority: string[]): Record<string, number> {
   const out: Record<string, number> = {};
@@ -47,7 +72,7 @@ export class ProxyPoolsService {
   ) {}
 
   findAll() {
-    return this.prisma.proxyPool.findMany({ orderBy: { name: 'asc' } });
+    return this.prisma.proxyPool.findMany({ orderBy: { name: 'asc' } }).then((l) => l.map(maskPool));
   }
 
   async create(dto: CreatePoolDto) {
@@ -76,12 +101,14 @@ export class ProxyPoolsService {
         fakeIpCountByCountry,
         fakeIpRotateSeconds: dto.fakeIpRotateSeconds ?? null,
         fallbackCountryFormat: validateFallbackFormat(dto.fallbackCountryFormat),
+        fallbackProxyUrl: validateFallbackUrl(dto.fallbackProxyUrl) ?? null,
+        fallbackEnabled: dto.fallbackEnabled ?? true,
       },
     });
     // Toujours invalider (pas seulement si `port` a changé) : ça rafraîchit
     // aussi le cache en mémoire du format fallback par pool.
     this.engine.invalidatePortCache();
-    return pool;
+    return maskPool(pool);
   }
 
   async update(id: string, dto: UpdatePoolDto) {
@@ -156,13 +183,16 @@ export class ProxyPoolsService {
           ...(dto.fallbackCountryFormat !== undefined && {
             fallbackCountryFormat: validateFallbackFormat(dto.fallbackCountryFormat),
           }),
+          ...(validateFallbackUrl(dto.fallbackProxyUrl) !== undefined && { fallbackProxyUrl: validateFallbackUrl(dto.fallbackProxyUrl) }),
+          ...(dto.fallbackEnabled !== undefined && { fallbackEnabled: dto.fallbackEnabled }),
         },
       });
       // Toujours invalider (pas seulement si `port` a changé) : ça rafraîchit
       // aussi le cache en mémoire du format fallback par pool.
       this.engine.invalidatePortCache();
-      return pool;
-    } catch {
+      return maskPool(pool);
+    } catch (e) {
+      if (e instanceof BadRequestException) throw e;
       throw new NotFoundException('Pool introuvable');
     }
   }
@@ -176,14 +206,14 @@ export class ProxyPoolsService {
     const { fakeIpCountMin: min, fakeIpCountMax: max } = existing;
     const fakeIpCountByCountry =
       countries.length && min != null && max != null ? rollAllCountries(countries, min, max, priority) : {};
-    return this.prisma.proxyPool.update({ where: { id }, data: { fakeIpCountByCountry } });
+    return maskPool(await this.prisma.proxyPool.update({ where: { id }, data: { fakeIpCountByCountry } }));
   }
 
   async remove(id: string) {
     try {
       const pool = await this.prisma.proxyPool.delete({ where: { id } });
-      if (pool.port != null) this.engine.invalidatePortCache();
-      return pool;
+      this.engine.invalidatePortCache();
+      return maskPool(pool);
     } catch {
       throw new NotFoundException('Pool introuvable');
     }

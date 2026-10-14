@@ -16,6 +16,7 @@ export type FailureReason =
   | 'vpn'
   | 'thread_limit'
   | 'no_upstream'
+  | 'upstream_error'
   | 'banned_ip';
 
 export interface FailureEvent {

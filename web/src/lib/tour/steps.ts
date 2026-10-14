@@ -71,6 +71,7 @@ export const TOUR_STEPS: TourStep[] = [
   page('reports', 'staff', '/reports'),
   page('audit', 'staff', '/audit'),
   page('diagnostics', 'admin', '/diagnostics'),
+  page('errors', 'staff', '/errors'),
   page('addons', 'admin', '/addons-manage'),
   page('addondocs', 'admin', '/addon-docs'),
   { id: 'docs', audience: 'all', focus: 'nav:docs' },

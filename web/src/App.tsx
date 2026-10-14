@@ -32,6 +32,7 @@ import Addons from '@/pages/admin/Addons';
 import AddonDocs from '@/pages/admin/AddonDocs';
 import AddonIframe from '@/pages/AddonIframe';
 import Diagnostics from '@/pages/admin/Diagnostics';
+import ErrorCodes from '@/pages/admin/ErrorCodes';
 import Status from '@/pages/Status';
 import Help from '@/pages/Help';
 
@@ -125,6 +126,7 @@ function AppRoutes() {
       <Route path="/settings" element={<Protected admin><Settings /></Protected>} />
       <Route path="/reports" element={<Protected roles={['ADMIN', 'SUPPORT']}><Reports /></Protected>} />
       <Route path="/audit" element={<Protected roles={['ADMIN', 'SUPPORT']}><Audit /></Protected>} />
+      <Route path="/errors" element={<Protected roles={['ADMIN', 'SUPPORT']}><ErrorCodes /></Protected>} />
       <Route path="/diagnostics" element={<Protected admin><Diagnostics /></Protected>} />
       <Route path="/banned-ips" element={<Protected admin><BannedIps /></Protected>} />
       <Route path="/addons-manage" element={<Protected admin><Addons /></Protected>} />

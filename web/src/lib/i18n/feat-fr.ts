@@ -181,4 +181,27 @@ export const featFr: Record<string, string> = {
   // ── Visite guidée : étapes ajoutées ──
   'tour.help.t': 'Aide',
   'tour.help.b': 'Le centre d’aide répond aux questions fréquentes (connexion d’un client, erreur 407, quotas, Cloudflare, sauvegardes, mise à jour…) avec une recherche, des liens vers la bonne page, la documentation complète et le bouton « Copier les infos de support ».',
+
+  // ── Codes d'erreur, fallback par catégorie ──
+  'nav.errors': 'Codes d’erreur',
+  'errors.title': 'Codes d’erreur',
+  'errors.subtitle': 'Ce que chaque erreur renvoyée aux clients veut dire, quoi faire côté panel, et la réponse prête à leur envoyer.',
+  'errors.rule': 'Le client ne voit jamais l’erreur réelle d’un proxy amont (fournisseur, proxy gratuit, fallback) : le moteur répond toujours par une de ces erreurs, en JSON, avec l’en-tête X-UHQ-Error. Le détail réel est dans les logs et dans « Pourquoi ça ne marche pas ? ».',
+  'errors.search': 'Rechercher un code (407, UHQ_NO_UPSTREAM, quota…)',
+  'errors.empty': 'Aucune erreur ne correspond.',
+  'errors.causes': 'Ce que ça veut dire',
+  'errors.action': 'Quoi faire côté panel',
+  'errors.customer': 'Réponse à envoyer au client',
+  'errors.copy': 'Copier la réponse',
+  'errors.copied': 'Réponse copiée',
+  'tour.errors.t': 'Codes d’erreur',
+  'tour.errors.b': 'La fiche de toutes les erreurs que vos clients peuvent recevoir : ce que chaque code signifie, quoi vérifier, et une réponse prête à copier pour le support. Les erreurs sont toujours les vôtres, jamais celles des proxies amont.',
+  'pools.fbEnabled': 'Fallback de secours',
+  'pools.fbEnabledHint': 'Quand aucun proxy du pool ne répond, la connexion passe par un proxy de secours. Désactivez pour que cette catégorie ne l’utilise jamais (le client reçoit alors l’erreur UHQ_NO_UPSTREAM).',
+  'pools.fbUrl': 'Fallback propre à cette catégorie',
+  'pools.fbUrlHint': 'URL du proxy de secours de cette catégorie (http://user:pass@hôte:port, ou socks5://…). Laisser vide = utiliser le fallback global (Paramètres → Scraper). Les identifiants restent masqués.',
+  'pools.fbOffBadge': 'Sans fallback',
+  'pools.fbOwnBadge': 'Fallback propre',
+  'fail.reason.upstream_error.t': 'Erreur du proxy amont (masquée)',
+  'fail.reason.upstream_error.a': 'Le proxy de sortie a répondu par une erreur ({hint}). Le client a reçu notre erreur UHQ_UPSTREAM_FAILED, jamais celle du fournisseur : voir les logs du panel (« Erreur amont »).',
 };
