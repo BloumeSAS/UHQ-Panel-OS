@@ -63,6 +63,9 @@ services:
       DATA_DIR: /app/data
       TZ: Europe/Paris
       PROXY_PORT: "990"
+      # Optionnel : protège /setup (création du 1er admin, base, restauration) tant que
+      # l'installation n'est pas terminée. À saisir sur l'écran d'installation.
+      # SETUP_TOKEN: "choisissez-un-jeton-secret"
       API_PORT: "8000"
       # Plage de ports publiée ci-dessus (host:container) — informatif seulement,
       # sert à avertir dans les logs si un port assigné depuis le panel tombe

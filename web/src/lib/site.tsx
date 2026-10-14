@@ -20,6 +20,8 @@ export interface DbStatus {
   configured: boolean;
   source: 'env' | 'file' | 'none';
   bundled: boolean;
+  /** Le serveur exige un SETUP_TOKEN pour l'installation. */
+  setupTokenRequired?: boolean;
 }
 
 interface SiteCtx {

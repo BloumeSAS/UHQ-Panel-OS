@@ -6,11 +6,13 @@ import {
   HttpException,
   HttpStatus,
   Post,
+  UseGuards,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { DatabaseConfigService } from '../../../database/database-config.service';
 import { DatabaseSetupDto } from '../../../common/dto/panel.dto';
 import { t } from '../../../common/utils/i18n';
+import { SetupTokenGuard, setupTokenRequired } from '../../../common/guards/setup-token.guard';
 
 /**
  * Configuration de la base de données au premier démarrage (public).
@@ -23,7 +25,8 @@ export class PanelDatabaseController {
 
   @Get('db-status')
   status() {
-    return { status: 'success', ...this.dbConfig.status() };
+    const st = this.dbConfig.status();
+    return { status: 'success', ...st, setupTokenRequired: setupTokenRequired() };
   }
 
   /** Sonde la base embarquée Docker (service `db`). Public, pas de garde. */
@@ -33,6 +36,7 @@ export class PanelDatabaseController {
     return { status: 'success', available: !!url, url };
   }
 
+  @UseGuards(SetupTokenGuard)
   @Post('db')
   async configure(@Body() dto: DatabaseSetupDto) {
     if (this.dbConfig.status().configured) {

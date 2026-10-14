@@ -31,6 +31,7 @@ import {
   Rows3,
   Rows4,
   HelpCircle,
+  Stethoscope,
 } from 'lucide-react';
 import * as LucideIcons from 'lucide-react';
 import { useAuth } from '@/lib/auth';
@@ -184,6 +185,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
     {
       label: t('nav.sectionSystem'),
       items: [
+        { to: '/diagnostics', label: t('nav.diagnostics'), icon: Stethoscope },
         { to: '/addons-manage', label: t('nav.addons'), icon: Puzzle },
         { to: '/addon-docs', label: t('nav.addonDocs'), icon: BookOpen },
         { to: '/settings', label: t('nav.settings'), icon: Settings },

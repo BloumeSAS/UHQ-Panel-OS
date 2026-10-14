@@ -91,7 +91,15 @@ export default function Settings() {
   const { languages } = useI18n();
   const { refresh } = useSite();
   const confirmDialog = useConfirm();
-  const [tab, setTab] = useState<TabKey>('general');
+  const [tab, setTab] = useState<TabKey>(() => {
+    try {
+      const k = new URLSearchParams(window.location.search).get('tab');
+      if (k && TABS.some((x) => x.key === k)) return k as TabKey;
+    } catch {
+      /* ignore */
+    }
+    return 'general';
+  });
 
   // La visite guidée ouvre l'onglet qu'elle est en train de présenter.
   useEffect(() => {
@@ -155,6 +163,7 @@ export default function Settings() {
         'emailResetEnabled',
         'smtpReportsEnabled',
         'maintenanceModeEnabled',
+        'statusPageEnabled',
         'discordAlertsEnabled',
         'slackAlertsEnabled',
         'bloumechatAlertsEnabled',
@@ -364,6 +373,14 @@ export default function Settings() {
               />
             </F>
 
+            <F label={t('settings.panelUrl')} hint={t('settings.panelUrlHint')}>
+              <Input
+                value={form.panelUrl ?? ''}
+                onChange={(e) => set('panelUrl', e.target.value)}
+                placeholder="https://panel.example.com"
+              />
+            </F>
+
             <F label={t('settings.logoUrl')} hint={t('settings.logoUrlHint')}>
               <Input
                 value={form.logoUrl ?? ''}
@@ -405,6 +422,22 @@ export default function Settings() {
                 k="maintenanceModeEnabled" form={form} set={set}
               />
             </Row>
+            <Row>
+              <Toggle
+                label={t('settings.statusPage')}
+                hint={t('settings.statusPageHint')}
+                k="statusPageEnabled" form={form} set={set}
+              />
+            </Row>
+            {form.statusPageEnabled && (
+              <F label={t('settings.statusPageMessage')} hint={t('settings.statusPageMessageHint')}>
+                <Input
+                  value={form.statusPageMessage ?? ''}
+                  maxLength={500}
+                  onChange={(e) => set('statusPageMessage', e.target.value)}
+                />
+              </F>
+            )}
 
             <Separator label={t('settings.configImportExport')} />
             <ConfigImportExport />

@@ -56,8 +56,10 @@ export const TOUR_STEPS: TourStep[] = [
 
   // Pages
   page('dashboard', 'staff', '/'),
+  { id: 'onboarding', audience: 'admin', route: '/', focus: 'onboarding' },
   page('myproxies', 'user', '/'),
   page('subusers', 'admin', '/subusers'),
+  { id: 'testaccount', audience: 'admin', route: '/subusers', focus: 'content' },
   page('users', 'admin', '/users'),
   page('pool', 'staff', '/pool'),
   page('proxypools', 'admin', '/proxy-pools'),
@@ -68,6 +70,7 @@ export const TOUR_STEPS: TourStep[] = [
   page('logs', 'staff', '/logs'),
   page('reports', 'staff', '/reports'),
   page('audit', 'staff', '/audit'),
+  page('diagnostics', 'admin', '/diagnostics'),
   page('addons', 'admin', '/addons-manage'),
   page('addondocs', 'admin', '/addon-docs'),
   { id: 'docs', audience: 'all', focus: 'nav:docs' },

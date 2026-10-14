@@ -7,7 +7,10 @@ import { Button } from '@/components/ui';
 const BASE = '/api/panel/setup/restore';
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const fmt = (n: number) => (n >= 1e9 ? `${(n / 1e9).toFixed(2)} GB` : `${(n / 1e6).toFixed(1)} MB`);
-const apiMsg = (e: any) => e?.response?.data?.message || e?.message || '';
+const apiMsg = (e: any) => {
+  const m = e?.response?.data?.message;
+  return m === 'SETUP_TOKEN_REQUIRED' ? 'Setup token invalid / jeton d’installation invalide.' : m || e?.message || '';
+};
 
 interface Status {
   phase: string;

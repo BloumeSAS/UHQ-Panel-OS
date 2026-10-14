@@ -6,6 +6,7 @@ import { useT } from '@/lib/i18n';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui';
 import { cn, BYTES_PER_GB } from '@/lib/utils';
 import { AddonPageBar } from '@/components/AddonPageBar';
+import { OnboardingChecklist } from '@/components/OnboardingChecklist';
 
 type DashboardTab = 'overview' | 'active-accounts' | 'extensions';
 
@@ -97,6 +98,8 @@ export default function Dashboard() {
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold">{t('nav.dashboard')}</h1>
+
+      <OnboardingChecklist />
 
       <div className="flex gap-1 border-b border-border">
         <button

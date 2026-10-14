@@ -40,6 +40,7 @@ import { InvitationsModule } from './modules/invitations/invitations.module';
 import { ProxyPoolsModule } from './modules/proxy-pools/proxy-pools.module';
 import { BannedIpsModule } from './modules/banned-ips/banned-ips.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
+import { SystemModule } from './modules/system/system.module';
 
 /**
  * Localise le panel React buildé (web/dist). Ordre :
@@ -90,6 +91,7 @@ export function resolveWebDist(): string {
     ProxyPoolsModule,
     BannedIpsModule,
     AnalyticsModule,
+    SystemModule,
     // Panel React statique (SPA). API, /docs, /static et /addon-proxy
     // (addons officiels embarqués, cf. BundledAddonsService) exclus du fallback.
     ServeStaticModule.forRoot({

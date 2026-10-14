@@ -8,6 +8,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
+import { panelBaseUrl } from '../../common/utils/panel-url';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import * as crypto from 'crypto';
 import * as bcrypt from 'bcryptjs';
@@ -63,8 +64,10 @@ export class InvitationsController {
       },
     });
 
-    const host = this.settings.get('publicProxyHost');
-    const baseUrl = `https://${host}`;
+    const baseUrl = panelBaseUrl(this.settings);
+    if (!baseUrl) {
+      throw new BadRequestException("Renseignez l'URL publique du panel (Paramètres → Général) avant d'envoyer des invitations.");
+    }
     const inviteUrl = `${baseUrl}/register?invite=${token}`;
 
     await this.mail.sendInvitation(dto.email, inviteUrl, this.settings.get('siteName'));

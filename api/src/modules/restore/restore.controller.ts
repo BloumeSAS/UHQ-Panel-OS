@@ -1,6 +1,7 @@
-import { Body, Controller, Delete, Get, Param, Post, Query, Req } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { RestoreService } from './restore.service';
+import { SetupTokenGuard } from '../../common/guards/setup-token.guard';
 
 /**
  * Restauration d'une sauvegarde depuis l'assistant d'installation (public,
@@ -8,6 +9,7 @@ import { RestoreService } from './restore.service';
  * Upload en morceaux (PUT brut) : compatible avec les limites de taille des proxies/CDN.
  */
 @ApiTags('panel-restore')
+@UseGuards(SetupTokenGuard)
 @Controller('api/panel/setup/restore')
 export class RestoreController {
   constructor(private readonly restore: RestoreService) {}

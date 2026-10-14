@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2, List, Copy, Check, Pencil, Tag, Calendar, Zap, CheckSquare, Square, RotateCcw, ChevronLeft, ChevronRight, Upload, Link2, Ban, Eye, BarChart3, Globe2, Search } from 'lucide-react';
+import { Plus, Trash2, List, Copy, Check, Pencil, Tag, Calendar, Zap, CheckSquare, Square, RotateCcw, ChevronLeft, ChevronRight, Upload, Link2, Ban, Eye, BarChart3, Globe2, Search, PlugZap } from 'lucide-react';
 import { SlideOver } from '@/components/SlideOver';
 import { AddonPageBar } from '@/components/AddonPageBar';
 import { CountryFlag } from '@/components/CountryFlag';
@@ -32,6 +32,7 @@ import {
 } from '@/components/dialog';
 import { toast } from '@/lib/toast';
 import { BYTES_PER_GB } from '@/lib/utils';
+import { TestAccountDialog } from '@/components/TestAccountDialog';
 
 interface SubUser {
   id: string;
@@ -126,6 +127,7 @@ export default function SubUsers() {
   const [editing, setEditing] = useState<SubUser | null>(null);
   const [sharingFor, setSharingFor] = useState<SubUser | null>(null);
   const [quickViewFor, setQuickViewFor] = useState<SubUser | null>(null);
+  const [testing, setTesting] = useState<SubUser | null>(null);
   const [statsFor, setStatsFor] = useState<SubUser | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -385,6 +387,9 @@ export default function SubUsers() {
                       />
                     </TD>
                     <TD className="flex justify-end gap-1">
+                      <Button variant="ghost" size="icon" onClick={() => setTesting(u)} title={t('test.btn')}>
+                        <PlugZap className="h-4 w-4" />
+                      </Button>
                       <Button variant="ghost" size="icon" onClick={() => setQuickViewFor(u)} title="Vue rapide">
                         <Eye className="h-4 w-4" />
                       </Button>
@@ -513,6 +518,7 @@ export default function SubUsers() {
       )}
 
       {/* Quick view slide-over */}
+      <TestAccountDialog account={testing} onClose={() => setTesting(null)} />
       <SlideOver open={!!quickViewFor} onClose={() => setQuickViewFor(null)} title={quickViewFor?.label ?? ''}>
         {quickViewFor && (
           <QuickView

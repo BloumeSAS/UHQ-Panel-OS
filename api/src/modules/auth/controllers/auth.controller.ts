@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  Logger,
   Body,
   Controller,
   ForbiddenException,
@@ -23,6 +24,8 @@ import { t } from '../../../common/utils/i18n';
 import { verifyCaptcha, type CaptchaProvider } from '../../../common/utils/captcha.util';
 import { getClientIp } from '../../../common/utils/client-ip';
 import { MailService } from '../../mail/mail.service';
+import { panelBaseUrl } from '../../../common/utils/panel-url';
+import { SetupTokenGuard, setupTokenRequired } from '../../../common/guards/setup-token.guard';
 import { RestoreService } from '../../restore/restore.service';
 import { RateLimiterService } from '../../../common/rate-limiter.service';
 import { authenticator } from '@otplib/preset-default';
@@ -37,6 +40,8 @@ import { AuditService } from '../../audit/audit.service';
 @ApiTags('panel-auth')
 @Controller('api/panel')
 export class PanelAuthController {
+  private readonly logger = new Logger('PanelAuth');
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly settings: SettingsService,
@@ -64,6 +69,7 @@ export class PanelAuthController {
     const setupCompleted = !!meta?.setupCompleted && adminCount > 0;
     return {
       setupCompleted,
+      setupTokenRequired: !setupCompleted && setupTokenRequired(),
       registrationEnabled: this.settings.getBool('registrationEnabled'),
       siteName: this.settings.get('siteName'),
       logoUrl: this.settings.get('logoUrl'),
@@ -80,6 +86,7 @@ export class PanelAuthController {
   }
 
   /** Premier démarrage : crée le 1er admin + config initiale. Verrouillé ensuite. */
+  @UseGuards(SetupTokenGuard)
   @Post('setup')
   async setup(@Body() dto: SetupDto, @Req() req: any) {
     const meta = await this.prisma.appMeta.findUnique({ where: { id: SINGLETON } });
@@ -128,6 +135,11 @@ export class PanelAuthController {
   async register(@Body() body: RegisterDto, @Req() req: any) {
     if (!this.settings.getBool('registrationEnabled')) {
       throw new ForbiddenException(t('errors.registrationDisabled'));
+    }
+
+    // Frein anti-spam de comptes (et du coût bcrypt) : 5 inscriptions / minute / IP.
+    if (!this.rateLimiter.check(`register:ip:${this.clientIp(req)}`, 5, 60_000)) {
+      throw new UnauthorizedException(t('errors.tooManyAttempts'));
     }
 
     await this.assertCaptcha(body.captchaToken);
@@ -309,11 +321,14 @@ export class PanelAuthController {
       const expiresAt = new Date(Date.now() + 3600_000); // 1 h
       await this.prisma.passwordResetToken.create({ data: { userId: user.id, token, expiresAt } });
 
-      const host = this.settings.get('publicProxyHost');
-      // On reconstruit l'URL du panel depuis l'hôte (sans le port proxy)
-      const baseUrl = `https://${host}`;
-      const resetUrl = `${baseUrl}/reset-password?token=${token}`;
-      void this.mail.sendPasswordReset(user.email, resetUrl, this.settings.get('siteName'));
+      const baseUrl = panelBaseUrl(this.settings);
+      if (baseUrl) {
+        const resetUrl = `${baseUrl}/reset-password?token=${token}`;
+        void this.mail.sendPasswordReset(user.email, resetUrl, this.settings.get('siteName'));
+      } else {
+        // Réponse identique côté client (anti-énumération) ; l'admin doit renseigner l'URL du panel.
+        this.logger.warn("Réinitialisation de mot de passe : aucune URL de panel définie (Paramètres → Général) — e-mail non envoyé.");
+      }
     }
 
     return { status: 'success', message: 'Si un compte existe, un e-mail a été envoyé.' };
@@ -323,7 +338,11 @@ export class PanelAuthController {
   @Post('auth/reset-password')
   async resetPassword(
     @Body() body: ResetPasswordDto,
+    @Req() req: any,
   ) {
+    if (!this.rateLimiter.check(`reset:ip:${this.clientIp(req)}`, 10, 60_000)) {
+      throw new UnauthorizedException(t('errors.tooManyAttempts'));
+    }
     if (!this.settings.getBool('emailResetEnabled')) {
       throw new ForbiddenException('Réinitialisation de mot de passe désactivée.');
     }

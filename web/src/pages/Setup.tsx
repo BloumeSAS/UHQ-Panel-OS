@@ -8,6 +8,7 @@ import { Info } from 'lucide-react';
 import { Button, Card, CardContent, CardHeader, CardTitle, Input, Label, Switch } from '@/components/ui';
 import { Footer } from '@/components/Footer';
 import { RestoreBackup } from '@/components/RestoreBackup';
+import { SetupTokenField } from '@/components/SetupTokenField';
 
 export default function Setup() {
   const { db, status, refresh } = useSite();
@@ -55,7 +56,8 @@ export default function Setup() {
       await refresh();
       navigate('/');
     } catch (err: any) {
-      setError(err?.response?.data?.message || 'Erreur');
+      const m = err?.response?.data?.message;
+      setError(m === 'SETUP_TOKEN_REQUIRED' ? t('setupToken.invalid') : m || 'Erreur');
     } finally {
       setBusy(false);
     }
@@ -75,6 +77,11 @@ export default function Setup() {
           <p className="text-sm text-muted-foreground">{t('setup.subtitle')}</p>
         </CardHeader>
         <CardContent>
+          {db?.setupTokenRequired && (
+            <div className="mb-4">
+              <SetupTokenField required />
+            </div>
+          )}
           <div className="mb-4 grid grid-cols-2 gap-1 rounded-lg bg-muted p-1 text-sm">
             {(['new', 'restore'] as const).map((m) => (
               <button

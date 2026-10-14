@@ -159,6 +159,10 @@ export class UpdateSettingsDto {
   @ApiPropertyOptional() @IsOptional() @IsString() captchaCapEndpoint?: string;
   // Maintenance Mode
   @ApiPropertyOptional() @IsOptional() @IsBoolean() @Transform(({ value }) => value === undefined || value === null ? value : (value === 'true' || value === true)) maintenanceModeEnabled?: boolean;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(300) panelUrl?: string;
+  // Page d'état publique
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() @Transform(({ value }) => value === undefined || value === null ? value : (value === 'true' || value === true)) statusPageEnabled?: boolean;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(500) statusPageMessage?: string;
   // Webhooks
   @ApiPropertyOptional() @IsOptional() @IsString() discordWebhookUrl?: string;
   @ApiPropertyOptional() @IsOptional() @IsBoolean() @Transform(({ value }) => value === undefined || value === null ? value : (value === 'true' || value === true)) discordAlertsEnabled?: boolean;

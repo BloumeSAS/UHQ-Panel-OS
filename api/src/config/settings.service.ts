@@ -129,6 +129,11 @@ export const SETTING_DEFS = {
   captchaCapEndpoint: { def: '', env: undefined, secret: false },
   // ── Maintenance Mode ────────────────────────────────────────────────────────
   maintenanceModeEnabled: { def: 'false', env: undefined, secret: false },
+  // URL publique du panel (liens e-mail). Vide = https://<publicProxyHost>.
+  panelUrl: { def: '', env: 'PANEL_URL', secret: false },
+  // Page d'état publique (/status) — désactivée par défaut.
+  statusPageEnabled: { def: 'false', env: undefined, secret: false },
+  statusPageMessage: { def: '', env: undefined, secret: false },
   // ── Discord / Slack / BloumeChat Webhooks ──────────────────────────────────
   discordWebhookUrl: { def: '', env: undefined, secret: true },
   discordAlertsEnabled: { def: 'false', env: undefined, secret: false },

@@ -31,6 +31,8 @@ import ProxyPools from '@/pages/admin/ProxyPools';
 import Addons from '@/pages/admin/Addons';
 import AddonDocs from '@/pages/admin/AddonDocs';
 import AddonIframe from '@/pages/AddonIframe';
+import Diagnostics from '@/pages/admin/Diagnostics';
+import Status from '@/pages/Status';
 
 import Maintenance from '@/pages/Maintenance';
 import ShareLinkView from '@/pages/ShareLinkView';
@@ -92,6 +94,7 @@ function AppRoutes() {
     location.pathname === '/login' ||
     location.pathname === '/forgot-password' ||
     location.pathname === '/reset-password' ||
+    location.pathname === '/status' ||
     location.pathname.startsWith('/share/');
 
   if (status?.maintenanceModeEnabled && !isAdmin && !isPublicPage) {
@@ -105,6 +108,7 @@ function AppRoutes() {
       <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/reset-password" element={<ResetPassword />} />
       <Route path="/share/:token" element={<ShareLinkView />} />
+      <Route path="/status" element={<Status />} />
 
       <Route path="/" element={<HomeRouter />} />
 
@@ -120,6 +124,7 @@ function AppRoutes() {
       <Route path="/settings" element={<Protected admin><Settings /></Protected>} />
       <Route path="/reports" element={<Protected roles={['ADMIN', 'SUPPORT']}><Reports /></Protected>} />
       <Route path="/audit" element={<Protected roles={['ADMIN', 'SUPPORT']}><Audit /></Protected>} />
+      <Route path="/diagnostics" element={<Protected admin><Diagnostics /></Protected>} />
       <Route path="/banned-ips" element={<Protected admin><BannedIps /></Protected>} />
       <Route path="/addons-manage" element={<Protected admin><Addons /></Protected>} />
       <Route path="/addon-docs" element={<Protected admin><AddonDocs /></Protected>} />

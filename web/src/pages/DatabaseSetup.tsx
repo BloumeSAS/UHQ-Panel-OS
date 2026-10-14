@@ -5,6 +5,7 @@ import { useSite } from '@/lib/site';
 import { useT } from '@/lib/i18n';
 import { Button, Card, CardContent, CardHeader, CardTitle, Input, Label } from '@/components/ui';
 import { Footer } from '@/components/Footer';
+import { SetupTokenField } from '@/components/SetupTokenField';
 
 /**
  * Premier démarrage, base non configurée. Deux options :
@@ -12,7 +13,7 @@ import { Footer } from '@/components/Footer';
  *  - Connexion externe : saisir le lien, on teste, applique le schéma, persiste et redémarre.
  */
 export default function DatabaseSetup() {
-  const { refresh } = useSite();
+  const { refresh, db } = useSite();
   const t = useT();
   const [mode, setMode] = useState<'fields' | 'url'>('fields');
   const [url, setUrl] = useState('');
@@ -84,6 +85,7 @@ export default function DatabaseSetup() {
         msg = t('db.apiUnavailable');
       }
       if (!msg) msg = err?.message || t('db.connectionError');
+      if (msg === 'SETUP_TOKEN_REQUIRED') msg = t('setupToken.invalid');
       setError(status ? `(${status}) ${msg}` : msg);
       setPhase('idle');
     }
@@ -97,6 +99,8 @@ export default function DatabaseSetup() {
           <h1 className="text-2xl font-bold">{t('db.title')}</h1>
           <p className="text-sm text-muted-foreground">{t('db.subtitle')}</p>
         </div>
+
+        <SetupTokenField required={db?.setupTokenRequired} />
 
         {/* Carte auto-détection base embarquée (visible uniquement si le service db est joignable) */}
         {bundledUrl && (
