@@ -30,6 +30,7 @@ import {
   Layers,
   Rows3,
   Rows4,
+  HelpCircle,
 } from 'lucide-react';
 import * as LucideIcons from 'lucide-react';
 import { useAuth } from '@/lib/auth';
@@ -42,6 +43,7 @@ import { Footer } from '@/components/Footer';
 import { AddonTopbarSlots, TopbarSlotItem } from '@/components/AddonTopbarSlots';
 import { GlobalSearch } from '@/components/GlobalSearch';
 import { useConfirm } from '@/components/ConfirmDialog';
+import { useTour } from '@/components/GuidedTour';
 import { cn } from '@/lib/utils';
 
 interface NavItem {
@@ -63,6 +65,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const { theme, toggle } = useTheme();
   const { density, toggle: toggleDensity } = useDensity();
   const [open, setOpen] = useState(false);
+  const { start: startTour } = useTour();
+
+  // La visite guidée ouvre/ferme le menu sur mobile pour pouvoir le mettre en lumière.
+  useEffect(() => {
+    const h = (e: Event) => setOpen(!!(e as CustomEvent).detail?.open);
+    window.addEventListener('uhq-tour-sidebar', h);
+    return () => window.removeEventListener('uhq-tour-sidebar', h);
+  }, []);
   const [notifOpen, setNotifOpen] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
@@ -315,6 +325,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
     <div className="min-h-screen bg-background">
       {/* Sidebar */}
       <aside
+        data-tour="sidebar"
         className={cn(
           'fixed inset-y-0 left-0 z-40 w-64 transform border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-transform md:translate-x-0',
           open ? 'translate-x-0' : '-translate-x-full',
@@ -335,6 +346,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
               {section.items.map((item) => (
                 <NavLink
                   key={item.to}
+                  data-tour={`nav:${item.to}`}
                   to={item.to}
                   end={item.to === '/'}
                   onClick={() => setOpen(false)}
@@ -355,6 +367,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           ))}
           {user && (
             <a
+              data-tour="nav:docs"
               href={`/docs?token=${localStorage.getItem('uhq_token') || ''}`}
               target="_blank"
               rel="noopener noreferrer"
@@ -381,8 +394,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
             {open ? <X /> : <Menu />}
           </Button>
           <div className="flex flex-1 items-center justify-end gap-2">
-            <GlobalSearch nav={nav} />
-            <div className="relative">
+            <Button variant="ghost" size="icon" onClick={startTour} aria-label={t('tour.start')} title={t('tour.startHint')}>
+              <HelpCircle className="h-4 w-4" />
+            </Button>
+            <div data-tour="topbar-search" className="flex items-center"><GlobalSearch nav={nav} /></div>
+            <div data-tour="topbar-lang" className="relative">
               <select
                 aria-label="Langue"
                 value={lang}
@@ -397,10 +413,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
               </select>
               <Globe className="pointer-events-none absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
             </div>
-            <Button variant="ghost" size="icon" onClick={toggle} aria-label="Thème">
+            <Button data-tour="topbar-theme" variant="ghost" size="icon" onClick={toggle} aria-label="Thème">
               {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             </Button>
             <Button
+              data-tour="topbar-density"
               variant="ghost"
               size="icon"
               onClick={toggleDensity}
@@ -411,7 +428,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             </Button>
 
             {/* Notification Bell */}
-            <div ref={notifRef} className="relative">
+            <div ref={notifRef} data-tour="topbar-notifs" className="relative">
               <Button
                 variant="ghost"
                 size="icon"
@@ -502,7 +519,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         </header>
 
         <main className="p-4 md:p-6">
-          <div key={location.pathname} className="animate-in fade-in slide-in-from-bottom-1 duration-300">
+          <div data-tour="content" key={location.pathname} className="animate-in fade-in slide-in-from-bottom-1 duration-300">
             {children}
           </div>
         </main>

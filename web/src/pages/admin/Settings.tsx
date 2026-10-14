@@ -93,6 +93,16 @@ export default function Settings() {
   const confirmDialog = useConfirm();
   const [tab, setTab] = useState<TabKey>('general');
 
+  // La visite guidée ouvre l'onglet qu'elle est en train de présenter.
+  useEffect(() => {
+    const h = (e: Event) => {
+      const k = (e as CustomEvent).detail as string;
+      if (TABS.some((x) => x.key === k)) setTab(k as TabKey);
+    };
+    window.addEventListener('uhq-tour-settings-tab', h);
+    return () => window.removeEventListener('uhq-tour-settings-tab', h);
+  }, []);
+
   const { data, refetch } = useQuery({
     queryKey: ['settings'],
     queryFn: async () => (await api.get('/settings')).data.data as Record<string, any>,
@@ -294,6 +304,7 @@ export default function Settings() {
                   {items.map(({ key, icon: Icon, labelKey, descKey }) => (
                     <button
                       key={key}
+                      data-tour={`settings-tab:${key}`}
                       type="button"
                       onClick={() => setTab(key)}
                       className={cn(

@@ -1,8 +1,10 @@
 import { Language } from './translations';
+import { tourEn } from './tour-en';
 
 const en: Language = {
   meta: { code: 'en', name: 'English', nativeName: 'English', flag: '🇬🇧' },
   t: {
+    ...tourEn,
     'app.loading': 'Loading…',
     'common.save': 'Save',
     'common.cancel': 'Cancel',

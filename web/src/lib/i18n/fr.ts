@@ -1,8 +1,10 @@
 import { Language } from './translations';
+import { tourFr } from './tour-fr';
 
 const fr: Language = {
   meta: { code: 'fr', name: 'French', nativeName: 'Français', flag: '🇫🇷' },
   t: {
+    ...tourFr,
     'app.loading': 'Chargement…',
     'common.save': 'Enregistrer',
     'common.cancel': 'Annuler',

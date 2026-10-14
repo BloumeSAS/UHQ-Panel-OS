@@ -47,6 +47,11 @@ export default function Setup() {
       }
       const { data } = await axios.post('/api/panel/setup', payload);
       applyToken(data.token, data.user);
+      try {
+        localStorage.setItem('uhq_tour_pending', '1'); // lance la visite guidée sur le tableau de bord
+      } catch {
+        /* ignore */
+      }
       await refresh();
       navigate('/');
     } catch (err: any) {

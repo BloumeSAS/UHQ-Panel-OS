@@ -3,6 +3,7 @@ import { useAuth } from '@/lib/auth';
 import { useSite } from '@/lib/site';
 import { useT } from '@/lib/i18n';
 import { Layout } from '@/components/Layout';
+import { TourProvider } from '@/components/GuidedTour';
 import DatabaseSetup from '@/pages/DatabaseSetup';
 import Setup from '@/pages/Setup';
 import Login from '@/pages/Login';
@@ -138,7 +139,9 @@ function AppRoutes() {
 export default function App() {
   return (
     <BrowserRouter>
-      <AppRoutes />
+      <TourProvider>
+        <AppRoutes />
+      </TourProvider>
     </BrowserRouter>
   );
 }
