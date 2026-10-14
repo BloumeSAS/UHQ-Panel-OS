@@ -45,6 +45,16 @@ export function loadRuntimeConfig(): RuntimeConfig {
   }
 }
 
+/** Écrit (ou supprime si null) une clé de runtime.json en conservant les autres. */
+export function saveRuntimeValue(key: string, value: string | null): void {
+  const dir = dataDir();
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+  const current: Record<string, unknown> = { ...loadRuntimeConfig() };
+  if (value === null) delete current[key];
+  else current[key] = value;
+  writeFileSync(runtimeFile(), JSON.stringify(current, null, 2), 'utf8');
+}
+
 export function saveDatabaseUrl(url: string): void {
   const dir = dataDir();
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });

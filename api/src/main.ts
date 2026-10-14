@@ -19,6 +19,7 @@ import { SettingsService } from './config/settings.service';
 import { TrafficService } from './modules/traffic/traffic.service';
 import { RingBufferLogger } from './modules/logs/ring-buffer.logger';
 import { applyDatabaseEnv } from './database/db-config';
+import { initSetupToken } from './common/utils/setup-token';
 import { translateValidationErrors } from './common/utils/i18n';
 import { RequestIdInterceptor } from './common/interceptors/request-id.interceptor';
 
@@ -305,11 +306,31 @@ async function bootstrap() {
   process.once('SIGTERM', () => shutdown('SIGTERM'));
   process.once('SIGINT', () => shutdown('SIGINT'));
 
+  // Jeton d'installation : généré (et affiché dans les logs) seulement si l'installation est à faire.
+  {
+    let installed: boolean | null = null;
+    if (!db.configured) {
+      installed = false;
+    } else {
+      try {
+        const prisma = app.get(PrismaService);
+        await prisma.ensureConnection();
+        const meta = await prisma.appMeta.findUnique({ where: { id: 'singleton' } });
+        const admins = await prisma.panelUser.count({ where: { role: 'ADMIN' } });
+        installed = !!meta?.setupCompleted && admins > 0;
+      } catch (e) {
+        installed = null;
+        Logger.warn(`Jeton d'installation : état de l'installation inconnu (${String((e as Error)?.message ?? e).slice(-200)})`, 'Bootstrap');
+      }
+    }
+    initSetupToken(installed);
+  }
+
   const apiPort = Number(process.env.API_PORT ?? 8000);
   await app.listen(apiPort, '0.0.0.0');
   Logger.log(`API listening on :${apiPort}`, 'Bootstrap');
   // Build marker — bump this string on every deploy you want to confirm is live.
-  Logger.log('BUILD MARKER: panel-os-v2.4.80', 'Bootstrap');
+  Logger.log('BUILD MARKER: panel-os-v2.4.81', 'Bootstrap');
 
   // Le moteur proxy TCP n'a de sens qu'avec une base connectée (auth des
   // sous-utilisateurs). On ne le démarre donc pas tant que la base n'est pas

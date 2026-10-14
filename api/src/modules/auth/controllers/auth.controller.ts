@@ -26,6 +26,7 @@ import { getClientIp } from '../../../common/utils/client-ip';
 import { MailService } from '../../mail/mail.service';
 import { panelBaseUrl } from '../../../common/utils/panel-url';
 import { SetupTokenGuard, setupTokenRequired } from '../../../common/guards/setup-token.guard';
+import { clearSetupToken } from '../../../common/utils/setup-token';
 import { RestoreService } from '../../restore/restore.service';
 import { RateLimiterService } from '../../../common/rate-limiter.service';
 import { authenticator } from '@otplib/preset-default';
@@ -125,6 +126,7 @@ export class PanelAuthController {
       create: { id: SINGLETON, setupCompleted: true },
       update: { setupCompleted: true },
     });
+    clearSetupToken(); // installation terminée : le jeton n'a plus lieu d'être
 
     const token = this.sign(admin);
     await this.createSession(admin.id, token, req);

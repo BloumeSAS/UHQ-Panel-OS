@@ -84,7 +84,7 @@ export const launchEn: Record<string, string> = {
   'diag.smtp.ok': 'Configured.',
   'diag.smtp.info': 'Not configured: no password reset by e-mail and no e-mail alerts.',
   'diag.setupToken.t': 'Setup token',
-  'diag.setupToken.info': 'After installation this protection is no longer used. For a new installation, set the SETUP_TOKEN variable to stop a third party from taking over before you.',
+  'diag.setupToken.info': 'Installation is complete: the automatically generated setup token is no longer used.',
 
   // ── Account test ──
   'test.btn': 'Test connection',
@@ -132,7 +132,7 @@ export const launchEn: Record<string, string> = {
 
   // ── Setup token ──
   'setupToken.label': 'Setup token',
-  'setupToken.hint': 'This installation is protected: enter the value of the SETUP_TOKEN variable set on the server.',
+  'setupToken.hint': 'This token was generated automatically at startup: look for the “TOKEN D’INSTALLATION” line in the container logs (Coolify → your application → Logs, or “docker logs”).',
   'setupToken.invalid': 'Invalid setup token.',
 
   // ── Guided tour: added steps ──

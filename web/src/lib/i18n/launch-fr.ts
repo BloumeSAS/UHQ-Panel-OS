@@ -84,7 +84,7 @@ export const launchFr: Record<string, string> = {
   'diag.smtp.ok': 'Configuré.',
   'diag.smtp.info': 'Non configuré : pas de réinitialisation de mot de passe par e-mail ni d’alertes e-mail.',
   'diag.setupToken.t': 'Jeton d’installation',
-  'diag.setupToken.info': "Après l’installation, cette protection n’est plus utilisée. Pour une nouvelle installation, définissez la variable SETUP_TOKEN pour empêcher un tiers de prendre la main avant vous.",
+  'diag.setupToken.info': "L’installation est terminée : le jeton d’installation (généré automatiquement) n’est plus utilisé.",
 
   // ── Test de compte ──
   'test.btn': 'Tester la connexion',
@@ -132,7 +132,7 @@ export const launchFr: Record<string, string> = {
 
   // ── Jeton d'installation ──
   'setupToken.label': 'Jeton d’installation',
-  'setupToken.hint': 'Cette installation est protégée : saisissez la valeur de la variable SETUP_TOKEN définie sur le serveur.',
+  'setupToken.hint': "Ce jeton a été généré automatiquement au démarrage : cherchez la ligne « TOKEN D'INSTALLATION » dans les journaux (logs) du conteneur (Coolify → votre application → Logs, ou « docker logs »).",
   'setupToken.invalid': 'Jeton d’installation invalide.',
 
   // ── Visite guidée : étapes ajoutées ──
