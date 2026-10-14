@@ -290,6 +290,7 @@ export const REVEALABLE_SECRETS = [
   'bloumechatWebhookUrl',
   'backupS3SecretKey',
   'vpnCheckApiKey',
+  'updateWebhookToken',
 ] as const;
 
 export class RevealSettingDto {
