@@ -76,8 +76,9 @@ export default function About() {
     setStarting(true);
     setUpdateError('');
     try {
-      const { data: res } = await api.post('/about/update', { backupFirst: backupEnabled && backupFirst }, { timeout: 330000 });
-      const pending = { from: res.fromVersion as string, startedAt: Date.now() };
+      const { data: res } = await api.post('/about/update', { backupFirst: backupEnabled && backupFirst }, { timeout: 30000 });
+      // Le serveur travaille en tâche de fond (sauvegarde puis webhook) : l'écran de progression suit l'avancement.
+      const pending = { from: res.fromVersion as string, startedAt: Date.now(), prepare: true };
       try {
         sessionStorage.setItem(UPDATE_PENDING_KEY, JSON.stringify(pending));
       } catch {

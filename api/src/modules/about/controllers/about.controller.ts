@@ -83,21 +83,53 @@ export class AboutController {
       if (e instanceof BadRequestException) throw e;
       // résolution impossible : la requête échouera plus bas avec WEBHOOK_UNREACHABLE
     }
-    if (Date.now() - this.lastUpdateAt < 60_000) throw new HttpException('TOO_SOON', 429);
+    if (Date.now() - this.lastUpdateAt < 60_000 || this.job.phase === 'backup' || this.job.phase === 'triggering') {
+      throw new HttpException('TOO_SOON', 429);
+    }
     this.lastUpdateAt = Date.now();
+    const withBackup = !!body?.backupFirst && this.settings.getBool('backupDatabaseEnabled');
 
-    let backup: 'skipped' | 'done' = 'skipped';
-    if (body?.backupFirst && this.settings.getBool('backupDatabaseEnabled')) {
+    // La sauvegarde peut durer plusieurs minutes (grosse base) : derrière Cloudflare (100 s max) une requête
+    // qui l'attendrait serait coupée (erreur 520/524). On répond tout de suite ; le travail continue en tâche
+    // de fond et le panel suit l'avancement via GET /about/update-status.
+    this.job = { phase: withBackup ? 'backup' : 'triggering', from: CURRENT_VERSION, startedAt: Date.now(), backup: withBackup };
+    void this.runUpdateJob(url, withBackup, me);
+    return { status: 'success', fromVersion: CURRENT_VERSION, backup: withBackup };
+  }
+
+  /** Avancement du déclenchement de la mise à jour (sauvegarde → appel du webhook). */
+  @UseGuards(RolesGuard)
+  @Roles('ADMIN')
+  @Get('update-status')
+  updateStatus() {
+    return { status: 'success', job: this.job };
+  }
+
+  private job: {
+    phase: 'idle' | 'backup' | 'triggering' | 'done' | 'error';
+    from?: string;
+    startedAt?: number;
+    backup?: boolean;
+    error?: { code: string; status?: number; detail?: string };
+  } = { phase: 'idle' };
+
+  private fail(code: string, extra: { status?: number; detail?: string } = {}) {
+    this.lastUpdateAt = 0;
+    this.job = { ...this.job, phase: 'error', error: { code, ...extra } };
+  }
+
+  private async runUpdateJob(url: URL, withBackup: boolean, me: JwtUser) {
+    if (withBackup) {
       try {
         await Promise.race([
           this.backup.runBackup(),
-          new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 240_000)),
+          new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 600_000)),
         ]);
-        backup = 'done';
       } catch (e) {
-        this.lastUpdateAt = 0;
-        throw new HttpException({ message: 'BACKUP_FAILED', detail: String((e as Error)?.message ?? e).slice(0, 200) }, 502);
+        this.logger.warn(`Sauvegarde avant mise à jour échouée : ${String((e as Error)?.message ?? e).slice(0, 200)}`);
+        return this.fail('BACKUP_FAILED', { detail: String((e as Error)?.message ?? e).slice(0, 200) });
       }
+      this.job = { ...this.job, phase: 'triggering' };
     }
 
     const token = this.settings.get('updateWebhookToken');
@@ -112,21 +144,18 @@ export class AboutController {
       // Le corps de la réponse n'est JAMAIS renvoyé au navigateur (évite de lire le contenu d'un service interne).
       const text = (await res.body.text().catch(() => '')).slice(0, 200);
       if (res.statusCode < 200 || res.statusCode >= 300) {
-        this.lastUpdateAt = 0;
         this.logger.warn(`Webhook de mise à jour refusé : HTTP ${res.statusCode} ${text.replace(/\s+/g, ' ')}`);
-        throw new HttpException({ message: 'WEBHOOK_FAILED', status: res.statusCode }, 502);
+        return this.fail('WEBHOOK_FAILED', { status: res.statusCode });
       }
     } catch (e) {
-      if (e instanceof HttpException) throw e;
-      this.lastUpdateAt = 0;
       this.logger.warn(`Webhook de mise à jour injoignable : ${String((e as Error)?.message ?? e).slice(0, 200)}`);
-      throw new HttpException({ message: 'WEBHOOK_UNREACHABLE', detail: String((e as NodeJS.ErrnoException)?.code ?? '').slice(0, 40) }, 502);
+      return this.fail('WEBHOOK_UNREACHABLE', { detail: String((e as NodeJS.ErrnoException)?.code ?? '').slice(0, 40) });
     }
 
+    this.job = { ...this.job, phase: 'done' };
     void this.audit
-      .log({ userId: me.id, userEmail: me.email, action: 'panel.update', details: { from: CURRENT_VERSION, backup, host: url.host } })
+      .log({ userId: me.id, userEmail: me.email, action: 'panel.update', details: { from: CURRENT_VERSION, backup: withBackup ? 'done' : 'skipped', host: url.host } })
       .catch(() => undefined);
-    return { status: 'success', fromVersion: CURRENT_VERSION, backup };
   }
 
   /**

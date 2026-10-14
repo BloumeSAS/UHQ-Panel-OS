@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import axios from 'axios';
 import { AlertTriangle, CheckCircle2, Loader2, Circle } from 'lucide-react';
+import { api } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { Button } from '@/components/ui';
 import { cn } from '@/lib/utils';
@@ -9,11 +10,13 @@ export const UPDATE_PENDING_KEY = 'uhq_update_pending';
 export const UPDATE_START_EVENT = 'uhq-update-start';
 const TIMEOUT_MS = 25 * 60_000;
 
-type Phase = 'building' | 'restarting' | 'back' | 'done' | 'sameversion' | 'timeout';
+type Phase = 'prepare' | 'building' | 'restarting' | 'back' | 'done' | 'sameversion' | 'timeout' | 'error';
 
 interface Pending {
   from: string;
   startedAt: number;
+  /** Le serveur sauvegarde / envoie encore la demande à la plateforme (tâche de fond). */
+  prepare?: boolean;
 }
 
 const readPending = (): Pending | null => {
@@ -45,6 +48,8 @@ export function UpdateOverlay() {
   const [phase, setPhase] = useState<Phase>('building');
   const [elapsed, setElapsed] = useState(0);
   const [newVersion, setNewVersion] = useState('');
+  const [jobPhase, setJobPhase] = useState<'backup' | 'triggering'>('triggering');
+  const [jobError, setJobError] = useState<{ code: string; status?: number } | null>(null);
   const wasDown = useRef(false);
   const startedAt = useRef(0);
 
@@ -53,7 +58,8 @@ export function UpdateOverlay() {
     const h = (e: Event) => {
       const p = (e as CustomEvent<Pending>).detail;
       wasDown.current = false;
-      setPhase('building');
+      setJobError(null);
+      setPhase(p.prepare ? 'prepare' : 'building');
       setPending(p);
     };
     window.addEventListener(UPDATE_START_EVENT, h);
@@ -65,8 +71,48 @@ export function UpdateOverlay() {
     setPending(null);
   }, []);
 
+  // Phase de préparation : le serveur sauvegarde puis appelle le webhook en tâche de fond (évite les coupures
+  // Cloudflare des requêtes longues). On suit son avancement jusqu'à « done » ou « error ».
   useEffect(() => {
-    if (!pending) return;
+    if (!pending?.prepare) return;
+    let stopped = false;
+    setPhase('prepare');
+    const poll = async () => {
+      try {
+        const { data } = await api.get('/about/update-status', { timeout: 8000 });
+        const job = data?.job;
+        if (stopped || !job) return;
+        if (job.phase === 'backup' || job.phase === 'triggering') setJobPhase(job.phase);
+        if (job.phase === 'done') {
+          stopped = true;
+          const next = { ...pending, prepare: false, startedAt: Date.now() };
+          try {
+            sessionStorage.setItem(UPDATE_PENDING_KEY, JSON.stringify(next));
+          } catch {
+            /* ignore */
+          }
+          setPending(next);
+          setPhase('building');
+        } else if (job.phase === 'error') {
+          stopped = true;
+          setJobError(job.error ?? { code: 'other' });
+          setPhase('error');
+          clearPending();
+        }
+      } catch {
+        /* réessaiera */
+      }
+    };
+    void poll();
+    const id = setInterval(poll, 1500);
+    return () => {
+      stopped = true;
+      clearInterval(id);
+    };
+  }, [pending]);
+
+  useEffect(() => {
+    if (!pending || pending.prepare) return;
     startedAt.current = pending.startedAt;
     let stopped = false;
     let reloadTimer: ReturnType<typeof setTimeout> | undefined;
@@ -105,15 +151,16 @@ export function UpdateOverlay() {
 
   if (!pending) return null;
 
+  const preparing = phase === 'prepare' || phase === 'error';
   const steps: { key: string; state: 'done' | 'active' | 'todo' }[] = [
-    { key: 'trigger', state: 'done' },
+    { key: preparing ? 'prepare' : 'trigger', state: phase === 'error' ? 'todo' : preparing ? 'active' : 'done' },
     {
       key: 'build',
-      state: phase === 'building' || phase === 'timeout' ? 'active' : 'done',
+      state: preparing ? 'todo' : phase === 'building' || phase === 'timeout' ? 'active' : 'done',
     },
     {
       key: 'restart',
-      state: phase === 'restarting' ? 'active' : phase === 'building' || phase === 'timeout' ? 'todo' : 'done',
+      state: phase === 'restarting' ? 'active' : preparing || phase === 'building' || phase === 'timeout' ? 'todo' : 'done',
     },
     {
       key: 'reconnect',
@@ -121,7 +168,7 @@ export function UpdateOverlay() {
     },
   ];
 
-  const warn = phase === 'sameversion' || phase === 'timeout';
+  const warn = phase === 'sameversion' || phase === 'timeout' || phase === 'error';
 
   return (
     <div className="fixed inset-0 z-[110] flex items-center justify-center bg-background/90 p-4 backdrop-blur-sm" role="alertdialog" aria-live="polite">
@@ -141,7 +188,11 @@ export function UpdateOverlay() {
             <p className="text-sm text-muted-foreground">
               {phase === 'done'
                 ? t('update.reloading')
-                : phase === 'sameversion'
+                : phase === 'error'
+                  ? (t(`update.err.${jobError?.code}`) !== `update.err.${jobError?.code}` ? t(`update.err.${jobError?.code}`) : t('update.err.other')).replace('{status}', String(jobError?.status ?? '?'))
+                  : phase === 'prepare'
+                    ? t(`update.phase.${jobPhase}`)
+                    : phase === 'sameversion'
                   ? t('update.sameVersion')
                   : phase === 'timeout'
                     ? t('update.timeout')
@@ -165,7 +216,7 @@ export function UpdateOverlay() {
           ))}
         </ul>
 
-        {phase !== 'done' && (
+        {phase !== 'done' && phase !== 'error' && (
           <>
             <div className="h-1.5 overflow-hidden rounded bg-muted">
               <div className="h-full w-1/3 animate-pulse rounded bg-primary" />
@@ -176,7 +227,7 @@ export function UpdateOverlay() {
           </>
         )}
 
-        {(warn || phase === 'building') && (
+        {(warn || phase === 'building' || phase === 'prepare') && (
           <div className="flex justify-end gap-2">
             {phase === 'timeout' && (
               <Button
