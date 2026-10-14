@@ -17,6 +17,8 @@ export const updateEn: Record<string, string> = {
   'update.err.TOO_SOON': 'An update was just requested: wait a minute.',
   'update.err.BACKUP_FAILED': 'The pre-update backup failed: update cancelled.',
   'update.err.WEBHOOK_FAILED': 'The platform rejected the request (code {status}). Check the URL and token.',
+  'update.err.TOKEN_INVALID': "The API token contains invalid characters (space, line break, “••••”). Re-enter it with nothing extra.",
+  'update.err.WEBHOOK_URL_INVALID': "The webhook URL is invalid. Paste it exactly as provided by Coolify.",
   'update.err.WEBHOOK_UNREACHABLE': "Unable to reach the platform's webhook.",
   'update.err.other': 'Failed to trigger the update.',
   'update.title': 'Update in progress',

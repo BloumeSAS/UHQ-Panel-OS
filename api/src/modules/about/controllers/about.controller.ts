@@ -132,7 +132,9 @@ export class AboutController {
       this.job = { ...this.job, phase: 'triggering' };
     }
 
-    const token = this.settings.get('updateWebhookToken');
+    const token = this.settings.get('updateWebhookToken').trim();
+    // Un jeton avec espace, saut de ligne ou caractère non ASCII (ex. le masque « •••• » enregistré tel quel) fait échouer undici (UND_ERR_INVALID_ARG).
+    if (token && !/^[!-~]+$/.test(token)) return this.fail('TOKEN_INVALID');
     const method = this.settings.get('updateWebhookMethod').toUpperCase() === 'POST' ? 'POST' : 'GET';
     try {
       const res = await request(url.toString(), {
@@ -149,7 +151,9 @@ export class AboutController {
       }
     } catch (e) {
       this.logger.warn(`Webhook de mise à jour injoignable : ${String((e as Error)?.message ?? e).slice(0, 200)}`);
-      return this.fail('WEBHOOK_UNREACHABLE', { detail: String((e as NodeJS.ErrnoException)?.code ?? '').slice(0, 40) });
+      const code = String((e as NodeJS.ErrnoException)?.code ?? '').slice(0, 40);
+      if (code === 'UND_ERR_INVALID_ARG') return this.fail('WEBHOOK_URL_INVALID');
+      return this.fail('WEBHOOK_UNREACHABLE', { detail: code });
     }
 
     this.job = { ...this.job, phase: 'done' };

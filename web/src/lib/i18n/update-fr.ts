@@ -17,6 +17,8 @@ export const updateFr: Record<string, string> = {
   'update.err.TOO_SOON': 'Une mise à jour vient d’être demandée : patientez une minute.',
   'update.err.BACKUP_FAILED': 'La sauvegarde préalable a échoué : mise à jour annulée.',
   'update.err.WEBHOOK_FAILED': 'La plateforme a refusé la demande (code {status}). Vérifiez l’URL et le jeton.',
+  'update.err.TOKEN_INVALID': "Le jeton d’API contient des caractères invalides (espace, retour à la ligne, « •••• »). Ressaisissez-le sans rien ajouter.",
+  'update.err.WEBHOOK_URL_INVALID': "L’URL du webhook est invalide. Collez-la telle que fournie par Coolify.",
   'update.err.WEBHOOK_UNREACHABLE': 'Impossible de joindre le webhook de la plateforme.',
   'update.err.other': 'Échec du déclenchement de la mise à jour.',
   'update.title': 'Mise à jour en cours',
