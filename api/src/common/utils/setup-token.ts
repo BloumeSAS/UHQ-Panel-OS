@@ -42,7 +42,7 @@ export function clearSetupToken(): void {
 
 /**
  * Au démarrage : `installed` = installation terminée (true), non terminée (false) ou inconnue (null,
- * base injoignable). Génère/affiche le jeton si besoin.
+ * base injoignable → traitée comme « à faire » : on échoue côté sûr). Génère/affiche le jeton si besoin.
  */
 export function initSetupToken(installed: boolean | null): void {
   const log = new Logger('SetupToken');
@@ -54,11 +54,9 @@ export function initSetupToken(installed: boolean | null): void {
     else cached = null;
     return;
   }
-  if (installed === null) {
-    cached = resolve();
-    return;
-  }
-
+  // `installed === null` (état inconnu, ex. base injoignable) : on protège par prudence, comme si
+  // l'installation était à faire. Sur un panel en réalité déjà installé c'est sans effet (/setup reste
+  // verrouillé) et le jeton est supprimé au prochain démarrage où l'état est connu.
   // Installation à faire : jeton imposé par l'env, déjà généré, ou nouveau.
   let token = resolve();
   const imposed = env !== '';
@@ -79,4 +77,5 @@ export function initSetupToken(installed: boolean | null): void {
         : `  TOKEN D'INSTALLATION : ${token}\n  (à saisir dans l'écran d'installation ; supprimé une fois terminée)\n`) +
       `${line}`,
   );
+  if (installed === null) log.warn("L'état de l'installation n'a pas pu être vérifié (base injoignable ?) : protection activée par prudence.");
 }
