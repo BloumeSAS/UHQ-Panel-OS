@@ -210,7 +210,21 @@ export class SystemService {
   async testAccount(id: string) {
     const acc = await this.prisma.userProxy.findUnique({ where: { id } });
     if (!acc) throw new NotFoundException('Account not found');
-    const port = acc.port ?? this.enginePort;
+    // Pré-diagnostic : le moteur répond « 407 » pour TOUS ces cas — on les distingue ici pour donner la vraie cause.
+    const preflight = (reason: string) => ({ ok: false, ms: 0, reason, port: acc.port ?? null });
+    if (acc.isBlocked) return preflight('blocked');
+    if (acc.expiresAt && acc.expiresAt.getTime() < Date.now()) return preflight('expired');
+    if (acc.totalGb > 0 && acc.usedGb >= acc.totalGb) return preflight('quota');
+    if (acc.ipWhitelist && acc.ipWhitelist.trim() !== '*') {
+      const wl = acc.ipWhitelist.split(',').map((s) => s.trim());
+      if (!wl.some((ip) => ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(ip))) return preflight('ipWhitelist');
+    }
+    // Port : dédié au compte, sinon dédié à sa catégorie (le moteur refuse sa catégorie sur un autre port), sinon global.
+    let poolPort: number | null = null;
+    if (acc.pool) {
+      poolPort = (await this.prisma.proxyPool.findUnique({ where: { name: acc.pool }, select: { port: true } }))?.port ?? null;
+    }
+    const port = acc.port ?? poolPort ?? this.enginePort;
     const auth = Buffer.from(`${acc.username}:${acc.password}`).toString('base64');
     const target = 'http://ip-api.com/json/?fields=status,query,country,countryCode,isp';
     const t0 = Date.now();

@@ -488,6 +488,11 @@ export class ProxyServerService implements OnModuleDestroy {
     void this.reloadBannedIps().catch((e) => this.logger.error(`Failed to reload banned IPs: ${e}`));
   }
 
+  /** Connexion venant du serveur lui-même (ex. « Tester la connexion » du panel) : jamais bannie. */
+  private isLoopback(ip: string): boolean {
+    return ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
+  }
+
   private isIpBanned(ip: string): boolean {
     return !!ip && this.bannedIpSet.has(ip);
   }
@@ -501,7 +506,7 @@ export class ProxyServerService implements OnModuleDestroy {
    * et révocable depuis IP bannies.
    */
   private async registerAuthFailure(ip: string): Promise<void> {
-    if (!ip || !this.settings.getBool('proxyAuthAutoBanEnabled')) return;
+    if (!ip || this.isLoopback(ip) || !this.settings.getBool('proxyAuthAutoBanEnabled')) return;
     const threshold = this.settings.getPositiveNumber('proxyAuthFailBanThreshold') || 15;
     const windowSec = this.settings.getPositiveNumber('proxyAuthFailBanWindowSec') || 60;
     const allowed = this.rateLimiter.check(`proxyauth-fail:${ip}`, threshold, windowSec * 1000);
@@ -536,7 +541,7 @@ export class ProxyServerService implements OnModuleDestroy {
    * n'est pas infaillible, un ban permanent exposerait trop aux faux positifs.
    */
   private async banVpnIp(ip: string, poolName: string): Promise<void> {
-    if (!ip || this.bannedIpSet.has(ip)) return;
+    if (!ip || this.isLoopback(ip) || this.bannedIpSet.has(ip)) return;
     try {
       const durationHours = this.settings.getPositiveNumber('vpnBanDurationHours') || 24;
       const expiresAt = new Date(Date.now() + durationHours * 3600_000);

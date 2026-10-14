@@ -11,6 +11,7 @@ interface Result {
   status?: number;
   port?: number;
   error?: string;
+  reason?: string;
   ip?: string;
   country?: string;
   countryCode?: string;
@@ -43,6 +44,7 @@ export function TestAccountDialog({ account, onClose }: { account: { id: string;
   }, [account, qc]);
 
   const reason = (r: Result) => {
+    if (r.reason) return t(`test.reason.${r.reason}`);
     if (r.status === 407) return t('test.err.407');
     if (r.status === 403) return t('test.err.403');
     if (r.status === 429) return t('test.err.429');
@@ -83,6 +85,8 @@ export function TestAccountDialog({ account, onClose }: { account: { id: string;
               <dd>{result.isp}</dd>
               <dt className="text-muted-foreground">{t('test.latency')}</dt>
               <dd>{result.ms} ms</dd>
+              <dt className="text-muted-foreground">{t('test.port')}</dt>
+              <dd>{result.port}</dd>
             </dl>
           </div>
         )}
@@ -93,6 +97,11 @@ export function TestAccountDialog({ account, onClose }: { account: { id: string;
               {t('test.fail')}
             </div>
             <p className="text-muted-foreground">{reason(result)}</p>
+            {result.port ? (
+              <p className="text-xs text-muted-foreground">
+                {t('test.port')} : {result.port}
+              </p>
+            ) : null}
           </div>
         )}
         <p className="border-t pt-3 text-xs text-muted-foreground">{t('test.note')}</p>
