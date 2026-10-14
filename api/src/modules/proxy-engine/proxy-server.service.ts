@@ -72,14 +72,10 @@ export class ProxyServerService implements OnModuleDestroy {
     return this.settings.getNumber('connectionIdleTimeout') * 1000 || 600_000;
   }
   // Proxy résidentiel de secours (fallback) : config DB (fallback env).
-  private get globalFallbackUrl(): string | null {
-    return this.settings.get('scraperProxy') || null;
-  }
-  /** Fallback effectif d'une catégorie : désactivé → null ; sinon le sien, sinon le global. */
+  /** Fallback d'une catégorie : UNIQUEMENT celui configuré pour elle (Paramètres → Fallback par catégorie). Pas de fallback global. */
   private fallbackUrlFor(pool: string | null | undefined): string | null {
     const cfg = pool ? this.poolFallbackCfg.get(pool) : undefined;
-    if (cfg && !cfg.enabled) return null;
-    return cfg?.url || this.globalFallbackUrl;
+    return cfg && cfg.enabled ? cfg.url || null : null;
   }
 
   // State / caches -------------------------------------------------------

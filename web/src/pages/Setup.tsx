@@ -137,7 +137,7 @@ export default function Setup() {
               </button>
               {showAdvanced && (
                 <div className="mt-3 grid gap-4 sm:grid-cols-2">
-                  <Field label={t('pool.fallbackProxy')} value={form.scraperProxy} onChange={(v) => set('scraperProxy', v)} placeholder="http://user:pass@host:port" />
+                  <Field label={t('settings.scraperProxy')} value={form.scraperProxy} onChange={(v) => set('scraperProxy', v)} placeholder="http://user:pass@host:port" />
                   <Field label={`${t('nav.scraper')} interval (s)`} value={form.scrapeInterval} onChange={(v) => set('scrapeInterval', v)} placeholder="3600" />
                   <Field label={`${t('nav.checker')} interval (s)`} value={form.proxyCheckInterval} onChange={(v) => set('proxyCheckInterval', v)} placeholder="900" />
                   <Field label={t('settings.concurrency')} value={form.checkerConcurrency} onChange={(v) => set('checkerConcurrency', v)} placeholder="500" />

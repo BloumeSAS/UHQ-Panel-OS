@@ -159,8 +159,8 @@ export const ERROR_CATALOG: ErrorInfo[] = [
       en: 'All attempts failed: empty or failing pool, requested country with no proxy, fallback missing, disabled or failing.',
     },
     action: {
-      fr: "Vérifiez la catégorie (Pool, Scraper), le pays demandé, et son fallback (Catégories → fallback). Panel → Diagnostics donne l'état du pool.",
-      en: 'Check the category (Pool, Scraper), the requested country and its fallback (Categories → fallback). Panel → Diagnostics shows the pool state.',
+      fr: "Vérifiez la catégorie (Pool, Scraper), le pays demandé, et son fallback (Paramètres → Fallback par catégorie). Panel → Diagnostics donne l'état du pool.",
+      en: 'Check the category (Pool, Scraper), the requested country and its fallback (Settings → Fallback per category). Panel → Diagnostics shows the pool state.',
     },
     customer: {
       fr: "Le service est momentanément saturé pour cette destination. Réessayez dans quelques instants ; si cela persiste, contactez le support.",

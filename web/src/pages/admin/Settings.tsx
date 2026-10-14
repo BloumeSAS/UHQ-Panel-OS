@@ -14,6 +14,7 @@ import { useTheme } from '@/lib/theme';
 import { hexToHslTriplet, hslTripletToHex, THEME_VARS, type ThemeColors, type ThemeVar } from '@/lib/color';
 import { Button, Input, Label, Switch } from '@/components/ui';
 import { useConfirm } from '@/components/ConfirmDialog';
+import { CategoryFallbacks } from '@/components/CategoryFallbacks';
 import { BackupVerifyDialog } from '@/components/BackupVerifyDialog';
 import { cn } from '@/lib/utils';
 import { toast } from '@/lib/toast';
@@ -632,11 +633,10 @@ export default function Settings() {
 
             <Separator label={t('settings.integrations')} />
 
-            <F label={t('pool.fallbackProxy')} hint={t('pool.fallbackProxyHint')}>
+            <CategoryFallbacks />
+
+            <F label={t('settings.scraperProxy')} hint={t('settings.scraperProxyHint')}>
               <SecretField k="scraperProxy" form={form} set={set} placeholder="http://user:pass@ip:port  ou  socks5://ip:port" />
-              <a href="https://uhq.monster" target="_blank" rel="noopener noreferrer" className="mt-1 inline-block text-xs text-primary hover:underline">
-                {t('pool.buyFallback')}
-              </a>
             </F>
 
             <Grid>
