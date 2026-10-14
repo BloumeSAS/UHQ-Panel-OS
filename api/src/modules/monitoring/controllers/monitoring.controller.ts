@@ -25,6 +25,7 @@ import { parseProxyList, parseProxyLine } from '../../../common/utils/proxy-pars
 import { ImportProxiesDto } from '../../../common/dto/panel.dto';
 import { PoolHealthSnapshotService } from '../pool-health-snapshot.service';
 import { TrafficSnapshotService } from '../traffic-snapshot.service';
+import { LiveSnapshotService } from '../live-snapshot.service';
 import { AuditService } from '../../audit/audit.service';
 import { BYTES_PER_GB } from '../../../common/utils/units';
 
@@ -45,6 +46,7 @@ export class PanelMonitoringController {
     private readonly trafficSnapshot: TrafficSnapshotService,
     private readonly auditService: AuditService,
     private readonly traffic: TrafficService,
+    private readonly liveSnapshots: LiveSnapshotService,
   ) {}
 
   /** Historique de trafic (volume/requêtes par intervalle de 15 min) — time series. */
@@ -64,48 +66,7 @@ export class PanelMonitoringController {
   @Roles('ADMIN', 'SUPPORT')
   @Get('active-accounts')
   async activeAccounts() {
-    const threadsMap = this.engine.getActiveThreads();
-    const usernames = Array.from(threadsMap.keys()).filter((u) => (threadsMap.get(u) ?? 0) > 0);
-    if (usernames.length === 0) return { status: 'success', data: [] };
-
-    const bandwidth = this.traffic.getLiveBandwidth();
-    const users = await this.prisma.userProxy.findMany({
-      where: { username: { in: usernames } },
-      select: {
-        username: true,
-        name: true,
-        pool: true,
-        threadsLimit: true,
-        totalBytesSent: true,
-        totalBytesReceived: true,
-        totalGb: true,
-        usedGb: true,
-      },
-    });
-    const byUsername = new Map(users.map((u) => [u.username, u]));
-
-    const data = usernames.map((username) => {
-      const u = byUsername.get(username);
-      const bw = bandwidth.get(username);
-      // Totaux "live" : base + octets pas encore flushés (jusqu'à 5s de retard sinon).
-      const pending = this.traffic.getPending(username);
-      return {
-        username,
-        label: u?.name ?? username,
-        pool: u?.pool ?? null,
-        threads: threadsMap.get(username) ?? 0,
-        threadsLimit: u?.threadsLimit ?? null,
-        sentBps: Math.round(bw?.sentBps ?? 0),
-        receivedBps: Math.round(bw?.receivedBps ?? 0),
-        totalBytesSent: u ? Number(u.totalBytesSent) + pending.sent : null,
-        totalBytesReceived: u ? Number(u.totalBytesReceived) + pending.received : null,
-        totalGb: u?.totalGb ?? null,
-        usedGb: u ? u.usedGb + (pending.sent + pending.received) / BYTES_PER_GB : null,
-      };
-    });
-    data.sort((a, b) => b.threads - a.threads);
-
-    return { status: 'success', data };
+    return { status: 'success', data: (await this.liveSnapshots.get()).active_accounts };
   }
 
   /** Historique de la santé du pool (time series). */
@@ -126,47 +87,23 @@ export class PanelMonitoringController {
   @Roles('ADMIN', 'SUPPORT')
   @Get('live')
   async live() {
-    const threads = Array.from(this.engine.getActiveThreads().values()).reduce(
-      (a, b) => a + b,
-      0,
-    );
-    const sessions = this.engine.getSessions().size;
-
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const [total, working, banned, totals, topGroups] = await Promise.all([
-      this.prisma.backendProxy.count(),
-      this.prisma.backendProxy.count({ where: { isWorking: true, isBlacklisted: false } }),
-      this.prisma.backendProxy.count({ where: { isBlacklisted: true } }),
-      this.prisma.proxyUsage.aggregate({
-        where: { date: { gte: today } },
-        _sum: { bytesSent: true, bytesReceived: true, requests: true },
-      }),
-      this.prisma.proxyUsage.groupBy({
-        by: ['hostname'],
-        where: { date: { gte: today } },
-        _sum: { requests: true },
-        orderBy: { _sum: { requests: 'desc' } },
-        take: 10,
-      }),
-    ]);
-    const totalGb = ((totals._sum.bytesSent ?? 0) + (totals._sum.bytesReceived ?? 0)) / BYTES_PER_GB;
-    const top = topGroups.map((g) => ({ hostname: g.hostname, requests: g._sum.requests ?? 0 }));
-
+    const snap = await this.liveSnapshots.get();
     return {
       status: 'success',
-      live: {
-        active_threads: threads,
-        active_sessions: sessions,
-        pool: { total, working, banned },
-      },
-      active_proxies: this.engine.getActiveUpstreamProxies(),
-      today_summary: {
-        total_gb: Math.round(totalGb * 10000) / 10000,
-        total_requests: totals._sum.requests ?? 0,
-        top_domains: top,
-      },
+      live: snap.live,
+      active_proxies: snap.active_proxies,
+      today_summary: snap.today_summary,
     };
+  }
+
+  /**
+   * Instantané COMPLET et cohérent (le même que celui du flux WebSocket) — utilisé par le tableau de bord
+   * en mode de secours quand le WebSocket est indisponible.
+   */
+  @Roles('ADMIN', 'SUPPORT')
+  @Get('snapshot')
+  async snapshot() {
+    return { status: 'success', data: await this.liveSnapshots.get() };
   }
 
   /**

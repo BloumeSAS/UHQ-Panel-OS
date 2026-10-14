@@ -26,6 +26,7 @@ const ICON: Record<Status, { icon: React.ElementType; cls: string }> = {
 /** Remplace {clé} par la valeur correspondante (tableaux joints par une virgule). */
 function fill(text: string, data?: Record<string, any>) {
   return text.replace(/\{(\w+)\}/g, (_, k) => {
+    if (k === 'heartbeat') return data?.heartbeat ? ' + heartbeat' : '';
     const v = data?.[k];
     return v === undefined || v === null ? '—' : Array.isArray(v) ? v.join(', ') : String(v);
   });

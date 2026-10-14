@@ -198,6 +198,13 @@ export class SystemService {
       push('panelUrl', this.settings.get('panelUrl') ? 'ok' : 'info', { url: this.settings.get('panelUrl'), fallback: `https://${this.settings.get('publicProxyHost')}` });
     }
     push('setupToken', 'info', { set: !!process.env.SETUP_TOKEN });
+    const channels = ['discord', 'slack', 'bloumechat'].filter((c) => this.settings.getBool(`${c}AlertsEnabled` as any) && this.settings.get(`${c}WebhookUrl` as any));
+    const heartbeat = !!this.settings.get('heartbeatUrl').trim();
+    push('alerts', !this.settings.getBool('healthAlertsEnabled') ? 'warn' : channels.length || heartbeat ? 'ok' : 'warn', {
+      enabled: this.settings.getBool('healthAlertsEnabled'),
+      channels: channels.join(', ') || '—',
+      heartbeat,
+    });
 
     const rank = { fail: 3, warn: 2, info: 1, ok: 0 } as const;
     const worst = checks.reduce<CheckStatus>((w, c) => (rank[c.status] > rank[w] ? c.status : w), 'ok');

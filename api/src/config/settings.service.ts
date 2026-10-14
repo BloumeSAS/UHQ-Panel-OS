@@ -135,6 +135,11 @@ export const SETTING_DEFS = {
   maintenanceModeEnabled: { def: 'false', env: undefined, secret: false },
   // URL publique du panel (liens e-mail). Vide = https://<publicProxyHost>.
   panelUrl: { def: '', env: 'PANEL_URL', secret: false },
+  // Autorise les proxies amont du pool PARTAGÉ sur des adresses privées (RFC 1918). Loopback / lien-local : toujours refusés.
+  allowPrivateUpstreams: { def: 'false', env: 'ALLOW_PRIVATE_UPSTREAMS', secret: false },
+  // Surveillance : alertes moteur/base/disque/sauvegardes + heartbeat externe (URL appelée chaque minute si tout va bien).
+  healthAlertsEnabled: { def: 'true', env: undefined, secret: false },
+  heartbeatUrl: { def: '', env: 'HEARTBEAT_URL', secret: false },
   // Page d'état publique (/status) — désactivée par défaut.
   statusPageEnabled: { def: 'false', env: undefined, secret: false },
   statusPageMessage: { def: '', env: undefined, secret: false },

@@ -164,6 +164,14 @@ export class TrafficService implements OnModuleInit, BeforeApplicationShutdown {
     };
   }
 
+  /** Total (tous comptes) des octets comptés mais pas encore écrits en base. */
+  getPendingTotal(): number {
+    let n = 0;
+    for (const v of this.buffer.values()) n += v.sent + v.received;
+    if (this.flushing) for (const v of this.flushing.values()) n += v.sent + v.received;
+    return n;
+  }
+
   getPendingBytes(username: string): number {
     const a = this.buffer.get(username);
     const b = this.flushing?.get(username);

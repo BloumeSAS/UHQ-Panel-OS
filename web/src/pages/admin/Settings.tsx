@@ -164,6 +164,7 @@ export default function Settings() {
         'smtpReportsEnabled',
         'maintenanceModeEnabled',
         'statusPageEnabled',
+        'healthAlertsEnabled',
         'discordAlertsEnabled',
         'slackAlertsEnabled',
         'bloumechatAlertsEnabled',
@@ -749,6 +750,20 @@ export default function Settings() {
             <p className="text-sm text-muted-foreground">
               {t('settings.webhooksDesc')}
             </p>
+
+            <Separator label={t('settings.healthAlerts')} />
+            <Toggle
+              label={t('settings.healthAlertsEnabled')}
+              hint={t('settings.healthAlertsHint')}
+              k="healthAlertsEnabled" form={form} set={set}
+            />
+            <F label={t('settings.heartbeatUrl')} hint={t('settings.heartbeatUrlHint')}>
+              <Input
+                value={form.heartbeatUrl ?? ''}
+                onChange={(e) => set('heartbeatUrl', e.target.value)}
+                placeholder="https://hc-ping.com/xxxxxxxx-xxxx-xxxx"
+              />
+            </F>
 
             <Separator label={t('settings.poolLowAlert')} />
             <Toggle

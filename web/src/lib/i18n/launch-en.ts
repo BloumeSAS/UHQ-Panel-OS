@@ -111,6 +111,22 @@ export const launchEn: Record<string, string> = {
   'test.err.badresponse': 'Unexpected response from the test service.',
   'test.err.other': 'Error: {code}.',
 
+  'dash.live.live': 'Live',
+  'dash.live.connecting': 'Reconnecting…',
+  'dash.live.polling': 'Refreshing every 3 s',
+  'dash.live.live.hint': 'Real-time stream active: all values come from the same snapshot, refreshed every 2 seconds.',
+  'dash.live.connecting.hint': 'The real-time stream is interrupted: reconnecting automatically.',
+  'dash.live.polling.hint': 'The real-time stream is unavailable (proxy or firewall blocking WebSockets?): values are refreshed every 3 seconds.',
+
+  'settings.healthAlerts': 'Server monitoring',
+  'settings.healthAlertsEnabled': 'Monitoring alerts',
+  'settings.healthAlertsHint': 'Notifies you (bell, Discord/Slack/BloumeChat below, admin e-mail) when the proxy engine or database stop answering, the disk is almost full, or backups are too old or fail. Alert after 2 minutes of outage, reminder every 6 h, message when restored.',
+  'settings.heartbeatUrl': 'External heartbeat (optional)',
+  'settings.heartbeatUrlHint': 'URL called every minute while everything works (Healthchecks.io, UptimeRobot heartbeat…). If the whole panel goes down, that external service alerts you — the panel cannot do it itself.',
+  'diag.alerts.t': 'Monitoring alerts',
+  'diag.alerts.ok': 'Active. Channels: {channels}{heartbeat}.',
+  'diag.alerts.warn': 'No external alert channel configured (Discord, Slack, BloumeChat or heartbeat), or alerts disabled: an outage would only be visible by opening the panel. Set them up in Settings → Webhooks.',
+
   // ── Public status page ──
   'status.title': 'Service status',
   'status.operational': 'All systems operational',

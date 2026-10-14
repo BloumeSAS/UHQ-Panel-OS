@@ -4,11 +4,12 @@ import { SettingsModule } from '../../config/settings.module';
 import { BackupModule } from '../backup/backup.module';
 import { PublicStatusController, SystemController } from './system.controller';
 import { SystemService } from './system.service';
+import { HealthWatchService } from './health-watch.service';
 
 /** Mise en service : checklist, diagnostic, test de compte, page d'état publique. */
 @Module({
   imports: [PrismaModule, SettingsModule, BackupModule],
   controllers: [SystemController, PublicStatusController],
-  providers: [SystemService],
+  providers: [SystemService, HealthWatchService],
 })
 export class SystemModule {}

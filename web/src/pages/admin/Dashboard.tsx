@@ -7,63 +7,19 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui';
 import { cn, BYTES_PER_GB } from '@/lib/utils';
 import { AddonPageBar } from '@/components/AddonPageBar';
 import { OnboardingChecklist } from '@/components/OnboardingChecklist';
+import { useLiveSnapshot, type LiveState } from '@/lib/liveSnapshot';
 
 type DashboardTab = 'overview' | 'active-accounts' | 'extensions';
 
 export default function Dashboard() {
   const t = useT();
   const [tab, setTab] = useState<DashboardTab>('overview');
-  const [wsData, setWsData] = useState<any>(null);
+  const { snap, state: liveState, ageSec } = useLiveSnapshot();
 
-  useEffect(() => {
-    let ws: WebSocket | null = null;
-    let timer: any = null;
-
-    function connect() {
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const host = window.location.hostname === 'localhost' ? 'localhost:8000' : window.location.host;
-      const token = localStorage.getItem('uhq_token') || '';
-      const wsUrl = `${protocol}//${host}/api/panel/ws?token=${token}`;
-
-      ws = new WebSocket(wsUrl);
-
-      ws.onmessage = (event) => {
-        try {
-          const payload = JSON.parse(event.data);
-          if (payload.event === 'stats') {
-            setWsData(payload.data);
-          }
-        } catch (err) {
-          console.error('WS parse error:', err);
-        }
-      };
-
-      ws.onclose = () => {
-        timer = setTimeout(connect, 3000);
-      };
-
-      ws.onerror = () => {
-        ws?.close();
-      };
-    }
-
-    connect();
-
-    return () => {
-      if (ws) ws.close();
-      if (timer) clearTimeout(timer);
-    };
-  }, []);
-
-  const live = useQuery({
-    queryKey: ['monitoring', 'live'],
-    queryFn: async () => (await api.get('/monitoring/live')).data,
-    refetchInterval: 5000,
-  });
   const pool = useQuery({
     queryKey: ['monitoring', 'pool'],
     queryFn: async () => (await api.get('/monitoring/pool')).data,
-    refetchInterval: 30000,
+    refetchInterval: 10000,
   });
   const countries = useQuery({
     queryKey: ['monitoring', 'countries'],
@@ -81,23 +37,17 @@ export default function Dashboard() {
     refetchInterval: 10000,
   });
 
-  const l = wsData
-    ? {
-        active_threads: wsData.activeThreads,
-        active_sessions: wsData.activeSessions,
-        pool: {
-          working: wsData.poolWorking,
-          total: wsData.poolTotal,
-        },
-      }
-    : live.data?.live;
-
-  const today = live.data?.today_summary;
+  // TOUT vient du même instantané serveur (même instant, même calcul).
+  const l = snap?.live;
+  const today = snap?.today_summary;
   const history: any[] = healthHistory.data?.data ?? [];
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">{t('nav.dashboard')}</h1>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h1 className="text-2xl font-bold">{t('nav.dashboard')}</h1>
+        <LiveBadge state={liveState} ageSec={ageSec} />
+      </div>
 
       <OnboardingChecklist />
 
@@ -137,7 +87,7 @@ export default function Dashboard() {
         </button>
       </div>
 
-      {tab === 'active-accounts' && <ActiveAccountsTab />}
+      {tab === 'active-accounts' && <ActiveAccountsTab accounts={snap?.active_accounts ?? null} />}
       {tab === 'extensions' && <ExtensionsTab />}
 
       {tab === 'overview' && (
@@ -187,7 +137,7 @@ export default function Dashboard() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <ActiveProxiesList data={live.data?.active_proxies ?? []} />
+          <ActiveProxiesList data={snap?.active_proxies ?? []} />
         </CardContent>
       </Card>
 
@@ -362,16 +312,11 @@ function formatBytes(bytes: number | null): string {
   return `${(bytes / BYTES_PER_GB).toFixed(2)} Go`;
 }
 
-function ActiveAccountsTab() {
+function ActiveAccountsTab({ accounts: accountsProp }: { accounts: ActiveAccount[] | null }) {
   const t = useT();
   const [query, setQuery] = useState('');
-  const { data, isLoading } = useQuery({
-    queryKey: ['monitoring', 'active-accounts'],
-    queryFn: async () => (await api.get('/monitoring/active-accounts')).data.data as ActiveAccount[],
-    refetchInterval: 5000,
-  });
-
-  const accounts = data ?? [];
+  const isLoading = accountsProp === null;
+  const accounts = accountsProp ?? [];
   const q = query.trim().toLowerCase();
   const filtered = q
     ? accounts.filter((a) => a.username.toLowerCase().includes(q) || a.label.toLowerCase().includes(q) || (a.pool ?? '').toLowerCase().includes(q))
@@ -553,5 +498,25 @@ function MiniChart({ data }: { data: any[] }) {
         <span>{data[data.length - 1] ? new Date(data[data.length - 1].createdAt).toLocaleTimeString() : '—'}</span>
       </div>
     </div>
+  );
+}
+
+/** État du flux « en direct » : vert = flux WebSocket frais ; orange = reconnexion ou mode de secours (3 s). */
+function LiveBadge({ state, ageSec }: { state: LiveState; ageSec: number | null }) {
+  const t = useT();
+  const tone =
+    state === 'live' ? 'bg-emerald-500' : state === 'polling' ? 'bg-amber-500' : 'bg-muted-foreground';
+  return (
+    <span
+      className="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs text-muted-foreground"
+      title={t(`dash.live.${state}.hint`)}
+    >
+      <span className="relative flex h-2 w-2">
+        {state === 'live' && <span className={cn('absolute inline-flex h-full w-full animate-ping rounded-full opacity-60', tone)} />}
+        <span className={cn('relative inline-flex h-2 w-2 rounded-full', tone)} />
+      </span>
+      {t(`dash.live.${state}`)}
+      {ageSec !== null && <span className="tabular-nums">· {ageSec}s</span>}
+    </span>
   );
 }

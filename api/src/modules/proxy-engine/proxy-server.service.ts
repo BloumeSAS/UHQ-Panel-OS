@@ -115,6 +115,12 @@ export class ProxyServerService implements OnModuleDestroy {
   >();
   /** Memory-only auth: every UserProxy keyed by username */
   private userListCache = new Map<string, any>();
+  /** Connexions NON encore authentifiées, par IP (plafonné : protège les descripteurs de fichiers). */
+  private readonly preAuthByIp = new Map<string, number>();
+  private static readonly MAX_PREAUTH_PER_IP = 40;
+  private static readonly MAX_HEADER_LINES = 100;
+  private static readonly MAX_HEADER_BYTES = 32 * 1024;
+  private static readonly PREAUTH_BUDGET_MS = 15_000;
   /**
    * IP bannies (indépendant des comptes) — vérifié avant même l'authentification
    * pour couper court à toute tentative depuis cette IP. Rechargé au boot, toutes
@@ -493,6 +499,15 @@ export class ProxyServerService implements OnModuleDestroy {
     return ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
   }
 
+  /** Adresse interdite pour un amont du pool partagé. Loopback / lien-local / non spécifiée : toujours ; privée : sauf réglage. */
+  private isForbiddenUpstreamAddress(addr?: string): boolean {
+    if (!addr) return false;
+    const ip = addr.replace(/^::ffff:/, '');
+    if (/^127\./.test(ip) || ip === '::1' || /^169\.254\./.test(ip) || /^fe[89ab]/i.test(ip) || ip === '0.0.0.0' || ip === '::') return true;
+    const priv = /^10\./.test(ip) || /^192\.168\./.test(ip) || /^172\.(1[6-9]|2\d|3[01])\./.test(ip) || /^f[cd]/i.test(ip) || /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(ip);
+    return priv && !this.settings.getBool('allowPrivateUpstreams');
+  }
+
   private isIpBanned(ip: string): boolean {
     return !!ip && this.bannedIpSet.has(ip);
   }
@@ -655,6 +670,26 @@ export class ProxyServerService implements OnModuleDestroy {
       return;
     }
 
+    // Plafond de connexions pas encore authentifiées par IP (le loopback — test du panel — est exempté) :
+    // sans lui, quelques machines pouvaient épuiser les descripteurs de fichiers du process avec des sockets muets.
+    let preAuthHeld = false;
+    const releasePreAuth = () => {
+      if (!preAuthHeld) return;
+      preAuthHeld = false;
+      const n = (this.preAuthByIp.get(clientIp) ?? 1) - 1;
+      if (n <= 0) this.preAuthByIp.delete(clientIp);
+      else this.preAuthByIp.set(clientIp, n);
+    };
+    if (!this.isLoopback(clientIp)) {
+      const held = this.preAuthByIp.get(clientIp) ?? 0;
+      if (held >= ProxyServerService.MAX_PREAUTH_PER_IP) {
+        client.destroy();
+        return;
+      }
+      this.preAuthByIp.set(clientIp, held + 1);
+      preAuthHeld = true;
+    }
+
     let user: any | null = null;
     // Username under which we actually incremented activeThreads. Stays null
     // when we never counted this connection (auth failure, 429 rejection),
@@ -687,9 +722,20 @@ export class ProxyServerService implements OnModuleDestroy {
       // Read headers until empty CRLF
       const headers: string[] = [];
       let authHeader: string | null = null;
+      let headerBytes = 0;
       while (true) {
+        // Bornes AVANT authentification : nombre d'en-têtes, taille totale et durée globale (anti-slowloris / anti-mémoire).
+        if (
+          headers.length >= ProxyServerService.MAX_HEADER_LINES ||
+          headerBytes > ProxyServerService.MAX_HEADER_BYTES ||
+          Date.now() - tAccept > ProxyServerService.PREAUTH_BUDGET_MS
+        ) {
+          client.destroy();
+          return;
+        }
         const lineRaw = await readUntil(client, Buffer.from('\r\n'), this.timeoutMs);
         if (lineRaw.equals(Buffer.from('\r\n'))) break;
+        headerBytes += lineRaw.length;
         const line = lineRaw.toString('latin1').replace(/\r\n$/, '');
         headers.push(line);
         if (line.toLowerCase().startsWith('proxy-authorization:')) {
@@ -698,6 +744,7 @@ export class ProxyServerService implements OnModuleDestroy {
       }
 
       user = await this.authenticate(clientIp, authHeader);
+      releasePreAuth(); // authentifié ou refusé : cette connexion n'est plus « en attente »
       if (!user) {
         this.logger.log(`Auth failed for ${clientIp}`);
         void this.registerAuthFailure(clientIp);
@@ -1102,6 +1149,7 @@ export class ProxyServerService implements OnModuleDestroy {
           this.throttles.delete(accountKey);
         }
       }
+      releasePreAuth(); // sorties anticipées (lecture échouée, requête invalide, timeout) : jamais de fuite du compteur
       this.clientSockets.delete(client);
       try {
         if (!client.destroyed) client.destroy();
@@ -1415,6 +1463,14 @@ export class ProxyServerService implements OnModuleDestroy {
         );
       }
       socket = await tcpConnect(upstream.ip, upstream.port, Math.min(connectTimeoutMs ?? this.timeoutMs, this.timeoutMs));
+      // Un proxy amont du pool PARTAGÉ (scrapé / importé) ne doit jamais mener vers le serveur lui-même, le réseau
+      // Docker ou l'endpoint de métadonnées cloud (la requête du client y serait relayée). Vérifié sur l'adresse
+      // RÉELLEMENT connectée (couvre les noms de domaine). Listes privées de compte et proxy de secours : exemptés.
+      if (!isCustom && upstream.id !== 'fallback' && this.isForbiddenUpstreamAddress(socket.remoteAddress)) {
+        socket.destroy();
+        socket = null;
+        throw new Error('upstream address forbidden');
+      }
       // Suivi du comptage avant la négociation : ses octets (même en cas
       // d'échec) sont consommés chez le fournisseur de cet upstream.
       onSocket?.(socket);

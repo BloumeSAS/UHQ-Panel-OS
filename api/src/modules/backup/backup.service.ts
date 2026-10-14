@@ -1,4 +1,5 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { NotificationService } from '../notifications/notification.service';
 import { PrismaService } from '../../database/prisma.service';
 import { SettingsService } from '../../config/settings.service';
 import { extractSettings } from '../../common/utils/settings-import';
@@ -48,6 +49,7 @@ export class BackupService implements OnModuleInit {
     private readonly prisma: PrismaService,
     private readonly settings: SettingsService,
     private readonly schedulerRegistry: SchedulerRegistry,
+    private readonly notifications: NotificationService,
     private readonly jobs: JobCoordinatorService,
     private readonly engine: ProxyServerService,
     private readonly traffic: TrafficService,
@@ -123,6 +125,15 @@ export class BackupService implements OnModuleInit {
           this.logger.log(`Scheduled backup finished in ${Date.now() - startedAt}ms: ${filename}`);
         } catch (err) {
           this.logger.error(`Scheduled backup failed after ${Date.now() - startedAt}ms: ${err.message}`);
+          void this.notifications
+            .notifySystemAlert({
+              id: 'backup-failed',
+              severity: 'critical',
+              title: this.settings.get('defaultLang') === 'en' ? '🚨 Backup failed' : '🚨 Sauvegarde échouée',
+              message: String(err.message).slice(0, 300),
+              link: '/settings?tab=backups',
+            })
+            .catch(() => undefined);
         }
       });
 

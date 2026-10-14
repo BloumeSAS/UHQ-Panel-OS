@@ -382,6 +382,46 @@ export class NotificationService {
   }
 
   /**
+   * Alerte de surveillance (moteur/base/disque/sauvegardes) : cloche + Discord/Slack/BloumeChat + e-mail des admins.
+   * La déduplication (2 échecs de suite, rappel 6 h, message « rétabli ») est faite par l'appelant (HealthWatchService).
+   */
+  async notifySystemAlert(entry: {
+    id: string;
+    severity: 'critical' | 'warning' | 'recovered';
+    title: string;
+    message: string;
+    link?: string;
+  }): Promise<void> {
+    this.logger.warn(`[alerte ${entry.id}] ${entry.title} — ${entry.message}`);
+    // La cloche est écrite en base : silencieusement ignorée si la base est justement la panne.
+    await this.createInApp({
+      type: entry.severity === 'critical' ? 'error' : entry.severity === 'warning' ? 'warning' : 'success',
+      title: entry.title,
+      message: entry.message,
+      link: entry.link,
+    });
+    const color = entry.severity === 'critical' ? 15158332 : entry.severity === 'warning' ? 16753920 : 3066993;
+    await this.dispatch({
+      discord: {
+        username: 'UHQ Panel OS Alerts',
+        embeds: [{ title: entry.title, description: entry.message, color, timestamp: new Date().toISOString() }],
+      },
+      slack: { text: `${entry.title}\n${entry.message}` },
+    }).catch(() => undefined);
+    try {
+      if (this.mail.isConfigured()) {
+        const admins = await this.prisma.panelUser.findMany({ where: { role: 'ADMIN', isActive: true }, select: { email: true } });
+        const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] as string);
+        for (const a of admins) {
+          await this.mail.send({ to: a.email, subject: entry.title, html: `<p>${esc(entry.message)}</p>` });
+        }
+      }
+    } catch {
+      /* base indisponible ou SMTP en panne : les autres canaux ont déjà été tentés */
+    }
+  }
+
+  /**
    * Alert when a new panel user is created.
    */
   async notifyUserCreated(email: string, role: string): Promise<void> {

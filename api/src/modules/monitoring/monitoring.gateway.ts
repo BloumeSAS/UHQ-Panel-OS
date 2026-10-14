@@ -1,6 +1,5 @@
 import {
   WebSocketGateway,
-  WebSocketServer,
   OnGatewayConnection,
   OnGatewayDisconnect,
 } from '@nestjs/websockets';
@@ -8,9 +7,9 @@ import { WebSocket } from 'ws';
 import { IncomingMessage } from 'http';
 import { JwtService } from '@nestjs/jwt';
 import { Logger } from '@nestjs/common';
-import { ProxyServerService } from '../proxy-engine/proxy-server.service';
-import { PrismaService } from '../../database/prisma.service';
+import { LiveSnapshotService } from './live-snapshot.service';
 
+/** Flux « en direct » du tableau de bord : un instantané COMPLET et cohérent toutes les 2 s (voir LiveSnapshotService). */
 @WebSocketGateway({
   path: '/api/panel/ws',
 })
@@ -21,8 +20,7 @@ export class MonitoringGateway implements OnGatewayConnection, OnGatewayDisconne
 
   constructor(
     private readonly jwt: JwtService,
-    private readonly engine: ProxyServerService,
-    private readonly prisma: PrismaService,
+    private readonly snapshots: LiveSnapshotService,
   ) {}
 
   async handleConnection(client: WebSocket, req: IncomingMessage) {
@@ -37,12 +35,19 @@ export class MonitoringGateway implements OnGatewayConnection, OnGatewayDisconne
     }
 
     try {
-      this.jwt.verify(token);
+      const payload = this.jwt.verify(token) as { role?: string };
+      // Le flux contient la liste des comptes actifs et des statistiques internes : réservé ADMIN / SUPPORT
+      // (un jeton « 2FA en attente » n'a pas de rôle, un simple utilisateur n'a pas à le recevoir).
+      if (payload.role !== 'ADMIN' && payload.role !== 'SUPPORT') {
+        this.logger.warn('WS Connection rejected: insufficient role');
+        client.close(4003, 'Forbidden');
+        return;
+      }
       this.clients.add(client);
       this.logger.log(`WS Client connected (${this.clients.size} active)`);
-      
+
       // Send initial data immediately
-      await this.sendStatsToClient(client);
+      await this.sendToClient(client);
 
       // Start interval if it's the first client
       if (!this.interval) {
@@ -68,12 +73,9 @@ export class MonitoringGateway implements OnGatewayConnection, OnGatewayDisconne
   private startBroadcasting() {
     this.interval = setInterval(async () => {
       try {
-        const stats = await this.getStats();
-        const payload = JSON.stringify({ event: 'stats', data: stats });
+        const payload = JSON.stringify({ event: 'stats', data: await this.snapshots.get() });
         for (const client of this.clients) {
-          if (client.readyState === WebSocket.OPEN) {
-            client.send(payload);
-          }
+          if (client.readyState === WebSocket.OPEN) client.send(payload);
         }
       } catch (err) {
         this.logger.error(`Broadcasting stats failed: ${err.message}`);
@@ -81,38 +83,12 @@ export class MonitoringGateway implements OnGatewayConnection, OnGatewayDisconne
     }, 2000); // every 2 seconds
   }
 
-  private async sendStatsToClient(client: WebSocket) {
+  private async sendToClient(client: WebSocket) {
     try {
-      const stats = await this.getStats();
-      if (client.readyState === WebSocket.OPEN) {
-        client.send(JSON.stringify({ event: 'stats', data: stats }));
-      }
+      const snap = await this.snapshots.get();
+      if (client.readyState === WebSocket.OPEN) client.send(JSON.stringify({ event: 'stats', data: snap }));
     } catch (err) {
       this.logger.error(`Failed to send initial stats: ${err.message}`);
     }
-  }
-
-  private async getStats() {
-    const activeThreads = Array.from(this.engine.getActiveThreads().values()).reduce(
-      (a, b) => a + b,
-      0,
-    );
-    const activeSessions = this.engine.getSessions().size;
-    const poolTotal = await this.prisma.backendProxy.count();
-    const poolWorking = await this.prisma.backendProxy.count({
-      where: { isWorking: true, isBlacklisted: false },
-    });
-    const poolBanned = await this.prisma.backendProxy.count({
-      where: { isBlacklisted: true },
-    });
-
-    return {
-      activeThreads,
-      activeSessions,
-      poolTotal,
-      poolWorking,
-      poolBanned,
-      timestamp: new Date().toISOString(),
-    };
   }
 }

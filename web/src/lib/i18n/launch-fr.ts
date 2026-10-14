@@ -111,6 +111,22 @@ export const launchFr: Record<string, string> = {
   'test.err.badresponse': 'Réponse inattendue du service de test.',
   'test.err.other': 'Erreur : {code}.',
 
+  'dash.live.live': 'En direct',
+  'dash.live.connecting': 'Reconnexion…',
+  'dash.live.polling': 'Actualisation toutes les 3 s',
+  'dash.live.live.hint': 'Flux temps réel actif : toutes les valeurs viennent du même instantané, rafraîchi toutes les 2 secondes.',
+  'dash.live.connecting.hint': 'Le flux temps réel est interrompu : reconnexion automatique en cours.',
+  'dash.live.polling.hint': 'Le flux temps réel est indisponible (proxy ou pare-feu bloquant les WebSockets ?) : les valeurs sont actualisées toutes les 3 secondes.',
+
+  'settings.healthAlerts': 'Surveillance du serveur',
+  'settings.healthAlertsEnabled': 'Alertes de surveillance',
+  'settings.healthAlertsHint': 'Prévient (cloche, Discord/Slack/BloumeChat ci-dessous, e-mail des admins) quand le moteur proxy ou la base ne répondent plus, que le disque est presque plein, ou que les sauvegardes sont trop anciennes ou échouent. Alerte après 2 minutes de panne, rappel toutes les 6 h, message quand c’est rétabli.',
+  'settings.heartbeatUrl': 'Heartbeat externe (optionnel)',
+  'settings.heartbeatUrlHint': 'URL appelée chaque minute tant que tout fonctionne (Healthchecks.io, UptimeRobot « heartbeat »…). Si le panel entier tombe, c’est ce service externe qui vous prévient — le panel ne peut pas le faire lui-même.',
+  'diag.alerts.t': 'Alertes de surveillance',
+  'diag.alerts.ok': 'Actives. Canaux : {channels}{heartbeat}.',
+  'diag.alerts.warn': 'Aucun canal d’alerte externe configuré (Discord, Slack, BloumeChat ou heartbeat), ou alertes désactivées : une panne ne serait visible qu’en ouvrant le panel. Configurez-les dans Paramètres → Webhooks.',
+
   // ── Page d'état publique ──
   'status.title': 'État du service',
   'status.operational': 'Tous les systèmes sont opérationnels',
