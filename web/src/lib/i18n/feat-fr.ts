@@ -209,4 +209,15 @@ export const featFr: Record<string, string> = {
   'catFb.none': 'Aucun fallback (http://user:pass@hôte:port ou socks5://…)',
   'catFb.enabled': 'Activé',
   'catFb.saved': 'Fallback enregistré',
+
+  // ── Extensions : UHQ.Monster Reseller ──
+  'settings.extResellerTitle': 'UHQ.Monster Reseller',
+  'settings.extResellerHint': 'Clé API revendeur UHQ.Monster (dashboard UHQ.Monster → Revendeur → API). Elle est vérifiée auprès d’UHQ.Monster avant d’être enregistrée, conservée côté serveur et jamais ré-affichée ni sauvegardée. Quiconque la possède peut dépenser votre solde.',
+  'settings.extResellerCurrent': 'Clé enregistrée :',
+  'settings.extResellerKey': 'Clé API revendeur',
+  'settings.extResellerReplace': 'Remplacer la clé',
+  'settings.extResellerSave': 'Vérifier et enregistrer',
+  'settings.extResellerRemove': 'Retirer la clé',
+  'settings.extResellerRemoveConfirm': 'Retirer la clé API ? L’addon ne pourra plus acheter ni lire votre solde.',
+  'settings.extResellerSaved': 'Clé enregistrée — solde : {balance} €',
 };

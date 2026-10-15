@@ -1711,7 +1711,8 @@ function ExtensionsTab() {
   // Addon.id dans schema.prisma) — un addon officiel embarqué se reconnaît
   // par son baseUrl relatif `/addon-proxy/<slug>` (cf. BundledAddonsService).
   const ordersActive = (addons ?? []).some((a) => a.baseUrl === '/addon-proxy/orders' && a.enabled);
-  const anyExtension = ordersActive; // futurs addons : ajouter leur condition ici.
+  const resellerActive = (addons ?? []).some((a) => a.baseUrl === '/addon-proxy/reseller' && a.enabled);
+  const anyExtension = ordersActive || resellerActive; // futurs addons : ajouter leur condition ici.
 
   return (
     <div className="space-y-5">
@@ -1727,6 +1728,91 @@ function ExtensionsTab() {
           <OrdersPaymentSettingsCard />
         </div>
       )}
+      {resellerActive && (
+        <div className="rounded-lg border p-4 space-y-4">
+          <div className="flex items-center gap-2.5">
+            <ShoppingCart className="h-4 w-4 text-primary" />
+            <h3 className="text-sm font-semibold">{t('settings.extResellerTitle')}</h3>
+          </div>
+          <ResellerSettingsCard />
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface ResellerStatus {
+  configured: boolean;
+  keyHint: string | null;
+}
+
+/** Clé API revendeur UHQ.Monster (addon Reseller) : vérifiée par l'addon avant d'être enregistrée, jamais ré-affichée. */
+function ResellerSettingsCard() {
+  const t = useT();
+  const [status, setStatus] = useState<ResellerStatus | null>(null);
+  const [key, setKey] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const load = () =>
+    addonApi.get('/reseller/api/reseller/status')
+      .then(({ data }) => setStatus(data))
+      .catch((e) => toast.error(apiError(e)));
+  useEffect(() => { void load(); }, []);
+
+  const save = async () => {
+    setBusy(true);
+    try {
+      const { data } = await addonApi.put('/reseller/api/reseller/settings', { apiKey: key.trim() });
+      setKey('');
+      setStatus({ configured: data.configured, keyHint: data.keyHint });
+      toast.success(t('settings.extResellerSaved').replace('{balance}', String(data.account?.balance ?? '?')));
+    } catch (e) {
+      toast.error(apiError(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const remove = async () => {
+    if (!window.confirm(t('settings.extResellerRemoveConfirm'))) return;
+    setBusy(true);
+    try {
+      const { data } = await addonApi.delete('/reseller/api/reseller/settings');
+      setStatus({ configured: data.configured, keyHint: data.keyHint });
+    } catch (e) {
+      toast.error(apiError(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!status) return <p className="text-sm text-muted-foreground">{t('app.loading')}</p>;
+
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-muted-foreground">{t('settings.extResellerHint')}</p>
+      {status.configured && (
+        <p className="text-sm">
+          {t('settings.extResellerCurrent')} <span className="font-mono">{status.keyHint}</span>
+        </p>
+      )}
+      <F label={status.configured ? t('settings.extResellerReplace') : t('settings.extResellerKey')}>
+        <Input
+          type="password"
+          autoComplete="off"
+          spellCheck={false}
+          value={key}
+          onChange={(e) => setKey(e.target.value)}
+          placeholder="uhq_…"
+          className="font-mono"
+        />
+      </F>
+      <div className="flex flex-wrap justify-end gap-2">
+        {status.configured && (
+          <Button type="button" variant="outline" onClick={remove} disabled={busy}>{t('settings.extResellerRemove')}</Button>
+        )}
+        <Button type="button" onClick={save} disabled={busy || key.trim().length < 10}>{t('settings.extResellerSave')}</Button>
+      </div>
     </div>
   );
 }

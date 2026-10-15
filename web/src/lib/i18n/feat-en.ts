@@ -209,4 +209,15 @@ export const featEn: Record<string, string> = {
   'catFb.none': 'No fallback (http://user:pass@host:port or socks5://…)',
   'catFb.enabled': 'Enabled',
   'catFb.saved': 'Fallback saved',
+
+  // ── Extensions: UHQ.Monster Reseller ──
+  'settings.extResellerTitle': 'UHQ.Monster Reseller',
+  'settings.extResellerHint': 'UHQ.Monster reseller API key (UHQ.Monster dashboard → Reseller → API). It is checked with UHQ.Monster before being saved, kept server-side and never shown again nor backed up. Anyone holding it can spend your balance.',
+  'settings.extResellerCurrent': 'Saved key:',
+  'settings.extResellerKey': 'Reseller API key',
+  'settings.extResellerReplace': 'Replace the key',
+  'settings.extResellerSave': 'Check and save',
+  'settings.extResellerRemove': 'Remove the key',
+  'settings.extResellerRemoveConfirm': 'Remove the API key? The addon will no longer be able to buy or read your balance.',
+  'settings.extResellerSaved': 'Key saved — balance: {balance} €',
 };
