@@ -212,7 +212,7 @@ export const featFr: Record<string, string> = {
 
   // ── Extensions : UHQ.Monster Reseller ──
   'settings.extResellerTitle': 'UHQ.Monster Reseller',
-  'settings.extResellerHint': 'Clé API revendeur UHQ.Monster (dashboard UHQ.Monster → Revendeur → API). Elle est vérifiée auprès d’UHQ.Monster avant d’être enregistrée, conservée côté serveur et jamais ré-affichée ni sauvegardée. Quiconque la possède peut dépenser votre solde.',
+  'settings.extResellerHint': 'Clé API revendeur UHQ.Monster (dashboard UHQ.Monster → Revendeur → API ; elle commence par « uhq_ » ou « UHQ- »). Elle est vérifiée auprès d’UHQ.Monster avant d’être enregistrée, conservée côté serveur et jamais ré-affichée ni sauvegardée. Quiconque la possède peut dépenser votre solde.',
   'settings.extResellerCurrent': 'Clé enregistrée :',
   'settings.extResellerKey': 'Clé API revendeur',
   'settings.extResellerReplace': 'Remplacer la clé',

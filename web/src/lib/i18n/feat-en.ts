@@ -212,7 +212,7 @@ export const featEn: Record<string, string> = {
 
   // ── Extensions: UHQ.Monster Reseller ──
   'settings.extResellerTitle': 'UHQ.Monster Reseller',
-  'settings.extResellerHint': 'UHQ.Monster reseller API key (UHQ.Monster dashboard → Reseller → API). It is checked with UHQ.Monster before being saved, kept server-side and never shown again nor backed up. Anyone holding it can spend your balance.',
+  'settings.extResellerHint': 'UHQ.Monster reseller API key (UHQ.Monster dashboard → Reseller → API; it starts with “uhq_” or “UHQ-”). It is checked with UHQ.Monster before being saved, kept server-side and never shown again nor backed up. Anyone holding it can spend your balance.',
   'settings.extResellerCurrent': 'Saved key:',
   'settings.extResellerKey': 'Reseller API key',
   'settings.extResellerReplace': 'Replace the key',

@@ -1803,7 +1803,7 @@ function ResellerSettingsCard() {
           spellCheck={false}
           value={key}
           onChange={(e) => setKey(e.target.value)}
-          placeholder="uhq_…"
+          placeholder="uhq_… / UHQ-…"
           className="font-mono"
         />
       </F>
