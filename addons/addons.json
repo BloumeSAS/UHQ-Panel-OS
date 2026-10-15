@@ -8,10 +8,17 @@
     "free": true,
     "official": true,
     "license": "MIT",
-    "author": { "name": "Bloume SAS", "url": "https://bloume.fr" },
+    "author": {
+      "name": "Bloume SAS",
+      "url": "https://bloume.fr"
+    },
     "repository": "https://github.com/BloumeSAS/UHQ-Addon-Wallet",
     "homepage": "https://uhq-panel-os-docs.bloume.fr/addons/official/wallet",
-    "tags": ["payments", "wallet", "balance"],
+    "tags": [
+      "payments",
+      "wallet",
+      "balance"
+    ],
     "features": [
       "Solde par compte proxy",
       "Historique des transactions",
@@ -29,11 +36,21 @@
     "free": true,
     "official": true,
     "license": "MIT",
-    "author": { "name": "Bloume SAS", "url": "https://bloume.fr" },
+    "author": {
+      "name": "Bloume SAS",
+      "url": "https://bloume.fr"
+    },
     "repository": "https://github.com/BloumeSAS/UHQ-Addon-Orders",
     "homepage": "https://uhq-panel-os-docs.bloume.fr/addons/official/orders",
-    "tags": ["store", "orders", "delivery", "proxy"],
-    "requires": ["wallet"],
+    "tags": [
+      "store",
+      "orders",
+      "delivery",
+      "proxy"
+    ],
+    "requires": [
+      "wallet"
+    ],
     "features": [
       "Catalogue produits avec stock",
       "Paiement via addon Wallet",
@@ -41,7 +58,9 @@
       "Révocation des accès à l'annulation"
     ],
     "bundlePort": 3102,
-    "extraEnv": { "WALLET_URL": "http://127.0.0.1:3101" }
+    "extraEnv": {
+      "WALLET_URL": "http://127.0.0.1:3101"
+    }
   },
   {
     "name": "Analytics",
@@ -52,10 +71,17 @@
     "free": true,
     "official": true,
     "license": "MIT",
-    "author": { "name": "Bloume SAS", "url": "https://bloume.fr" },
+    "author": {
+      "name": "Bloume SAS",
+      "url": "https://bloume.fr"
+    },
     "repository": "https://github.com/BloumeSAS/UHQ-Addon-Analytics",
     "homepage": "https://uhq-panel-os-docs.bloume.fr/addons/official/analytics",
-    "tags": ["analytics", "statistics", "monitoring"],
+    "tags": [
+      "analytics",
+      "statistics",
+      "monitoring"
+    ],
     "features": [
       "Plus de 70 graphiques",
       "Heures et jours les plus actifs",
@@ -63,5 +89,34 @@
       "Page Mon activité pour chaque utilisateur"
     ],
     "bundlePort": 3103
+  },
+  {
+    "name": "UHQ.Monster Reseller",
+    "slug": "reseller",
+    "version": "1.0.1",
+    "description": "Achetez et gérez vos proxies UHQ.Monster depuis le panel : solde, création, ajout/retrait de Go et import automatique dans vos catégories.",
+    "icon": "ShoppingBag",
+    "free": true,
+    "official": true,
+    "license": "MIT",
+    "author": {
+      "name": "Bloume SAS",
+      "url": "https://bloume.fr"
+    },
+    "repository": "https://github.com/BloumeSAS/UHQ-Addon-Reseller",
+    "homepage": "https://uhq-panel-os-docs.bloume.fr/addons/official/reseller",
+    "tags": [
+      "reseller",
+      "uhq.monster",
+      "proxies",
+      "store"
+    ],
+    "features": [
+      "Solde et remise revendeur",
+      "Achat de proxies avec import dans une catégorie",
+      "Ajout et reprise de Go (remboursement)",
+      "Widget d'achat rapide sur la page Pool"
+    ],
+    "bundlePort": 3104
   }
 ]

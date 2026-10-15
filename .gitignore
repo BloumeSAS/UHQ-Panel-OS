@@ -38,6 +38,7 @@ web/dist/
 addons/wallet
 addons/orders
 addons/analytics
+addons/reseller
 docs/
 
 claude/

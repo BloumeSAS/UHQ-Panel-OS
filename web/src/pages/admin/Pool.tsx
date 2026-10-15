@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Upload, Trash2, Search, Activity, Database, Network, Copy, Check, RefreshCw, RotateCcw, AlertTriangle, Ban, Download, ChevronLeft, ChevronRight, Gauge, UserCheck, Radar, Server } from 'lucide-react';
 import { CountryFlag } from '@/components/CountryFlag';
 import { useConfirm } from '@/components/ConfirmDialog';
+import { AddonPageBar } from '@/components/AddonPageBar';
 import { api, apiError } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { toast } from '@/lib/toast';
@@ -694,6 +695,9 @@ export default function Pool() {
           )}
         </CardContent>
       </Card>
+
+      {/* Widgets injectés par les addons connectés (ex. achat rapide UHQ.Monster Reseller) */}
+      <AddonPageBar />
     </div>
   );
 }
