@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
 import { EmptyState } from '@/components/EmptyState';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Upload, Trash2, Search, Activity, Database, Network, Copy, Check, RefreshCw, RotateCcw, AlertTriangle, Ban, Download, ChevronLeft, ChevronRight, Gauge, UserCheck, Radar, Server } from 'lucide-react';
+import { Upload, Trash2, Search, Activity, Database, Network, Copy, Check, RefreshCw, RotateCcw, AlertTriangle, Ban, Download, ChevronLeft, ChevronRight, Gauge, UserCheck, Radar, Server, ShoppingBag } from 'lucide-react';
 import { CountryFlag } from '@/components/CountryFlag';
 import { useConfirm } from '@/components/ConfirmDialog';
 import { AddonPageBar } from '@/components/AddonPageBar';
+import { ResellerProxyDialog, PoolProxyRef } from '@/components/ResellerProxyDialog';
 import { api, apiError } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { toast } from '@/lib/toast';
@@ -61,6 +62,14 @@ export default function Pool() {
   const [search, setSearch] = useState('');
   const [cleaning, setCleaning] = useState(false);
   const [revivedAll, setRevivedAll] = useState(false);
+  // Addon UHQ.Monster Reseller actif ? → bouton « Go / mot de passe » sur les proxies importés à la main.
+  const { data: addonsAll } = useQuery({
+    queryKey: ['addons-all'],
+    queryFn: async () => (await api.get('/addons/all')).data.data as any[],
+    staleTime: 60_000,
+  });
+  const resellerActive = (addonsAll ?? []).some((a) => a.baseUrl === '/addon-proxy/reseller' && a.enabled);
+  const [resellerFor, setResellerFor] = useState<PoolProxyRef | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const { data: settings } = useQuery({
@@ -635,6 +644,17 @@ export default function Pool() {
                               <RotateCcw className="h-3.5 w-3.5" />
                             </Button>
                           )}
+                          {resellerActive && p.provider === 'Manual' && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => setResellerFor({ id: p.id, ip: p.ip, port: p.port, url: p.url, pool: p.pool })}
+                              title={t('resPool.button')}
+                              className="h-7 w-7 rounded-md hover:bg-primary/10 text-muted-foreground hover:text-primary transition-colors"
+                            >
+                              <ShoppingBag className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
                           <Button
                             variant="ghost"
                             size="icon"
@@ -698,6 +718,10 @@ export default function Pool() {
 
       {/* Widgets injectés par les addons connectés (ex. achat rapide UHQ.Monster Reseller) */}
       <AddonPageBar />
+
+      {resellerFor && (
+        <ResellerProxyDialog proxy={resellerFor} onClose={() => setResellerFor(null)} onChanged={() => qc.invalidateQueries()} />
+      )}
     </div>
   );
 }
