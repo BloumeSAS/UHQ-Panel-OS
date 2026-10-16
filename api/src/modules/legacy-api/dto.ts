@@ -1,10 +1,17 @@
 import { ApiProperty, ApiPropertyOptional, OmitType } from '@nestjs/swagger';
-import { IsArray, IsBoolean, IsInt, IsOptional, IsString, Min } from 'class-validator';
+import { IsArray, IsBoolean, IsInt, IsOptional, IsString, MaxLength, Min } from 'class-validator';
 
 export class SubUserCreateDto {
   @ApiProperty({ example: 'My Proxy Account' })
   @IsString()
   label!: string;
+
+  /** Propriétaire (compte panel) : le compte apparaît dans « Mes proxies » de cet utilisateur. */
+  @ApiPropertyOptional({ description: 'ID du compte panel propriétaire (le compte proxy apparaît dans « Mes proxies » de cet utilisateur).', example: 'panel_user_id_here' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  owner_id?: string;
 
   @ApiPropertyOptional({ example: 'u_specialuser' })
   @IsOptional()
@@ -77,6 +84,13 @@ export class SubUserUpdateDto {
   @ApiProperty({ example: 'subuser_id_here' })
   @IsString()
   id!: string;
+
+  /** Réaffecte le compte à un autre propriétaire ('' = aucun). */
+  @ApiPropertyOptional({ description: "ID du compte panel propriétaire ('' = aucun propriétaire)." })
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  owner_id?: string;
 
   @ApiPropertyOptional({ example: 'Updated Proxy Account' })
   @IsOptional()

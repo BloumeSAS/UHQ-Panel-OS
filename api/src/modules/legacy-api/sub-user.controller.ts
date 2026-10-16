@@ -94,9 +94,15 @@ export class SubUserController {
   async create(@Body() dto: SubUserCreateDto) {
     const username = dto.username || `u_${randomString(8)}`;
     const password = dto.password || randomString(16);
+    // Propriétaire : le compte doit exister (sinon on refuse plutôt que de créer un compte « orphelin » invisible).
+    if (dto.owner_id) {
+      const owner = await this.prisma.panelUser.findUnique({ where: { id: dto.owner_id }, select: { id: true } });
+      if (!owner) throw new HttpException('owner_id inconnu', HttpStatus.BAD_REQUEST);
+    }
     try {
       const user = await this.prisma.userProxy.create({
         data: {
+          ownerId: dto.owner_id || null,
           username,
           password,
           name: dto.label,
@@ -146,6 +152,13 @@ export class SubUserController {
     if (dto.tags !== undefined) data.tags = dto.tags || null;
     if (dto.pool !== undefined) data.pool = dto.pool || null;
     if (dto.blocked_domains !== undefined) data.blockedDomains = dto.blocked_domains || null;
+    if (dto.owner_id !== undefined) {
+      if (dto.owner_id) {
+        const owner = await this.prisma.panelUser.findUnique({ where: { id: dto.owner_id }, select: { id: true } });
+        if (!owner) throw new HttpException('owner_id inconnu', HttpStatus.BAD_REQUEST);
+      }
+      data.ownerId = dto.owner_id || null;
+    }
     try {
       const user = await this.prisma.userProxy.update({ where: { id: dto.id }, data });
       this.engine.invalidateUserCache(user.username);
