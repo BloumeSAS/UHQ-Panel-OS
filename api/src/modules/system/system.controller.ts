@@ -4,6 +4,7 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { SystemService } from './system.service';
+import { Audited } from '../audit/audited.decorator';
 
 /** Aides à l'ouverture : checklist « premiers pas », diagnostic, test de compte (ADMIN). */
 @ApiTags('panel-system')
@@ -24,11 +25,13 @@ export class SystemController {
     return { status: 'success', ...(await this.system.diagnostics({ protocol: req.protocol, hostname: req.hostname })) };
   }
 
+  @Audited('system.demo-create')
   @Post('demo')
   async createDemo() {
     return { status: 'success', ...(await this.system.createDemo()) };
   }
 
+  @Audited('system.demo-remove')
   @Delete('demo')
   async removeDemo() {
     return { status: 'success', ...(await this.system.removeDemo()) };

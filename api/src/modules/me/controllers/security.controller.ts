@@ -18,6 +18,8 @@ import * as bcrypt from 'bcryptjs';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../../common/decorators/current-user.decorator';
 import type { JwtUser } from '../../../common/guards/jwt-auth.guard';
+import { MailService } from '../../mail/mail.service';
+import { getClientIp } from '../../../common/utils/client-ip';
 import { PrismaService } from '../../../database/prisma.service';
 import { SettingsService } from '../../../config/settings.service';
 import { AuditService } from '../../audit/audit.service';
@@ -33,6 +35,7 @@ export class SecurityController {
     private readonly prisma: PrismaService,
     private readonly settings: SettingsService,
     private readonly auditService: AuditService,
+    private readonly mail: MailService,
   ) {}
 
   // ── Profil ───────────────────────────────────────────────────────────────────
@@ -50,7 +53,7 @@ export class SecurityController {
 
   /** Change le mot de passe du compte courant (nécessite l'ancien). */
   @Patch('password')
-  async changePassword(@CurrentUser() me: JwtUser, @Body() dto: ChangePasswordDto) {
+  async changePassword(@CurrentUser() me: JwtUser, @Body() dto: ChangePasswordDto, @Req() req: any) {
     const user = await this.prisma.panelUser.findUnique({ where: { id: me.id } });
     if (!user) throw new NotFoundException('User not found');
     const valid = await bcrypt.compare(dto.currentPassword, user.passwordHash);
@@ -65,6 +68,7 @@ export class SecurityController {
       userEmail: me.email,
       action: 'auth.password-change',
     });
+    void this.mail.sendPasswordChanged(me.email, getClientIp(req)).catch(() => undefined);
     return { status: 'success', message: 'Password updated' };
   }
 
@@ -92,7 +96,7 @@ export class SecurityController {
 
   /** Vérifie le code TOTP et active définitivement le 2FA. */
   @Post('totp/enable')
-  async totpEnable(@CurrentUser() me: JwtUser, @Body() dto: TotpEnableDto) {
+  async totpEnable(@CurrentUser() me: JwtUser, @Body() dto: TotpEnableDto, @Req() req: any) {
     const user = await this.prisma.panelUser.findUnique({ where: { id: me.id } });
     const u = user as any;
     if (!u?.totpSecret) throw new BadRequestException('Run /totp/setup first');
@@ -111,6 +115,7 @@ export class SecurityController {
       data: { totpEnabled: true, totpRecoveryCodes: await hashRecoveryCodes(recoveryCodes) } as any,
     });
     await this.auditService.log({ userId: me.id, userEmail: me.email, action: 'auth.2fa-enable' });
+    void this.mail.sendTwoFactorChanged(me.email, true, getClientIp(req)).catch(() => undefined);
 
     return { status: 'success', message: '2FA enabled', recoveryCodes };
   }
@@ -137,7 +142,7 @@ export class SecurityController {
 
   /** Désactive le 2FA après vérification du code actuel. */
   @Post('totp/disable')
-  async totpDisable(@CurrentUser() me: JwtUser, @Body() dto: TotpVerifyDto) {
+  async totpDisable(@CurrentUser() me: JwtUser, @Body() dto: TotpVerifyDto, @Req() req: any) {
     const user = await this.prisma.panelUser.findUnique({ where: { id: me.id } });
     const u = user as any;
     if (!u?.totpEnabled) throw new BadRequestException('2FA not enabled');
@@ -150,6 +155,7 @@ export class SecurityController {
       data: { totpEnabled: false, totpSecret: null, totpRecoveryCodes: null } as any,
     });
     await this.auditService.log({ userId: me.id, userEmail: me.email, action: 'auth.2fa-disable' });
+    void this.mail.sendTwoFactorChanged(me.email, false, getClientIp(req)).catch(() => undefined);
 
     return { status: 'success', message: '2FA disabled' };
   }

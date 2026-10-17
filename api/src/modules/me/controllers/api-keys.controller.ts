@@ -18,6 +18,7 @@ import { CurrentUser } from '../../../common/decorators/current-user.decorator';
 import type { JwtUser } from '../../../common/guards/jwt-auth.guard';
 import { PrismaService } from '../../../database/prisma.service';
 import { CreateApiKeyDto, UpdateApiKeyDto } from '../../../common/dto/security.dto';
+import { Audited } from '../../audit/audited.decorator';
 
 @ApiTags('panel-api-keys')
 @ApiBearerAuth()
@@ -49,6 +50,7 @@ export class ApiKeysController {
   }
 
   /** Crée une nouvelle clé API. Retourne la clé en clair UNE SEULE FOIS. */
+  @Audited('apikey.user-create')
   @Post()
   async create(@CurrentUser() me: JwtUser, @Body() dto: CreateApiKeyDto) {
     const rawKey = 'uhq_' + crypto.randomBytes(32).toString('hex');
@@ -82,6 +84,7 @@ export class ApiKeysController {
   }
 
   /** Met à jour une clé API (nom, scopes, statut). */
+  @Audited('apikey.user-update')
   @Patch(':id')
   async update(
     @CurrentUser() me: JwtUser,
@@ -115,6 +118,7 @@ export class ApiKeysController {
   }
 
   /** Supprime une clé API. */
+  @Audited('apikey.user-delete')
   @Delete(':id')
   async remove(@CurrentUser() me: JwtUser, @Param('id') id: string) {
     const key = await this.prisma.apiKey.findUnique({ where: { id } });

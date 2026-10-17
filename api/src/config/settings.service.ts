@@ -22,6 +22,11 @@ export const SETTING_DEFS = {
   updateWebhookUrl: { def: '', env: 'UPDATE_WEBHOOK_URL', secret: false },
   updateWebhookToken: { def: '', env: 'UPDATE_WEBHOOK_TOKEN', secret: true },
   updateWebhookMethod: { def: 'GET', env: undefined, secret: false },
+  updateWebhookAuthHeader: { def: 'Authorization', env: undefined, secret: false },
+  updateWebhookAuthScheme: { def: 'Bearer', env: undefined, secret: false },
+  updateWebhookBody: { def: '', env: undefined, secret: false },
+  updateWebhookHeaders: { def: '', env: undefined, secret: false },
+  updateWebhookPreset: { def: 'coolify', env: undefined, secret: false },
   publicProxyHost: { def: 'prx.uhq.monster', env: 'PUBLIC_PROXY_HOST', secret: false },
   publicProxyPort: { def: '990', env: 'PUBLIC_PROXY_PORT', secret: false },
   proxyTimeout: { def: '3', env: 'PROXY_TIMEOUT', secret: false },
@@ -119,6 +124,11 @@ export const SETTING_DEFS = {
   // Notifications e-mail
   emailOnRegister: { def: 'false', env: undefined, secret: false },
   emailOnLogin: { def: 'false', env: undefined, secret: false },
+  // Modèles d'e-mails : surcharges JSON par modèle (activation, sujet, texte) + habillage commun (nom/logo du site repris tels quels).
+  emailTemplates: { def: '', env: undefined, secret: false },
+  emailHeaderText: { def: '', env: undefined, secret: false },
+  emailFooterText: { def: '', env: undefined, secret: false },
+  emailLanguage: { def: 'fr', env: undefined, secret: false },
   emailResetEnabled: { def: 'false', env: undefined, secret: false },
   // Rapports automatiques
   smtpReportsEnabled: { def: 'false', env: undefined, secret: false },

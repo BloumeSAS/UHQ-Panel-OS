@@ -189,7 +189,7 @@ export default function AuditPage() {
                         <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${actionColor(log.action)}`}>
                           {t(`audit.actions.${log.action}` as any) !== `audit.actions.${log.action}`
                             ? t(`audit.actions.${log.action}` as any)
-                            : log.action}
+                            : humanizeAction(log.action)}
                         </span>
                         {!!changes?.length && (
                           <ChevronDown className={`inline-block h-3.5 w-3.5 ml-1.5 text-muted-foreground transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
@@ -250,4 +250,11 @@ export default function AuditPage() {
       </Card>
     </div>
   );
+}
+
+/** Action sans traduction : « scraper-source.delete » → « Scraper source · delete » (jamais la clé brute illisible). */
+function humanizeAction(action: string): string {
+  const w = action.split('.').map((x) => x.replace(/[-_]+/g, ' '));
+  const first = w[0].charAt(0).toUpperCase() + w[0].slice(1);
+  return [first, ...w.slice(1)].join(' · ');
 }

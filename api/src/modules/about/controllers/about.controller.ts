@@ -135,13 +135,42 @@ export class AboutController {
     const token = this.settings.get('updateWebhookToken').trim();
     // Un jeton avec espace, saut de ligne ou caractère non ASCII (ex. le masque « •••• » enregistré tel quel) fait échouer undici (UND_ERR_INVALID_ARG).
     if (token && !/^[!-~]+$/.test(token)) return this.fail('TOKEN_INVALID');
-    const method = this.settings.get('updateWebhookMethod').toUpperCase() === 'POST' ? 'POST' : 'GET';
+    const m = this.settings.get('updateWebhookMethod').toUpperCase();
+    const method = (['GET', 'POST', 'PUT', 'PATCH'].includes(m) ? m : 'GET') as 'GET' | 'POST' | 'PUT' | 'PATCH';
+    // En-tête d'authentification configurable (Authorization: Bearer par défaut ; X-API-Key, jeton brut…).
+    const authName = this.settings.get('updateWebhookAuthHeader').trim() || 'Authorization';
+    if (!/^[A-Za-z0-9-]{1,40}$/.test(authName)) return this.fail('TOKEN_INVALID');
+    const scheme = this.settings.get('updateWebhookAuthScheme').trim();
+    const headers: Record<string, string> = { 'User-Agent': 'UHQ-Panel-OS' };
+    // En-têtes additionnels (JSON {"Accept":"..."}) : noms/valeurs bornés, jamais Host ni Content-Length.
+    const extra = this.settings.get('updateWebhookHeaders').trim();
+    if (extra) {
+      try {
+        const obj = JSON.parse(extra) as Record<string, unknown>;
+        for (const [k, v] of Object.entries(obj).slice(0, 10)) {
+          if (/^[A-Za-z0-9-]{1,40}$/.test(k) && !/^(host|content-length|transfer-encoding|connection)$/i.test(k) && typeof v === 'string' && /^[ -~]{0,300}$/.test(v)) headers[k] = v;
+        }
+      } catch {
+        return this.fail('HEADERS_INVALID');
+      }
+    }
+    if (token) headers[authName] = scheme ? `${scheme} ${token}` : token;
+    const bodyText = method === 'GET' ? '' : this.settings.get('updateWebhookBody').trim();
+    if (bodyText) {
+      try {
+        JSON.parse(bodyText);
+      } catch {
+        return this.fail('BODY_INVALID');
+      }
+      if (!Object.keys(headers).some((k) => k.toLowerCase() === 'content-type')) headers['Content-Type'] = 'application/json';
+    }
     try {
       const res = await request(url.toString(), {
         method,
         headersTimeout: 15_000,
         bodyTimeout: 15_000,
-        headers: { 'User-Agent': 'UHQ-Panel-OS', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        headers,
+        ...(bodyText ? { body: bodyText } : {}),
       });
       // Le corps de la réponse n'est JAMAIS renvoyé au navigateur (évite de lire le contenu d'un service interne).
       const text = (await res.body.text().catch(() => '')).slice(0, 200);

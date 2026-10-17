@@ -17,6 +17,8 @@ import { useConfirm } from '@/components/ConfirmDialog';
 import { CategoryFallbacks } from '@/components/CategoryFallbacks';
 import { BackupVerifyDialog } from '@/components/BackupVerifyDialog';
 import { cn } from '@/lib/utils';
+import { UPDATE_PRESETS } from '@/lib/updatePresets';
+import { EmailTemplates } from '@/components/EmailTemplates';
 import { toast } from '@/lib/toast';
 
 // ── Tabs definition ──────────────────────────────────────────────────────────
@@ -139,6 +141,20 @@ export default function Settings() {
   }, [data?.backupStorageType]);
 
   const set = (k: string, v: any) => setForm((f) => ({ ...f, [k]: v }));
+  const preset = UPDATE_PRESETS.find((p) => p.id === form.updateWebhookPreset) ?? UPDATE_PRESETS[0];
+  const applyUpdatePreset = (id: string) => {
+    const p = UPDATE_PRESETS.find((x) => x.id === id);
+    if (!p) return;
+    setForm((f) => ({
+      ...f,
+      updateWebhookPreset: id,
+      updateWebhookMethod: p.method,
+      updateWebhookAuthHeader: p.authHeader || 'Authorization',
+      updateWebhookAuthScheme: p.authScheme,
+      updateWebhookHeaders: p.headers ?? '',
+      updateWebhookBody: p.body ?? '',
+    }));
+  };
 
   const SECRETS = [
     'scraperProxy',
@@ -156,6 +172,7 @@ export default function Settings() {
     e.preventDefault();
     try {
       const payload: Record<string, any> = { ...form };
+      delete payload.emailTemplates; // géré par /mail/templates (jamais réécrit par le formulaire général)
       for (const s of SECRETS)
         if (typeof payload[s] === 'string' && /^•+$/.test(payload[s])) delete payload[s];
       for (const b of [
@@ -448,17 +465,28 @@ export default function Settings() {
 
             <Separator label={t('settings.autoUpdate')} />
             <p className="text-xs text-muted-foreground leading-relaxed">{t('settings.autoUpdateHint')}</p>
+            <F label={t('settings.updatePreset')} hint={t(`update.preset.${preset.id}.hint`)}>
+              <select
+                value={preset.id}
+                onChange={(e) => applyUpdatePreset(e.target.value)}
+                className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+              >
+                {UPDATE_PRESETS.map((p) => <option key={p.id} value={p.id}>{t(`update.preset.${p.id}.name`)}</option>)}
+              </select>
+            </F>
             <F label={t('settings.updateWebhookUrl')} hint={t('settings.updateWebhookUrlHint')}>
               <Input
                 value={form.updateWebhookUrl ?? ''}
                 onChange={(e) => set('updateWebhookUrl', e.target.value)}
-                placeholder="https://coolify.example.com/api/v1/deploy?uuid=..."
+                placeholder={preset.url}
               />
             </F>
             <Row>
-              <F label={t('settings.updateWebhookToken')} hint={t('settings.updateWebhookTokenHint')}>
-                <SecretField k="updateWebhookToken" form={form} set={set} placeholder="Bearer token" />
-              </F>
+              {preset.needsToken || form.updateWebhookToken ? (
+                <F label={t('settings.updateWebhookToken')} hint={t('settings.updateWebhookTokenHint')}>
+                  <SecretField k="updateWebhookToken" form={form} set={set} placeholder="TOKEN" />
+                </F>
+              ) : <div />}
               <F label={t('settings.updateWebhookMethod')}>
                 <select
                   value={form.updateWebhookMethod || 'GET'}
@@ -467,9 +495,30 @@ export default function Settings() {
                 >
                   <option value="GET">GET</option>
                   <option value="POST">POST</option>
+                  <option value="PUT">PUT</option>
+                  <option value="PATCH">PATCH</option>
                 </select>
               </F>
             </Row>
+            <details className="rounded-md border p-3 text-sm">
+              <summary className="cursor-pointer text-xs font-medium text-muted-foreground">{t('settings.updateAdvanced')}</summary>
+              <div className="mt-3 space-y-3">
+                <Row>
+                  <F label={t('settings.updateAuthHeader')} hint={t('settings.updateAuthHeaderHint')}>
+                    <Input value={form.updateWebhookAuthHeader ?? ''} onChange={(e) => set('updateWebhookAuthHeader', e.target.value)} placeholder="Authorization" className="font-mono" />
+                  </F>
+                  <F label={t('settings.updateAuthScheme')} hint={t('settings.updateAuthSchemeHint')}>
+                    <Input value={form.updateWebhookAuthScheme ?? ''} onChange={(e) => set('updateWebhookAuthScheme', e.target.value)} placeholder="Bearer" className="font-mono" />
+                  </F>
+                </Row>
+                <F label={t('settings.updateHeaders')} hint={t('settings.updateHeadersHint')}>
+                  <textarea rows={2} value={form.updateWebhookHeaders ?? ''} onChange={(e) => set('updateWebhookHeaders', e.target.value)} placeholder='{"Accept":"application/json"}' className="w-full rounded-md border border-input bg-transparent px-3 py-2 font-mono text-xs" />
+                </F>
+                <F label={t('settings.updateBody')} hint={t('settings.updateBodyHint')}>
+                  <textarea rows={3} value={form.updateWebhookBody ?? ''} onChange={(e) => set('updateWebhookBody', e.target.value)} placeholder='{"signal":"restart"}' className="w-full rounded-md border border-input bg-transparent px-3 py-2 font-mono text-xs" />
+                </F>
+              </div>
+            </details>
 
             <Separator label={t('settings.configImportExport')} />
             <ConfigImportExport />
@@ -674,11 +723,39 @@ export default function Settings() {
 
             <Separator label={t('settings.notifications')} />
             <div className="grid gap-3 sm:grid-cols-2">
-              <Toggle label={t('settings.emailOnRegister')} hint={t('settings.emailOnRegisterHint')} k="emailOnRegister" form={form} set={set} />
               <Toggle label={t('settings.customerAlerts')} hint={t('settings.customerAlertsHint')} k="customerAlertsEnabled" form={form} set={set} />
-              <Toggle label={t('settings.emailOnLogin')}    hint={t('settings.emailOnLoginHint')}    k="emailOnLogin"    form={form} set={set} />
               <Toggle label={t('settings.emailResetEnabled')} hint={t('settings.emailResetEnabledHint')} k="emailResetEnabled" form={form} set={set} />
             </div>
+
+            <Separator label={t('mail.title')} />
+            <p className="text-xs text-muted-foreground leading-relaxed">{t('mail.intro')}</p>
+            <Grid>
+              <F label={t('mail.headerText')} hint={t('mail.headerTextHint')}>
+                <Input value={form.emailHeaderText ?? ''} maxLength={200} onChange={(e) => set('emailHeaderText', e.target.value)} placeholder={t('mail.headerTextPh')} />
+              </F>
+              <F label={t('mail.language')} hint={t('mail.languageHint')}>
+                <select
+                  value={form.emailLanguage || 'fr'}
+                  onChange={(e) => set('emailLanguage', e.target.value)}
+                  className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                >
+                  <option value="fr">Français</option>
+                  <option value="en">English</option>
+                </select>
+              </F>
+              <F label={t('mail.footerText')} hint={t('mail.footerTextHint')} className="sm:col-span-2">
+                <textarea
+                  value={form.emailFooterText ?? ''}
+                  maxLength={500}
+                  rows={2}
+                  onChange={(e) => set('emailFooterText', e.target.value)}
+                  placeholder={t('mail.footerTextPh')}
+                  className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                />
+              </F>
+            </Grid>
+            <p className="text-[11px] text-muted-foreground">{t('mail.brandNote')}</p>
+            <EmailTemplates defaultLang={form.emailLanguage === 'en' ? 'en' : 'fr'} />
 
             <Separator label={t('settings.autoReports')} />
             <Toggle label={t('settings.smtpReportsEnabled')} hint={t('settings.smtpReportsEnabledHint')} k="smtpReportsEnabled" form={form} set={set} />

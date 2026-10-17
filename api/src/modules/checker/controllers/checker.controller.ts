@@ -5,6 +5,7 @@ import { RolesGuard } from '../../../common/guards/roles.guard';
 import { Roles } from '../../../common/decorators/roles.decorator';
 import { CheckerService } from '../checker.service';
 import { PrismaService } from '../../../database/prisma.service';
+import { Audited } from '../../audit/audited.decorator';
 
 @ApiTags('panel-checker')
 @ApiBearerAuth()
@@ -49,6 +50,7 @@ export class CheckerController {
     };
   }
 
+  @Audited('checker.run')
   @Post('run')
   async run() {
     this.checker.runOnce().catch(() => undefined);
@@ -56,6 +58,7 @@ export class CheckerController {
   }
 
   /** Démarre la boucle automatique (cycles répétés selon l'intervalle configuré). */
+  @Audited('checker.start')
   @Post('start')
   start() {
     this.checker.start();
@@ -63,6 +66,7 @@ export class CheckerController {
   }
 
   /** Arrête la boucle automatique — le cycle en cours va à son terme, mais aucun autre n'est planifié. */
+  @Audited('checker.stop')
   @Post('stop')
   stop() {
     this.checker.stop();

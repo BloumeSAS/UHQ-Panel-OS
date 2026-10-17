@@ -23,6 +23,7 @@ import { NotificationService } from '../../notifications/notification.service';
 import { DynamicProvider } from '../providers/dynamic.provider';
 import { CreateScraperSourceDto, UpdateScraperSourceDto } from '../dto/scraper-source.dto';
 import { t } from '../../../common/utils/i18n';
+import { Audited } from '../../audit/audited.decorator';
 
 /**
  * Gestion des sources de scraping (table ScraperSource), admin/JWT.
@@ -47,6 +48,7 @@ export class ScraperSourcesController {
     return { status: 'success', data };
   }
 
+  @Audited('scraper-source.create')
   @Post()
   async create(@Body() dto: CreateScraperSourceDto) {
     const data = await this.prisma.scraperSource.create({
@@ -63,6 +65,7 @@ export class ScraperSourcesController {
   }
 
   /** Réinitialise toutes les sources mortes (failCount > 0 ou désactivées). */
+  @Audited('scraper-source.reset-failed')
   @Post('reset-all-failed')
   async resetAllFailed() {
     const res = await this.prisma.scraperSource.updateMany({
@@ -73,6 +76,7 @@ export class ScraperSourcesController {
   }
 
   /** Supprime TOUTES les sources de scraping. */
+  @Audited('scraper-source.delete-all')
   @Delete()
   async removeAll() {
     const res = await this.prisma.scraperSource.deleteMany({});
@@ -80,6 +84,7 @@ export class ScraperSourcesController {
   }
 
   /** Supprime les sources dont les IDs sont fournis. */
+  @Audited('scraper-source.delete-many')
   @Post('bulk-delete')
   async bulkRemove(@Body() body: { ids: string[] }) {
     if (!Array.isArray(body?.ids) || body.ids.length === 0) {
@@ -235,6 +240,7 @@ export class ScraperSourcesController {
     }
   }
 
+  @Audited('scraper-source.update')
   @Patch(':id')
   async update(@Param('id') id: string, @Body() dto: UpdateScraperSourceDto) {
     try {
@@ -255,6 +261,7 @@ export class ScraperSourcesController {
     }
   }
 
+  @Audited('scraper-source.delete')
   @Delete(':id')
   async remove(@Param('id') id: string) {
     try {
@@ -284,6 +291,7 @@ export class ScraperSourcesController {
   }
 
   /** Déclenche immédiatement un cycle de scraping (toutes sources). */
+  @Audited('scraper.run')
   @Post('run')
   async run(@CurrentUser() user: JwtUser) {
     // Fire & forget — le cycle peut être long.
@@ -299,6 +307,7 @@ export class ScraperSourcesController {
   }
 
   /** Démarre la boucle automatique de scraping. */
+  @Audited('scraper.start')
   @Post('start')
   start() {
     this.scraper.start();
@@ -306,6 +315,7 @@ export class ScraperSourcesController {
   }
 
   /** Arrête la boucle automatique — le cycle en cours va à son terme, mais aucun autre n'est planifié. */
+  @Audited('scraper.stop')
   @Post('stop')
   stop() {
     this.scraper.stop();

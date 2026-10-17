@@ -5,6 +5,7 @@ import { randomBytes } from 'crypto';
 import { statfsSync } from 'fs';
 import { PrismaService } from '../../database/prisma.service';
 import { SettingsService } from '../../config/settings.service';
+import { BundledAddonsService } from '../addons/bundled-addons.service';
 import { BackupService } from '../backup/backup.service';
 import { dataDir } from '../../database/db-config';
 import { isCloudflareIp, isPrivateIp } from '../../common/utils/ip-range';
@@ -48,6 +49,7 @@ export class SystemService {
     private readonly prisma: PrismaService,
     private readonly settings: SettingsService,
     private readonly backup: BackupService,
+    private readonly bundled: BundledAddonsService,
   ) {}
 
   // ───────────────────────── Checklist « premiers pas » ─────────────────────────
@@ -105,28 +107,34 @@ export class SystemService {
     host: string,
     port: number,
     push: (id: string, status: CheckStatus, data?: Record<string, unknown>) => void,
+    /** Catégorie à domaine personnalisé : ids `poolDns` / `poolPortReach` + nom de la catégorie. */
+    pool?: string,
   ) {
+      const dnsId = pool ? 'poolDns' : 'dns';
+      const reachId = pool ? 'poolPortReach' : 'portReach';
+      const extra = pool ? { pool } : {};
+      const serverIp = await this.publicServerIp();
       let addresses: string[] = [];
       try {
         addresses = (await lookup(host, { all: true })).map((a) => a.address);
       } catch {
-        push('dns', 'fail', { host });
+        // Rien ne se résout : on donne l'enregistrement à créer (type A vers l'IP publique de ce serveur).
+        push(dnsId, 'fail', { host, serverIp: serverIp ?? '—', ...extra });
       }
       if (addresses.length) {
         const cf = addresses.filter(isCloudflareIp);
-        const serverIp = await this.publicServerIp();
         if (cf.length) {
-          push('dns', 'fail', { host, addresses, reason: 'cloudflare' });
+          push(dnsId, 'fail', { host, addresses, serverIp: serverIp ?? '—', reason: 'cloudflare', ...extra });
         } else if (addresses.every(isPrivateIp)) {
-          push('dns', 'warn', { host, addresses, reason: 'private' });
+          push(dnsId, 'warn', { host, addresses, serverIp: serverIp ?? '—', reason: 'private', ...extra });
         } else if (serverIp && addresses.includes(serverIp)) {
-          push('dns', 'ok', { host, addresses, serverIp });
+          push(dnsId, 'ok', { host, addresses, serverIp, ...extra });
         } else {
-          push('dns', serverIp ? 'warn' : 'info', { host, addresses, serverIp, reason: 'mismatch' });
+          push(dnsId, serverIp ? 'warn' : 'info', { host, addresses, serverIp: serverIp ?? '—', reason: 'mismatch', ...extra });
         }
         // Joignabilité du port depuis le serveur lui-même (peut échouer à tort derrière certains NAT).
         const reach = await probe(host, port, 3500);
-        push('portReach', reach.ok ? 'ok' : 'warn', { host, port, error: reach.error, ms: reach.ms });
+        push(reachId, reach.ok ? 'ok' : 'warn', { host, port, error: reach.error, ms: reach.ms, ...extra });
       }
   }
 
@@ -181,6 +189,17 @@ export class SystemService {
     } else {
       push('publicHost', 'ok', { host, port });
       await this.domainChecks(host, port, push);
+    }
+
+    // Domaines personnalisés des catégories (ProxyPool.domain) : même contrôle DNS / Cloudflare / port que l'hôte principal.
+    try {
+      const pools = await this.prisma.proxyPool.findMany({ where: { domain: { not: null } }, select: { name: true, domain: true, port: true }, orderBy: { name: 'asc' }, take: 20 });
+      for (const p of pools) {
+        const d = (p.domain ?? '').trim();
+        if (d && d !== host) await this.domainChecks(d, p.port ?? port, push, p.name);
+      }
+    } catch {
+      /* base indisponible : déjà signalé plus haut */
     }
 
     // HTTPS du panel
@@ -463,7 +482,28 @@ export class SystemService {
     let poolOk = false;
     if (dbOk) poolOk = (await this.prisma.backendProxy.count({ where: { isWorking: true } })) > 0;
 
-    const overall = !dbOk || !engine ? 'outage' : poolOk ? 'operational' : 'degraded';
+    // Addons activés : un addon embarqué activé mais arrêté = service dégradé (jamais de port interne ni d'URL exposé).
+    const addons: { id: string; name: string; ok: boolean }[] = [];
+    if (dbOk) {
+      const rows = await this.prisma.addon.findMany({ where: { enabled: true, baseUrl: { startsWith: '/addon-proxy/' } } });
+      for (const a of rows) {
+        const slug = a.baseUrl.replace('/addon-proxy/', '').replace(/\/.*$/, '');
+        const port = this.bundled.runningPort(slug);
+        const ok = port !== null && (await probe('127.0.0.1', port, 1500)).ok;
+        const name = typeof (a.manifest as any)?.name === 'string' ? String((a.manifest as any).name).slice(0, 60) : slug;
+        addons.push({ id: slug, name, ok });
+      }
+    }
+    // Ports PUBLICS (ceux que les clients utilisent déjà dans leurs lignes de connexion) : partagé + ports dédiés des catégories.
+    const ports: { id: string; label: string; port: number; ok: boolean }[] = [
+      { id: 'proxy', label: '', port: Number(this.settings.get('publicProxyPort')) || 990, ok: engine },
+    ];
+    if (dbOk) {
+      const pools = await this.prisma.proxyPool.findMany({ where: { port: { not: null } }, select: { name: true, port: true }, orderBy: { port: 'asc' }, take: 50 });
+      for (const p of pools) ports.push({ id: `pool:${p.port}`, label: p.name.slice(0, 40), port: p.port!, ok: (await probe('127.0.0.1', p.port!, 800)).ok });
+    }
+    const addonsDown = addons.some((a) => !a.ok);
+    const overall = !dbOk || !engine ? 'outage' : poolOk && !addonsDown && ports.every((p) => p.ok) ? 'operational' : 'degraded';
     const body = {
       status: overall,
       updatedAt: new Date().toISOString(),
@@ -474,6 +514,8 @@ export class SystemService {
         { id: 'proxy', ok: engine },
         { id: 'pool', ok: poolOk },
       ],
+      addons,
+      ports,
     };
     this.statusCache = { at: Date.now(), body };
     return body;

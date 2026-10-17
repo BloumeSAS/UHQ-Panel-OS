@@ -15,6 +15,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { BackupService } from './backup.service';
 import { Response } from 'express';
 import { RunBackupDto, TestS3Dto } from '../../common/dto/panel.dto';
+import { Audited } from '../audit/audited.decorator';
 
 @ApiTags('panel-backup')
 @ApiBearerAuth()
@@ -38,6 +39,7 @@ export class BackupController {
   /**
    * Import system settings from a JSON payload.
    */
+  @Audited('backup.settings-import')
   @Post('settings/import')
   async importSettings(@Body() body: { settings?: Record<string, string>; settingsJson?: string }) {
     let rawJson = '';
@@ -80,6 +82,7 @@ export class BackupController {
    * uniquement, sans changer le réglage global backupStorageType utilisé par
    * le cycle automatique.
    */
+  @Audited('backup.run')
   @Post('run')
   runBackup(@Body() body: RunBackupDto) {
     const result = this.backupService.triggerManualBackup(body?.storageType);
@@ -98,6 +101,7 @@ export class BackupController {
    * connexion" du panel. Un champ vide/masqué retombe sur la valeur déjà
    * enregistrée en settings.
    */
+  @Audited('backup.test-s3')
   @Post('test-s3')
   async testS3(@Body() body: TestS3Dto) {
     return this.backupService.testS3Connection({
@@ -119,6 +123,7 @@ export class BackupController {
     return { status: 'success', result: await this.backupService.verifyBackup(body.filename) };
   }
 
+  @Audited('backup.restore')
   @Post('restore')
   async restoreBackup(@Body() body: { filename: string }) {
     if (!body.filename) {
@@ -136,6 +141,7 @@ export class BackupController {
   /**
    * Delete a specific database backup.
    */
+  @Audited('backup.delete')
   @Delete(':filename')
   async deleteBackup(@Param('filename') filename: string) {
     if (!filename) {

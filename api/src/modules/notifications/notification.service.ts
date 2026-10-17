@@ -413,7 +413,7 @@ export class NotificationService {
         const admins = await this.prisma.panelUser.findMany({ where: { role: 'ADMIN', isActive: true }, select: { email: true } });
         const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] as string);
         for (const a of admins) {
-          await this.mail.send({ to: a.email, subject: entry.title, html: `<p>${esc(entry.message)}</p>` });
+          await this.mail.sendAdminAlert(a.email, entry.title, entry.message);
         }
       }
     } catch {

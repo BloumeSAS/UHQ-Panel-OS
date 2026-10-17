@@ -39,6 +39,7 @@ addons/wallet
 addons/orders
 addons/analytics
 addons/reseller
+addons/promocodes
 docs/
 
 claude/

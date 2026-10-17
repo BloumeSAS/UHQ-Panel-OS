@@ -94,20 +94,21 @@ export default function Diagnostics() {
       {error && !data && <p className="text-sm text-destructive">{String((error as Error).message)}</p>}
 
       <div className="grid gap-3">
-        {data?.checks.map((c) => {
+        {data?.checks.map((c, idx) => {
           const { icon: Icon, cls } = ICON[c.status];
           return (
-            <Card key={c.id}>
+            <Card key={`${c.id}-${idx}`}>
               <CardContent className="flex items-start gap-3 p-4">
                 <Icon className={cn('mt-0.5 h-5 w-5 shrink-0', cls)} />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
-                    <p className="text-sm font-semibold">{t(`diag.${c.id}.t`)}</p>
+                    <p className="text-sm font-semibold">{fill(t(`diag.${c.id}.t`), c.data)}</p>
                     <span className={cn('rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase', cls, 'bg-muted')}>
                       {t(`diag.status.${c.status}`)}
                     </span>
                   </div>
                   <p className="mt-0.5 text-sm text-muted-foreground">{message(c)}</p>
+                  {(c.id === 'dns' || c.id === 'poolDns') && c.status !== 'ok' && c.data?.host && <DnsHowTo host={String(c.data.host)} ip={String(c.data.serverIp ?? '')} cloudflare={c.data.reason === 'cloudflare'} />}
                 </div>
               </CardContent>
             </Card>
@@ -150,6 +151,41 @@ export default function Diagnostics() {
           )}
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+/** Enregistrement DNS à créer, prêt à copier (type A vers l'IP publique de ce serveur). */
+function DnsHowTo({ host, ip, cloudflare }: { host: string; ip: string; cloudflare: boolean }) {
+  const t = useT();
+  const known = /^[0-9a-f.:]{3,45}$/i.test(ip);
+  const type = ip.includes(':') ? 'AAAA' : 'A';
+  const copy = (v: string) => {
+    void navigator.clipboard?.writeText(v);
+  };
+  return (
+    <div className="mt-3 space-y-2 rounded-lg border bg-muted/30 p-3 text-xs">
+      <p className="font-semibold">{t('diag.dnsHowTo.title')}</p>
+      {known ? (
+        <table className="w-full font-mono">
+          <thead className="text-muted-foreground"><tr><th className="text-left font-medium">{t('diag.dnsHowTo.type')}</th><th className="text-left font-medium">{t('diag.dnsHowTo.name')}</th><th className="text-left font-medium">{t('diag.dnsHowTo.value')}</th><th className="text-left font-medium">{t('diag.dnsHowTo.proxy')}</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>{type}</td>
+              <td><button type="button" className="underline-offset-2 hover:underline" onClick={() => copy(host)} title={t('common.copy')}>{host}</button></td>
+              <td><button type="button" className="underline-offset-2 hover:underline" onClick={() => copy(ip)} title={t('common.copy')}>{ip}</button></td>
+              <td>{t('diag.dnsHowTo.dnsOnly')}</td>
+            </tr>
+          </tbody>
+        </table>
+      ) : (
+        <p className="text-muted-foreground">{t('diag.dnsHowTo.unknownIp')}</p>
+      )}
+      <ol className="list-decimal space-y-0.5 pl-4 text-muted-foreground">
+        <li>{t('diag.dnsHowTo.s1')}</li>
+        <li>{cloudflare ? t('diag.dnsHowTo.s2cf') : t('diag.dnsHowTo.s2')}</li>
+        <li>{t('diag.dnsHowTo.s3')}</li>
+      </ol>
     </div>
   );
 }

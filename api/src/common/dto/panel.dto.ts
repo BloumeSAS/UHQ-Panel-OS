@@ -163,6 +163,14 @@ export class UpdateSettingsDto {
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(500) updateWebhookUrl?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(500) updateWebhookToken?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(8) updateWebhookMethod?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(200) emailHeaderText?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(500) emailFooterText?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(4) emailLanguage?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(40) updateWebhookAuthHeader?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(16) updateWebhookAuthScheme?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(2000) updateWebhookBody?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(1000) updateWebhookHeaders?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(24) updateWebhookPreset?: string;
   @ApiPropertyOptional() @IsOptional() @IsBoolean() @Transform(({ value }) => value === undefined || value === null ? value : (value === 'true' || value === true)) healthAlertsEnabled?: boolean;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(500) heartbeatUrl?: string;
   @ApiPropertyOptional() @IsOptional() @IsBoolean() @Transform(({ value }) => value === undefined || value === null ? value : (value === 'true' || value === true)) customerAlertsEnabled?: boolean;

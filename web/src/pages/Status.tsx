@@ -10,6 +10,8 @@ interface StatusBody {
   message: string;
   siteName: string;
   components: { id: 'panel' | 'proxy' | 'pool'; ok: boolean }[];
+  addons?: { id: string; name: string; ok: boolean }[];
+  ports?: { id: string; label: string; port: number; ok: boolean }[];
 }
 
 /** Page d'état publique (/status) — activée dans Paramètres → Général, sans connexion requise. */
@@ -70,6 +72,24 @@ export default function Status() {
                 </li>
               ))}
             </ul>
+            {(data.addons?.length ?? 0) > 0 && (
+              <section>
+                <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t('status.addons')}</h2>
+                <ul className="divide-y rounded-xl border bg-background">
+                  {data.addons!.map((a) => <StatusRow key={a.id} label={a.name} ok={a.ok} />)}
+                </ul>
+              </section>
+            )}
+            {(data.ports?.length ?? 0) > 0 && (
+              <section>
+                <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t('status.ports')}</h2>
+                <ul className="divide-y rounded-xl border bg-background">
+                  {data.ports!.map((p) => (
+                    <StatusRow key={p.id} label={<>{p.label || t('status.proxyPort')} <span className="font-mono text-xs text-muted-foreground">:{p.port}</span></>} ok={p.ok} />
+                  ))}
+                </ul>
+              </section>
+            )}
             <p className="text-center text-xs text-muted-foreground">
               {t('status.updated')} : {new Date(data.updatedAt).toLocaleString()}
             </p>
@@ -77,5 +97,18 @@ export default function Status() {
         )}
       </div>
     </div>
+  );
+}
+
+function StatusRow({ label, ok }: { label: React.ReactNode; ok: boolean }) {
+  const t = useT();
+  return (
+    <li className="flex items-center justify-between p-4 text-sm">
+      <span>{label}</span>
+      <span className={cn('inline-flex items-center gap-1.5 font-medium', ok ? 'text-emerald-600' : 'text-destructive')}>
+        {ok ? <CheckCircle2 className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
+        {ok ? t('status.up') : t('status.down')}
+      </span>
+    </li>
   );
 }

@@ -25,6 +25,7 @@ import { AddonsService } from './addons.service';
 import { BundledAddonsService } from './bundled-addons.service';
 import { AddAddonDto, UpdateAddonDto } from './dto/addon.dto';
 import { loadOfficialAddons } from './official-addons-registry';
+import { Audited } from '../audit/audited.decorator';
 
 @ApiTags('panel-addons')
 @ApiBearerAuth()
@@ -78,6 +79,7 @@ export class AddonsController {
    * Ajoute un addon par son URL de base.
    * Télécharge automatiquement le manifest depuis <url>/uhq-manifest.json.
    */
+  @Audited('addon.add')
   @Post()
   @UseGuards(RolesGuard)
   @Roles('ADMIN')
@@ -90,6 +92,7 @@ export class AddonsController {
   /**
    * Rafraîchit le manifest depuis l'URL de base de l'addon.
    */
+  @Audited('addon.refresh')
   @Post(':id/refresh')
   @UseGuards(RolesGuard)
   @Roles('ADMIN')
@@ -103,6 +106,7 @@ export class AddonsController {
    * Confirme l'application d'une mise à jour :
    * enregistre la version courante du manifest comme "connue" et réinitialise hasUpdate.
    */
+  @Audited('addon.update')
   @Post(':id/update')
   @UseGuards(RolesGuard)
   @Roles('ADMIN')
@@ -115,6 +119,7 @@ export class AddonsController {
   /**
    * Active ou désactive un addon.
    */
+  @Audited('addon.edit')
   @Patch(':id')
   @UseGuards(RolesGuard)
   @Roles('ADMIN')
@@ -127,6 +132,7 @@ export class AddonsController {
   /**
    * Supprime un addon (ne touche pas au service externe).
    */
+  @Audited('addon.remove')
   @Delete(':id')
   @UseGuards(RolesGuard)
   @Roles('ADMIN')
@@ -167,6 +173,7 @@ export class AddonsController {
    * automatiquement — pas de redémarrage du panel, juste le lancement d'un
    * processus enfant + un poll jusqu'à ce qu'il réponde.
    */
+  @Audited('addon.activate')
   @Post('bundled/:slug/activate')
   @UseGuards(RolesGuard)
   @Roles('ADMIN')
@@ -176,6 +183,7 @@ export class AddonsController {
     return { status: 'success', data };
   }
 
+  @Audited('addon.deactivate')
   @Post('bundled/:slug/deactivate')
   @UseGuards(RolesGuard)
   @Roles('ADMIN')

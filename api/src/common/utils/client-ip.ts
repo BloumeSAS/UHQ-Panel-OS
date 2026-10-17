@@ -18,6 +18,8 @@
  * les plages IP Cloudflare) active `trustCloudflareIps` (Paramètres →
  * Sécurité). Sans ce réglage, on retombe sur le calcul Express habituel.
  */
+import { isCloudflareIp } from './ip-range';
+
 export function getClientIp(req: any, trustCloudflareHeaders = false): string {
   if (trustCloudflareHeaders) {
     const cf = req.headers?.['cf-connecting-ip'];
@@ -28,5 +30,17 @@ export function getClientIp(req: any, trustCloudflareHeaders = false): string {
     if (typeof trueClientIp === 'string' && trueClientIp.trim()) return trueClientIp.trim();
   }
 
-  return req.ip ?? req.socket?.remoteAddress ?? 'unknown';
+  // Détection automatique : si le dernier saut de confiance (`req.ip`, ajouté par NOTRE reverse proxy) est une IP Cloudflare
+  // officielle, la requête est bien passée par Cloudflare : CF-Connecting-IP est alors fiable (un client direct ne peut pas
+  // faire apparaître une IP Cloudflare comme saut ajouté par Traefik). Sinon on ignore l'en-tête.
+  const hop: string | undefined = req.ip ?? req.socket?.remoteAddress;
+  if (hop && isCloudflareIp(hop)) {
+    const cf = req.headers?.['cf-connecting-ip'];
+    if (typeof cf === 'string' && cf.trim()) return cf.trim();
+    const xff = req.headers?.['x-forwarded-for'];
+    const first = (Array.isArray(xff) ? xff[0] : xff)?.split(',')[0]?.trim();
+    if (first) return first;
+  }
+
+  return hop ?? 'unknown';
 }

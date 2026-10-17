@@ -22,6 +22,7 @@ import { SettingsService } from '../../config/settings.service';
 import { MailService } from '../mail/mail.service';
 import { CreateInvitationDto, AcceptInvitationDto } from '../../common/dto/security.dto';
 import { JwtService } from '@nestjs/jwt';
+import { Audited } from '../audit/audited.decorator';
 
 @ApiTags('panel-invitations')
 @Controller('api/panel/invitations')
@@ -34,6 +35,7 @@ export class InvitationsController {
   ) {}
 
   /** ADMIN: envoie une invitation par e-mail. */
+  @Audited('invitation.create')
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN')
