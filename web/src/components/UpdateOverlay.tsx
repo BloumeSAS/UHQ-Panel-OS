@@ -191,7 +191,7 @@ export function UpdateOverlay() {
       <button
         type="button"
         onClick={() => setMin(false)}
-        className="fixed bottom-4 left-4 z-[110] flex items-center gap-2 rounded-full border bg-popover px-3.5 py-2 text-sm font-medium shadow-lg transition-colors hover:bg-accent"
+        className="fixed bottom-4 right-4 z-[110] flex items-center gap-2 rounded-full border bg-popover px-3.5 py-2 text-sm font-medium shadow-lg transition-colors hover:bg-accent"
         aria-label={t('update.reopen')}
         title={t('update.reopen')}
       >

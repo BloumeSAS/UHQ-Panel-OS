@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   Copy, Eye, EyeOff, RefreshCw, Send,
   Globe, Server, Radio, Shield, ShieldCheck, Mail, Key,
   Bell, Database, Trash2, Download, Upload, Palette, RotateCcw, BarChart3,
-  Puzzle, ShoppingCart, FileText,
+  Puzzle, ShoppingCart, FileText, ChevronDown,
 } from 'lucide-react';
 import { api, apiError } from '@/lib/api';
 import { addonApi } from '@/lib/addonApi';
@@ -388,7 +388,7 @@ export default function Settings() {
 
         {/* ────── GÉNÉRAL ────── */}
         {tab === 'general' && (
-          <>
+          <Groups scope="general">
             <F label={t('setup.siteName')} hint={t('settings.siteNameHint')}>
               <Input
                 value={form.siteName ?? ''}
@@ -522,12 +522,12 @@ export default function Settings() {
 
             <Separator label={t('settings.configImportExport')} />
             <ConfigImportExport />
-          </>
+          </Groups>
         )}
 
         {/* ────── SÉCURITÉ & RÉTENTION ────── */}
         {tab === 'security' && (
-          <>
+          <Groups scope="security">
             <Row>
               <Toggle
                 label={t('settings.require2faForAdmins')}
@@ -588,7 +588,7 @@ export default function Settings() {
                 <Input value={form.trafficSnapshotRetentionDays ?? ''} onChange={(e) => set('trafficSnapshotRetentionDays', e.target.value)} placeholder="7" />
               </F>
             </Grid>
-          </>
+          </Groups>
         )}
 
         {/* ────── THÈME ────── */}
@@ -621,7 +621,7 @@ export default function Settings() {
 
         {/* ────── SCRAPER & CHECKER ────── */}
         {tab === 'scraper' && (
-          <>
+          <Groups scope="scraper">
             <Grid>
               <F label={t('settings.scrapeInterval')} hint={t('settings.scrapeIntervalHint')}>
                 <Input value={form.scrapeInterval ?? ''} onChange={(e) => set('scrapeInterval', e.target.value)} placeholder="3600" />
@@ -693,12 +693,12 @@ export default function Settings() {
                 <SecretField k="groqApiKey" form={form} set={set} placeholder="gsk_xxxxxxxxxxxxxxxxxxxx" />
               </F>
             </Grid>
-          </>
+          </Groups>
         )}
 
         {/* ────── SMTP & E-MAILS ────── */}
         {tab === 'smtp' && (
-          <>
+          <Groups scope="smtp">
             <Separator label={t('settings.smtpServer')} />
             <Grid>
               <F label={t('settings.smtpHost')} hint={t('settings.smtpHostHint')}>
@@ -780,7 +780,7 @@ export default function Settings() {
 
             <Separator label={t('settings.test')} />
             <SmtpTestCard />
-          </>
+          </Groups>
         )}
 
         {/* ────── CAPTCHA ────── */}
@@ -829,7 +829,7 @@ export default function Settings() {
 
         {/* ────── WEBHOOKS ────── */}
         {tab === 'webhooks' && (
-          <>
+          <Groups scope="webhooks">
             <p className="text-sm text-muted-foreground">
               {t('settings.webhooksDesc')}
             </p>
@@ -909,7 +909,7 @@ export default function Settings() {
                 <WebhookTestButton target="bloumechat" />
               </>
             )}
-          </>
+          </Groups>
         )}
 
         {/* ────── BACKUPS ────── */}
@@ -1175,6 +1175,68 @@ function Grid({ children, className }: { children: React.ReactNode; className?: 
 
 function Row({ children, className }: { children: React.ReactNode; className?: string }) {
   return <div className={cn('flex flex-col gap-3', className)}>{children}</div>;
+}
+
+/** Section repliable : seul l'en-tête est visible, un clic affiche les champs à modifier (état mémorisé). */
+function Collapse({ id, title, icon: Icon, hint, children, defaultOpen = false }: { id: string; title: React.ReactNode; icon?: React.ElementType; hint?: React.ReactNode; children: React.ReactNode; defaultOpen?: boolean }) {
+  const key = `uhq_settings_open:${id}`;
+  const [open, setOpen] = useState(() => {
+    try {
+      const v = localStorage.getItem(key);
+      return v === null ? defaultOpen : v === '1';
+    } catch {
+      return defaultOpen;
+    }
+  });
+  const toggle = () =>
+    setOpen((v) => {
+      try { localStorage.setItem(key, v ? '0' : '1'); } catch { /* stockage indisponible */ }
+      return !v;
+    });
+  return (
+    <div className="rounded-xl border bg-card">
+      <button type="button" onClick={toggle} aria-expanded={open} className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left transition-colors hover:bg-muted/40">
+        {Icon && <Icon className="h-4 w-4 shrink-0 text-primary" />}
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm font-semibold">{title}</span>
+          {hint && !open && <span className="block truncate text-xs text-muted-foreground">{hint}</span>}
+        </span>
+        <ChevronDown className={cn('h-4 w-4 shrink-0 text-muted-foreground transition-transform', open && 'rotate-180')} />
+      </button>
+      {open && <div className="space-y-5 border-t px-4 py-4">{children}</div>}
+    </div>
+  );
+}
+
+/** Découpe le contenu d'un onglet sur ses <Separator> : chaque séparateur devient une section repliable. */
+function Groups({ scope, children }: { scope: string; children: React.ReactNode }) {
+  const out: React.ReactNode[] = [];
+  let head: React.ReactNode[] = [];
+  let cur: { label: string; items: React.ReactNode[] } | null = null;
+  const flush = () => {
+    if (cur) {
+      out.push(<Collapse key={`${scope}:${cur.label}`} id={`${scope}:${cur.label}`} title={cur.label}>{cur.items}</Collapse>);
+      cur = null;
+    }
+  };
+  const walk = (nodes: React.ReactNode) => {
+    React.Children.toArray(nodes).forEach((n) => {
+      if (React.isValidElement(n) && n.type === React.Fragment) return walk((n.props as any).children);
+      if (React.isValidElement(n) && n.type === Separator) {
+        flush();
+        cur = { label: String((n.props as any).label), items: [] };
+      } else if (cur) cur.items.push(n);
+      else head.push(n);
+    });
+  };
+  walk(children);
+  flush();
+  return (
+    <>
+      {head}
+      {out}
+    </>
+  );
 }
 
 function Separator({ label }: { label: string }) {
@@ -1797,29 +1859,19 @@ function ExtensionsTab() {
         <p className="text-sm text-muted-foreground">{t('settings.extensionsEmpty')}</p>
       )}
       {ordersActive && (
-        <div className="rounded-lg border p-4 space-y-4">
-          <div className="flex items-center gap-2.5">
-            <ShoppingCart className="h-4 w-4 text-primary" />
-            <h3 className="text-sm font-semibold">{t('settings.extOrdersTitle')}</h3>
-          </div>
-          <OrdersPaymentSettingsCard />
-          <div className="border-t pt-4 space-y-4">
-            <div className="flex items-center gap-2.5">
-              <FileText className="h-4 w-4 text-primary" />
-              <h3 className="text-sm font-semibold">{t('settings.extInvTitle')}</h3>
-            </div>
+        <Collapse id="ext:orders" icon={ShoppingCart} title={t('settings.extOrdersTitle')} hint={t('settings.extOrdersHint')}>
+          <Collapse id="ext:orders:pay" icon={ShoppingCart} title={t('settings.extPayTitle')}>
+            <OrdersPaymentSettingsCard />
+          </Collapse>
+          <Collapse id="ext:orders:inv" icon={FileText} title={t('settings.extInvTitle')}>
             <OrdersInvoiceSettingsCard />
-          </div>
-        </div>
+          </Collapse>
+        </Collapse>
       )}
       {resellerActive && (
-        <div className="rounded-lg border p-4 space-y-4">
-          <div className="flex items-center gap-2.5">
-            <ShoppingCart className="h-4 w-4 text-primary" />
-            <h3 className="text-sm font-semibold">{t('settings.extResellerTitle')}</h3>
-          </div>
+        <Collapse id="ext:reseller" icon={ShoppingCart} title={t('settings.extResellerTitle')}>
           <ResellerSettingsCard />
-        </div>
+        </Collapse>
       )}
     </div>
   );

@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { lookup } from 'dns/promises';
+import { lookup, Resolver } from 'dns/promises';
 import { connect } from 'net';
 import { randomBytes } from 'crypto';
 import { statfsSync } from 'fs';
@@ -89,7 +89,7 @@ export class SystemService {
   // ───────────────────────────── Diagnostic ─────────────────────────────
 
   private async publicServerIp(): Promise<string | null> {
-    if (this.serverIp && Date.now() - this.serverIp.at < 10 * 60_000) return this.serverIp.ip;
+    if (this.serverIp && this.serverIp.ip && Date.now() - this.serverIp.at < 2 * 60_000) return this.serverIp.ip;
     let ip: string | null = null;
     try {
       const r = await fetch('https://api.ipify.org', { signal: AbortSignal.timeout(3500) });
@@ -116,7 +116,11 @@ export class SystemService {
       const serverIp = await this.publicServerIp();
       let addresses: string[] = [];
       try {
-        addresses = (await lookup(host, { all: true })).map((a) => a.address);
+        // Résolution DIRECTE (sans le cache du système) : un enregistrement DNS qui vient de changer doit apparaître au diagnostic suivant.
+        const r = new Resolver({ timeout: 3000, tries: 2 });
+        const [v4, v6] = await Promise.all([r.resolve4(host).catch(() => [] as string[]), r.resolve6(host).catch(() => [] as string[])]);
+        addresses = [...v4, ...v6];
+        if (!addresses.length) addresses = (await lookup(host, { all: true })).map((a) => a.address);
       } catch {
         // Rien ne se résout : on donne l'enregistrement à créer (type A vers l'IP publique de ce serveur).
         push(dnsId, 'fail', { host, serverIp: serverIp ?? '—', ...extra });
@@ -509,6 +513,7 @@ export class SystemService {
       updatedAt: new Date().toISOString(),
       message: this.settings.get('statusPageMessage').slice(0, 500),
       siteName: this.settings.get('siteName'),
+      logoUrl: this.settings.get('logoUrl'),
       components: [
         { id: 'panel', ok: dbOk },
         { id: 'proxy', ok: engine },

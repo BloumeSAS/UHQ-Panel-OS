@@ -1,4 +1,4 @@
-import { Controller, Delete, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
+import { Controller, Delete, Get, Param, Post, Req, Res, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -21,7 +21,8 @@ export class SystemController {
   }
 
   @Get('diagnostics')
-  async diagnostics(@Req() req: any) {
+  async diagnostics(@Req() req: any, @Res({ passthrough: true }) res: any) {
+    res.setHeader('Cache-Control', 'no-store');
     return { status: 'success', ...(await this.system.diagnostics({ protocol: req.protocol, hostname: req.hostname })) };
   }
 

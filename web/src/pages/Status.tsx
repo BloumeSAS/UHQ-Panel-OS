@@ -9,6 +9,7 @@ interface StatusBody {
   updatedAt: string;
   message: string;
   siteName: string;
+  logoUrl?: string;
   components: { id: 'panel' | 'proxy' | 'pool'; ok: boolean }[];
   addons?: { id: string; name: string; ok: boolean }[];
   ports?: { id: string; label: string; port: number; ok: boolean }[];
@@ -47,7 +48,7 @@ export default function Status() {
     <div className="flex min-h-screen items-start justify-center bg-muted/30 p-4 pt-16">
       <div className="w-full max-w-xl space-y-5">
         <div className="text-center">
-          <img src="/static/logo.png" alt="" className="mx-auto mb-2 h-12 w-12 rounded" />
+          <img src={data?.logoUrl || '/static/logo.png'} alt="" className="mx-auto mb-2 h-12 w-12 rounded" />
           <h1 className="text-2xl font-bold">{data?.siteName || t('status.title')}</h1>
           <p className="text-sm text-muted-foreground">{t('status.title')}</p>
         </div>

@@ -128,6 +128,16 @@ async function bootstrap() {
       return "'self'";
     }
   };
+  /** Origine du logo du panel (Paramètres → Général) : autorisée en img-src, sinon le navigateur bloque un logo hébergé ailleurs. */
+  const logoOrigin = (): string => {
+    const raw = (settings.get('logoUrl') || '').trim();
+    try {
+      const u = new URL(raw);
+      return u.protocol === 'https:' || u.protocol === 'http:' ? u.origin : "'self'";
+    } catch {
+      return "'self'";
+    }
+  };
   app.use(
     helmet({
       contentSecurityPolicy: {
@@ -146,7 +156,7 @@ async function bootstrap() {
           ],
           workerSrc: ["'self'", 'blob:'],
           styleSrc: ["'self'", "'unsafe-inline'", 'https://cdn.jsdelivr.net'],
-          imgSrc: ["'self'", 'data:', 'https://flagcdn.com', 'https://cdn.jsdelivr.net'],
+          imgSrc: ["'self'", 'data:', 'https://flagcdn.com', 'https://cdn.jsdelivr.net', () => logoOrigin()],
           fontSrc: ["'self'", 'data:', 'https://cdn.jsdelivr.net'],
           connectSrc: [
             "'self'",
@@ -330,7 +340,7 @@ async function bootstrap() {
   await app.listen(apiPort, '0.0.0.0');
   Logger.log(`API listening on :${apiPort}`, 'Bootstrap');
   // Build marker — bump this string on every deploy you want to confirm is live.
-  Logger.log('BUILD MARKER: panel-os-v2.7.0', 'Bootstrap');
+  Logger.log('BUILD MARKER: panel-os-v2.7.1', 'Bootstrap');
 
   // Le moteur proxy TCP n'a de sens qu'avec une base connectée (auth des
   // sous-utilisateurs). On ne le démarre donc pas tant que la base n'est pas

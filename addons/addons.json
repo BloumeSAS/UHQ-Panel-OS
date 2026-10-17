@@ -2,7 +2,7 @@
   {
     "name": "Wallet",
     "slug": "wallet",
-    "version": "1.4.0",
+    "version": "1.4.1",
     "description": "Système de portefeuille par compte proxy. Recharge en ligne (offres, min/max, bonus par palier), codes cadeau, historique des transactions.",
     "icon": "Wallet",
     "free": true,

@@ -96,6 +96,22 @@ export function SiteProvider({ children }: { children: React.ReactNode }) {
     refresh();
   }, [refresh]);
 
+  // Onglet du navigateur = nom + icône configurés (Paramètres → Général). Footer et « À propos » restent figés.
+  useEffect(() => {
+    if (!status) return;
+    if (status.siteName) document.title = status.siteName;
+    if (status.logoUrl) {
+      let link = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
+      if (!link) {
+        link = document.createElement('link');
+        link.rel = 'icon';
+        document.head.appendChild(link);
+      }
+      link.removeAttribute('type');
+      link.href = status.logoUrl;
+    }
+  }, [status?.siteName, status?.logoUrl]);
+
   return (
     <Ctx.Provider value={{ db, status, loading, unreachable, refresh }}>{children}</Ctx.Provider>
   );

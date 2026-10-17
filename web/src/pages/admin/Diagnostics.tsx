@@ -32,7 +32,7 @@ export default function Diagnostics() {
   const t = useT();
   const { data, isFetching, refetch, error } = useQuery({
     queryKey: ['diagnostics'],
-    queryFn: async () => (await api.get('/system/diagnostics', { timeout: 40000 })).data as Result,
+    queryFn: async () => (await api.get('/system/diagnostics', { timeout: 40000, params: { _: Date.now() }, headers: { 'Cache-Control': 'no-cache' } })).data as Result,
     refetchOnWindowFocus: false,
     staleTime: 0,
   });
@@ -93,7 +93,7 @@ export default function Diagnostics() {
       {isFetching && !data && <p className="text-sm text-muted-foreground">{t('diag.running')}</p>}
       {error && !data && <p className="text-sm text-destructive">{String((error as Error).message)}</p>}
 
-      <div className="grid gap-3">
+      <div className={cn('grid gap-3 transition-opacity', isFetching && 'pointer-events-none opacity-50')}>
         {data?.checks.map((c, idx) => {
           const { icon: Icon, cls } = ICON[c.status];
           return (
