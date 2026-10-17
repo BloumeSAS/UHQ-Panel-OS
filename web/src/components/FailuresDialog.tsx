@@ -120,7 +120,11 @@ export function FailuresDialog({
           </div>
         )}
 
-        {events && events.length === 0 && <p className="rounded-lg border p-3 text-muted-foreground">{t('fail.empty')}</p>}
+        {events && events.length === 0 && (
+          <p className="rounded-lg border p-3 text-muted-foreground">
+            {fillText(t(target?.mode === 'me' ? 'fail.emptyMe' : 'fail.empty'), { port: String(account?.dedicatedPort ?? endpoint?.port ?? 990) })}
+          </p>
+        )}
 
         {events && events.length > 0 && (
           <ul className="space-y-2">

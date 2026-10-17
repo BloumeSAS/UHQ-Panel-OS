@@ -87,6 +87,16 @@ export class SubUserController {
     };
   }
 
+  @ApiOperation({ summary: "Lit UN compte proxy par id (identifiants en clair inclus) — sans télécharger toute la liste." })
+  @ApiQuery({ name: 'id', required: true, description: 'ID du compte proxy' })
+  @Get('get')
+  @Scopes('read:proxies')
+  async getOne(@Query('id') id: string) {
+    const user = id ? await this.prisma.userProxy.findUnique({ where: { id } }) : null;
+    if (!user) throw new HttpException('Sub-user not found', HttpStatus.NOT_FOUND);
+    return { status: 'success', data: formatSubUser(user) };
+  }
+
   @ApiOperation({ summary: 'Crée un nouveau compte proxy.' })
   @ApiOkResponse({ schema: { example: { status: 'success', data: PROXY_EXAMPLE } } })
   @Post('create')

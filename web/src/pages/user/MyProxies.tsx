@@ -1,17 +1,20 @@
-import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Copy, List, Pencil, Activity, Download, RefreshCw, Zap, Code2, LifeBuoy } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  Copy, List, Pencil, Activity, Download, RefreshCw, Zap, Code2, LifeBuoy, Search, Eye, EyeOff,
+  Server, CheckCircle2, Gauge, CalendarClock, Clock, Hourglass, Ban,
+} from 'lucide-react';
 import { api, apiError } from '@/lib/api';
+import { addonApi } from '@/lib/addonApi';
 import { useT } from '@/lib/i18n';
 import { formatBytes } from '@/lib/utils';
 import { toast } from '@/lib/toast';
+import { fillText } from '@/lib/diagMessage';
 import {
   Badge,
   Button,
   Card,
   CardContent,
-  CardHeader,
-  CardTitle,
   Input,
   Label,
 } from '@/components/ui';
@@ -31,6 +34,9 @@ interface MyProxy {
   password: string;
   label: string;
   threads_limit: number;
+  traffic_limit: number | null;
+  bandwidth_limit: number | null;
+  expires_at: string | null;
   country_filter: string | null;
   is_blocked: boolean;
   bytes_sent: number;
@@ -43,13 +49,64 @@ interface MyProxy {
   effective_port: string;
 }
 
+interface PendingApproval {
+  order_id: string;
+  created_at: string;
+  items: { name: string; quantity: number }[];
+}
+
+type Filter = 'all' | 'active' | 'blocked' | 'expiring';
+type State = 'active' | 'blocked' | 'expired' | 'expiring' | 'quota';
+
+const DAY = 86_400_000;
+const EXPIRING_SOON = 7 * DAY;
+
+/** État lisible d'un compte (le blocage prime, puis l'expiration, puis le quota). */
+function stateOf(p: MyProxy, now: number): State {
+  if (p.is_blocked) return 'blocked';
+  const used = p.bytes_sent + p.bytes_received;
+  if (p.expires_at) {
+    const left = new Date(p.expires_at).getTime() - now;
+    if (left <= 0) return 'expired';
+    if (p.traffic_limit && used >= p.traffic_limit) return 'quota';
+    if (left <= EXPIRING_SOON) return 'expiring';
+  } else if (p.traffic_limit && used >= p.traffic_limit) return 'quota';
+  return 'active';
+}
+
+const STATE_STYLE: Record<State, string> = {
+  active: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-400',
+  expiring: 'bg-amber-100 text-amber-800 dark:bg-amber-950/30 dark:text-amber-400',
+  quota: 'bg-amber-100 text-amber-800 dark:bg-amber-950/30 dark:text-amber-400',
+  expired: 'bg-red-100 text-red-800 dark:bg-red-950/30 dark:text-red-400',
+  blocked: 'bg-red-100 text-red-800 dark:bg-red-950/30 dark:text-red-400',
+};
+
 export default function MyProxies() {
   const t = useT();
   const qc = useQueryClient();
 
-  const { data, refetch } = useQuery({
+  const { data, refetch, isLoading } = useQuery({
     queryKey: ['me-proxies'],
     queryFn: async () => (await api.get('/me/proxies')).data.data as MyProxy[],
+  });
+
+  // Commandes payées en attente de validation (addon Orders) : affichées sans aucun accès — les comptes n'existent pas encore.
+  const { data: addons } = useQuery({
+    queryKey: ['addons'],
+    queryFn: async () => {
+      try { return (await api.get('/addons')).data.data as any[]; } catch { return [] as any[]; }
+    },
+  });
+  const ordersActive = (addons ?? []).some((a) => a.baseUrl === '/addon-proxy/orders' && a.enabled !== false);
+  const { data: pending } = useQuery({
+    queryKey: ['me-pending-approvals'],
+    enabled: ordersActive,
+    refetchInterval: 30_000,
+    retry: false,
+    queryFn: async () => {
+      try { return (await addonApi.get('/orders/api/pending-approvals')).data.pending as PendingApproval[]; } catch { return [] as PendingApproval[]; }
+    },
   });
 
   const [generatorFor, setGeneratorFor] = useState<MyProxy | null>(null);
@@ -57,110 +114,140 @@ export default function MyProxies() {
   const [failFor, setFailFor] = useState<MyProxy | null>(null);
   const [statsFor, setStatsFor] = useState<MyProxy | null>(null);
   const [editFor, setEditFor] = useState<MyProxy | null>(null);
+  const [search, setSearch] = useState('');
+  const [filter, setFilter] = useState<Filter>('all');
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ['me-proxies'] });
+    qc.invalidateQueries({ queryKey: ['me-pending-approvals'] });
     refetch();
   };
 
+  const now = Date.now();
+  const list = data ?? [];
+  const summary = useMemo(() => {
+    const states = list.map((p) => stateOf(p, now));
+    return {
+      total: list.length,
+      active: states.filter((s) => s === 'active' || s === 'expiring').length,
+      used: list.reduce((acc, p) => acc + p.bytes_sent + p.bytes_received, 0),
+      expiring: states.filter((s) => s === 'expiring').length,
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data]);
+
+  const visible = list.filter((p) => {
+    const q = search.trim().toLowerCase();
+    if (q && !p.label.toLowerCase().includes(q) && !p.username.toLowerCase().includes(q)) return false;
+    const st = stateOf(p, now);
+    if (filter === 'active') return st === 'active' || st === 'expiring';
+    if (filter === 'blocked') return st === 'blocked' || st === 'expired' || st === 'quota';
+    if (filter === 'expiring') return st === 'expiring' || st === 'expired';
+    return true;
+  });
+
+  const pendingList = pending ?? [];
+  const empty = !isLoading && list.length === 0 && pendingList.length === 0;
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">{t('me.title')}</h1>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold">{t('me.title')}</h1>
+          <p className="text-sm text-muted-foreground">{t('me.subtitle')}</p>
+        </div>
         <Button variant="outline" size="sm" onClick={() => invalidate()}>
           <RefreshCw className="h-4 w-4 mr-2" /> {t('common.refresh')}
         </Button>
       </div>
 
-      {data && !data.length && (
+      {list.length > 0 && (
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <StatCard icon={Server} label={t('me.statAccounts')} value={String(summary.total)} />
+          <StatCard icon={CheckCircle2} label={t('me.statActive')} value={String(summary.active)} tone="good" />
+          <StatCard icon={Gauge} label={t('me.statUsage')} value={formatBytes(summary.used)} />
+          <StatCard icon={CalendarClock} label={t('me.statExpiring')} value={String(summary.expiring)} tone={summary.expiring > 0 ? 'warn' : undefined} />
+        </div>
+      )}
+
+      {pendingList.length > 0 && (
+        <div className="space-y-3" data-testid="pending-approvals">
+          {pendingList.map((o) => (
+            <Card key={o.order_id} className="border-dashed border-amber-300 bg-amber-50/50 dark:border-amber-900 dark:bg-amber-950/10">
+              <CardContent className="flex items-start gap-3 p-4">
+                <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400">
+                  <Hourglass className="h-4 w-4" />
+                </span>
+                <div className="min-w-0 flex-1 space-y-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-semibold text-sm">{t('me.pendingTitle')}</span>
+                    <Badge variant="secondary" className={STATE_STYLE.expiring}>{t('me.pendingBadge')}</Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground">{t('me.pendingText')}</p>
+                  <ul className="flex flex-wrap gap-1.5 pt-1">
+                    {o.items.map((it, i) => (
+                      <li key={i} className="rounded-md border bg-background px-2 py-0.5 text-xs">{it.quantity} × {it.name}</li>
+                    ))}
+                  </ul>
+                  <p className="flex items-center gap-1 pt-1 text-[11px] text-muted-foreground">
+                    <Clock className="h-3 w-3" />
+                    {fillText(t('me.pendingSince'), { d: new Date(o.created_at).toLocaleString() })}
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {list.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative min-w-[200px] flex-1 sm:max-w-xs">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t('me.search')} className="pl-8" aria-label={t('me.search')} />
+          </div>
+          <div className="inline-flex rounded-md border p-0.5" role="group" aria-label={t('me.filter')}>
+            {(['all', 'active', 'expiring', 'blocked'] as Filter[]).map((f) => (
+              <button
+                key={f}
+                type="button"
+                onClick={() => setFilter(f)}
+                aria-pressed={filter === f}
+                className={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${filter === f ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+              >
+                {t(`me.filter.${f}`)}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {empty && (
         <Card>
-          <CardContent className="py-10 text-center text-muted-foreground">
-            {t('me.noProxies')}
+          <CardContent className="flex flex-col items-center gap-2 py-12 text-center">
+            <span className="flex h-12 w-12 items-center justify-center rounded-full bg-muted text-muted-foreground"><Server className="h-5 w-5" /></span>
+            <p className="font-medium">{t('me.emptyTitle')}</p>
+            <p className="max-w-md text-sm text-muted-foreground">{t('me.noProxies')}</p>
           </CardContent>
         </Card>
       )}
 
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-        {data?.map((p) => (
-          <Card key={p.id} className="relative overflow-hidden border-border bg-card">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4 border-b">
-              <CardTitle className="text-base font-semibold truncate">{p.label}</CardTitle>
-              {p.is_blocked ? (
-                <Badge variant="destructive">{t('sub.blocked')}</Badge>
-              ) : (
-                <Badge variant="secondary" className="bg-emerald-100 text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-400">
-                  Actif
-                </Badge>
-              )}
-            </CardHeader>
-            <CardContent className="pt-4 space-y-4 text-sm">
-              <div className="space-y-2">
-                <Row label={t('sub.username')} value={p.username} copyable />
-                <Row label={t('sub.password')} value={p.password} copyable />
-                <Row label={t('me.connection')} value={`${p.effective_host}:${p.effective_port}`} copyable />
-                <Row label={t('sub.threads')} value={`${p.threads_limit}`} />
-                <Row label={t('sub.country')} value={p.country_filter || '—'} />
-                <Row label={t('sub.ipWhitelist')} value={p.allowed_ips || '—'} />
-                <Row label={t('sub.blockedDomains')} value={p.blocked_domains || '—'} />
-                {p.domain && <Row label={t('me.dedicatedDomain')} value={p.domain} copyable />}
-                {p.port && <Row label={t('me.dedicatedPort')} value={String(p.port)} copyable />}
-                <Row label={t('me.usage')} value={formatBytes(p.bytes_sent + p.bytes_received)} />
-              </div>
+      {list.length > 0 && visible.length === 0 && (
+        <Card><CardContent className="py-10 text-center text-sm text-muted-foreground">{t('me.noMatch')}</CardContent></Card>
+      )}
 
-              <div className="grid grid-cols-2 gap-2 border-t pt-2 sm:grid-cols-5">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setConnFor(p)}
-                  title={t('conn.btn')}
-                  className="flex flex-col h-auto py-2 px-1 text-xs gap-1"
-                >
-                  <Code2 className="h-4 w-4 text-emerald-500" />
-                  {t('conn.title')}
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setFailFor(p)}
-                  title={t('fail.btn')}
-                  className="flex flex-col h-auto py-2 px-1 text-xs gap-1"
-                >
-                  <LifeBuoy className="h-4 w-4 text-amber-500" />
-                  {t('nav.help')}
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setGeneratorFor(p)}
-                  title={t('me.generatorTitle')}
-                  className="flex flex-col h-auto py-2 px-1 text-xs gap-1"
-                >
-                  <List className="h-4 w-4 text-primary" />
-                  Générer
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setStatsFor(p)}
-                  title={t('me.statsTitle')}
-                  className="flex flex-col h-auto py-2 px-1 text-xs gap-1"
-                >
-                  <Activity className="h-4 w-4 text-orange-500" />
-                  Stats
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setEditFor(p)}
-                  title={t('me.editTitle')}
-                  className="flex flex-col h-auto py-2 px-1 text-xs gap-1"
-                >
-                  <Pencil className="h-4 w-4 text-blue-500" />
-                  Modifier
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+      <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+        {visible.map((p) => (
+          <AccountCard
+            key={p.id}
+            proxy={p}
+            now={now}
+            onConnection={() => setConnFor(p)}
+            onHelp={() => setFailFor(p)}
+            onGenerate={() => setGeneratorFor(p)}
+            onStats={() => setStatsFor(p)}
+            onEdit={() => setEditFor(p)}
+          />
         ))}
       </div>
 
@@ -192,19 +279,145 @@ export default function MyProxies() {
   );
 }
 
+function StatCard({ icon: Icon, label, value, tone }: { icon: typeof Server; label: string; value: string; tone?: 'good' | 'warn' }) {
+  const toneCls = tone === 'good' ? 'text-emerald-600 dark:text-emerald-400' : tone === 'warn' ? 'text-amber-600 dark:text-amber-400' : 'text-primary';
+  return (
+    <Card>
+      <CardContent className="flex items-center gap-3 p-4">
+        <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted ${toneCls}`}><Icon className="h-4 w-4" /></span>
+        <div className="min-w-0">
+          <div className="text-xs leading-tight text-muted-foreground">{label}</div>
+          <div className="truncate text-lg font-semibold leading-tight">{value}</div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function AccountCard({
+  proxy: p, now, onConnection, onHelp, onGenerate, onStats, onEdit,
+}: {
+  proxy: MyProxy; now: number;
+  onConnection: () => void; onHelp: () => void; onGenerate: () => void; onStats: () => void; onEdit: () => void;
+}) {
+  const t = useT();
+  const [reveal, setReveal] = useState(false);
+  const st = stateOf(p, now);
+  const used = p.bytes_sent + p.bytes_received;
+  const pct = p.traffic_limit ? Math.min(100, (used / p.traffic_limit) * 100) : 0;
+  const bar = pct >= 90 ? 'bg-red-500' : pct >= 70 ? 'bg-amber-500' : 'bg-primary';
+  const expiry = p.expires_at ? new Date(p.expires_at) : null;
+  const daysLeft = expiry ? Math.ceil((expiry.getTime() - now) / DAY) : null;
+  const connection = `${p.effective_host}:${p.port ?? p.effective_port}`;
+
+  return (
+    <Card className={`relative flex flex-col overflow-hidden ${st === 'blocked' || st === 'expired' ? 'opacity-90' : ''}`}>
+      <div className="flex items-start justify-between gap-2 border-b p-4">
+        <div className="min-w-0">
+          <h3 className="truncate text-base font-semibold">{p.label}</h3>
+          <p className="truncate font-mono text-[11px] text-muted-foreground">{p.username}</p>
+        </div>
+        <Badge variant="secondary" className={STATE_STYLE[st]}>
+          {st === 'blocked' && <Ban className="mr-1 h-3 w-3" />}
+          {t(`me.state.${st}`)}
+        </Badge>
+      </div>
+
+      <CardContent className="flex-1 space-y-4 p-4 text-sm">
+        {/* Bande passante */}
+        <div className="space-y-1.5">
+          <div className="flex items-baseline justify-between text-xs">
+            <span className="text-muted-foreground">{t('me.traffic')}</span>
+            <span className="font-medium">
+              {formatBytes(used)}{' '}
+              <span className="text-muted-foreground">/ {p.traffic_limit ? formatBytes(p.traffic_limit) : t('me.unlimited')}</span>
+            </span>
+          </div>
+          <div className="h-2 w-full overflow-hidden rounded-full bg-muted" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(pct)}>
+            <div className={`h-2 rounded-full transition-all ${p.traffic_limit ? bar : 'bg-primary/30'}`} style={{ width: p.traffic_limit ? `${Math.max(2, pct)}%` : '100%' }} />
+          </div>
+        </div>
+
+        {/* Caractéristiques */}
+        <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+          <Fact label={t('sub.threads')} value={p.threads_limit > 0 ? String(p.threads_limit) : t('me.unlimited')} />
+          <Fact label={t('me.speed')} value={p.bandwidth_limit ? `${p.bandwidth_limit} ${t('me.kbps')}` : t('me.unlimited')} />
+          <Fact label={t('sub.country')} value={p.country_filter || t('me.anyCountry')} />
+          <Fact
+            label={t('me.expiry')}
+            value={expiry ? `${expiry.toLocaleDateString()}${daysLeft !== null && daysLeft > 0 ? ` · ${fillText(t('me.daysLeft'), { n: String(daysLeft) })}` : ''}` : t('me.noExpiry')}
+            tone={st === 'expired' ? 'bad' : st === 'expiring' ? 'warn' : undefined}
+          />
+        </dl>
+
+        {/* Accès */}
+        <div className="space-y-1 rounded-lg border bg-muted/30 p-2.5">
+          <Row label={t('me.connection')} value={connection} copyable />
+          <Row label={t('sub.username')} value={p.username} copyable />
+          <div className="flex items-center justify-between gap-2 py-0.5">
+            <span className="text-xs text-muted-foreground">{t('sub.password')}</span>
+            <span className="flex items-center gap-1.5 font-mono text-xs font-medium">
+              {reveal ? p.password : '••••••••••'}
+              <button type="button" onClick={() => setReveal((v) => !v)} className="text-muted-foreground transition-colors hover:text-foreground" aria-label={reveal ? t('me.hidePassword') : t('me.showPassword')}>
+                {reveal ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+              </button>
+              <button type="button" onClick={() => { void navigator.clipboard.writeText(p.password); toast.success(t('me.copied')); }} className="text-muted-foreground transition-colors hover:text-foreground" aria-label={t('common.copy')}>
+                <Copy className="h-3 w-3" />
+              </button>
+            </span>
+          </div>
+          {p.domain && <Row label={t('me.dedicatedDomain')} value={p.domain} copyable />}
+          {p.allowed_ips && <Row label={t('sub.ipWhitelist')} value={p.allowed_ips} />}
+          {p.blocked_domains && <Row label={t('sub.blockedDomains')} value={p.blocked_domains} />}
+        </div>
+      </CardContent>
+
+      <div className="grid grid-cols-3 gap-1.5 border-t p-3 sm:grid-cols-5">
+        <ActionBtn icon={Code2} label={t('conn.title')} title={t('conn.btn')} color="text-emerald-500" onClick={onConnection} />
+        <ActionBtn icon={LifeBuoy} label={t('nav.help')} title={t('fail.btn')} color="text-amber-500" onClick={onHelp} />
+        <ActionBtn icon={List} label={t('me.generate')} title={t('me.generatorTitle')} color="text-primary" onClick={onGenerate} />
+        <ActionBtn icon={Activity} label={t('me.stats')} title={t('me.statsTitle')} color="text-orange-500" onClick={onStats} />
+        <ActionBtn icon={Pencil} label={t('me.modify')} title={t('me.editTitle')} color="text-blue-500" onClick={onEdit} />
+      </div>
+    </Card>
+  );
+}
+
+function ActionBtn({ icon: Icon, label, title, color, onClick }: { icon: typeof Server; label: string; title: string; color: string; onClick: () => void }) {
+  return (
+    <Button variant="outline" size="sm" onClick={onClick} title={title} className="flex h-auto flex-col gap-1 px-1 py-2 text-[11px]">
+      <Icon className={`h-4 w-4 ${color}`} />
+      <span className="max-w-full truncate">{label}</span>
+    </Button>
+  );
+}
+
+function Fact({ label, value, tone }: { label: string; value: string; tone?: 'warn' | 'bad' }) {
+  const cls = tone === 'bad' ? 'text-red-600 dark:text-red-400' : tone === 'warn' ? 'text-amber-600 dark:text-amber-400' : 'text-foreground';
+  return (
+    <div className="min-w-0">
+      <dt className="text-muted-foreground">{label}</dt>
+      <dd className={`truncate font-medium ${cls}`}>{value}</dd>
+    </div>
+  );
+}
+
 function Row({ label, value, copyable }: { label: string; value: string; copyable?: boolean }) {
+  const t = useT();
   return (
     <div className="flex items-center justify-between gap-2 py-0.5">
-      <span className="text-muted-foreground text-xs">{label}</span>
-      <span className="flex items-center gap-1 font-mono text-xs font-medium text-foreground">
-        {value}
+      <span className="shrink-0 text-xs text-muted-foreground">{label}</span>
+      <span className="flex min-w-0 items-center gap-1.5 font-mono text-xs font-medium text-foreground">
+        <span className="truncate">{value}</span>
         {copyable && value !== '—' && (
           <button
+            type="button"
             onClick={() => {
-              navigator.clipboard.writeText(value);
-              toast.success('Copié !');
+              void navigator.clipboard.writeText(value);
+              toast.success(t('me.copied'));
             }}
-            className="text-muted-foreground hover:text-foreground transition-colors"
+            className="shrink-0 text-muted-foreground transition-colors hover:text-foreground"
+            aria-label={t('common.copy')}
           >
             <Copy className="h-3 w-3" />
           </button>

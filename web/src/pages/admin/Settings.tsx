@@ -4,7 +4,7 @@ import {
   Copy, Eye, EyeOff, RefreshCw, Send,
   Globe, Server, Radio, Shield, ShieldCheck, Mail, Key,
   Bell, Database, Trash2, Download, Upload, Palette, RotateCcw, BarChart3,
-  Puzzle, ShoppingCart,
+  Puzzle, ShoppingCart, FileText,
 } from 'lucide-react';
 import { api, apiError } from '@/lib/api';
 import { addonApi } from '@/lib/addonApi';
@@ -1726,6 +1726,13 @@ function ExtensionsTab() {
             <h3 className="text-sm font-semibold">{t('settings.extOrdersTitle')}</h3>
           </div>
           <OrdersPaymentSettingsCard />
+          <div className="border-t pt-4 space-y-4">
+            <div className="flex items-center gap-2.5">
+              <FileText className="h-4 w-4 text-primary" />
+              <h3 className="text-sm font-semibold">{t('settings.extInvTitle')}</h3>
+            </div>
+            <OrdersInvoiceSettingsCard />
+          </div>
         </div>
       )}
       {resellerActive && (
@@ -1825,11 +1832,15 @@ interface OrdersPaymentSettings {
   nowpaymentsEnabled: boolean;
   nowpaymentsApiKey: string;
   nowpaymentsIpnSecret: string;
+  paypalEnabled: boolean;
+  paypalEmail: string;
+  paypalTimeoutHours: number;
 }
 
 const EMPTY_ORDERS_PAYMENT_SETTINGS: OrdersPaymentSettings = {
   stripeEnabled: false, stripeSecretKey: '', stripePublishableKey: '', stripeWebhookSecret: '',
   nowpaymentsEnabled: false, nowpaymentsApiKey: '', nowpaymentsIpnSecret: '',
+  paypalEnabled: false, paypalEmail: '', paypalTimeoutHours: 24,
 };
 
 function OrdersPaymentSettingsCard() {
@@ -1844,7 +1855,7 @@ function OrdersPaymentSettingsCard() {
       .catch((e) => toast.error(apiError(e)));
   }, []);
 
-  const set = (k: keyof OrdersPaymentSettings, v: string | boolean) => setSettings((s) => ({ ...s, [k]: v }));
+  const set = (k: keyof OrdersPaymentSettings, v: string | boolean | number) => setSettings((s) => ({ ...s, [k]: v }));
 
   const save = async () => {
     setSaving(true);
@@ -1898,7 +1909,176 @@ function OrdersPaymentSettingsCard() {
         </F>
       </div>
 
+      {/* PayPal Amis & Famille */}
+      <div className="rounded-md border bg-muted/20 p-3 space-y-3">
+        <div className="flex items-center justify-between">
+          <Label className="text-sm font-medium">{t('settings.extPaypalTitle')}</Label>
+          <Switch checked={settings.paypalEnabled} onCheckedChange={(v) => set('paypalEnabled', v)} />
+        </div>
+        <p className="text-xs text-muted-foreground">{t('settings.extPaypalHint')}</p>
+        <F label={t('settings.extPaypalEmail')}>
+          <Input type="email" value={settings.paypalEmail} onChange={(e) => set('paypalEmail', e.target.value)} placeholder="paiements@votre-domaine.fr" autoComplete="off" />
+        </F>
+        <F label={t('settings.extPaypalTimeout')}>
+          <Input type="number" min={1} max={168} value={settings.paypalTimeoutHours} onChange={(e) => set('paypalTimeoutHours', Math.max(1, Math.min(168, Number(e.target.value) || 24)))} className="w-32" />
+          <p className="text-xs text-muted-foreground mt-1">{t('settings.extPaypalTimeoutHint')}</p>
+        </F>
+        <AddonWebhookUrlHint slug="orders" path="api/payments/paypal/ipn" label={t('settings.extPaypalIpnHint')} />
+        <p className="text-xs text-muted-foreground">{t('settings.extPaypalIpnHelp')}</p>
+      </div>
+
       <div className="flex justify-end">
+        <Button type="button" onClick={save} disabled={saving}>{t('common.save')}</Button>
+      </div>
+    </div>
+  );
+}
+
+// ── Facturation PDF (addon Orders) ──────────────────────────────────────────
+
+interface InvoiceSettings {
+  enabled: boolean; company_name: string; legal_form: string; address: string; registration_id: string; vat_number: string;
+  email: string; phone: string; website: string; logo_data_url: string; accent_color: string; invoice_title: string;
+  number_prefix: string; number_include_year: boolean; number_padding: number; next_number: number;
+  vat_rate: number; prices_include_vat: boolean; vat_exemption_note: string; payment_terms: string; footer_text: string;
+}
+
+const TEXTAREA_CLASS = 'flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
+
+/** Reçus et factures PDF des clients ayant payé : identité de l'entreprise, TVA, numérotation, logo. */
+function OrdersInvoiceSettingsCard() {
+  const t = useT();
+  const { lang } = useI18n();
+  const [s, setS] = useState<InvoiceSettings | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [previewing, setPreviewing] = useState(false);
+
+  useEffect(() => {
+    addonApi.get('/orders/api/invoice/settings')
+      .then(({ data }) => setS(data))
+      .catch((e) => toast.error(apiError(e)));
+  }, []);
+
+  if (!s) return <p className="text-sm text-muted-foreground">{t('app.loading')}</p>;
+  const set = <K extends keyof InvoiceSettings>(k: K, v: InvoiceSettings[K]) => setS((x) => (x ? { ...x, [k]: v } : x));
+  const num = (v: string, fallback: number) => (Number.isFinite(Number(v)) && v !== '' ? Number(v) : fallback);
+
+  const onLogo = (file: File | undefined) => {
+    if (!file) return;
+    if (!/^image\/(png|jpeg)$/.test(file.type)) { toast.error(t('settings.extInvLogoType')); return; }
+    if (file.size > 280_000) { toast.error(t('settings.extInvLogoSize')); return; }
+    const r = new FileReader();
+    r.onload = () => set('logo_data_url', String(r.result ?? ''));
+    r.readAsDataURL(file);
+  };
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      const { data } = await addonApi.post('/orders/api/invoice/settings', s);
+      setS(data);
+      toast.success(t('settings.saved'));
+    } catch (e) {
+      toast.error(apiError(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const preview = async (kind: 'invoice' | 'receipt') => {
+    setPreviewing(true);
+    try {
+      // Aperçu des réglages ENREGISTRÉS : on enregistre d'abord pour que l'aperçu reflète le formulaire.
+      await addonApi.post('/orders/api/invoice/settings', s);
+      const res = await addonApi.get(`/orders/api/invoice/preview?kind=${kind}&lang=${lang === 'en' ? 'en' : 'fr'}`, { responseType: 'blob' });
+      const url = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
+      window.open(url, '_blank', 'noopener');
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (e) {
+      toast.error(apiError(e));
+    } finally {
+      setPreviewing(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-muted-foreground">{t('settings.extInvHint')}</p>
+
+      <div className="flex items-center justify-between rounded-md border bg-muted/20 p-3">
+        <Label className="text-sm font-medium">{t('settings.extInvEnable')}</Label>
+        <Switch checked={s.enabled} onCheckedChange={(v) => set('enabled', v)} />
+      </div>
+
+      <div className="rounded-md border bg-muted/20 p-3 space-y-3">
+        <h4 className="text-sm font-medium">{t('settings.extInvCompany')}</h4>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <F label={t('settings.extInvName')}><Input value={s.company_name} maxLength={120} onChange={(e) => set('company_name', e.target.value)} /></F>
+          <F label={t('settings.extInvLegal')}><Input value={s.legal_form} maxLength={80} onChange={(e) => set('legal_form', e.target.value)} placeholder="SAS au capital de 1 000 €" /></F>
+          <F label={t('settings.extInvReg')}><Input value={s.registration_id} maxLength={80} onChange={(e) => set('registration_id', e.target.value)} placeholder="SIRET 123 456 789 00012" /></F>
+          <F label={t('settings.extInvVatNo')}><Input value={s.vat_number} maxLength={40} onChange={(e) => set('vat_number', e.target.value)} placeholder="FR12345678901" /></F>
+          <F label={t('settings.extInvEmail')}><Input value={s.email} maxLength={120} onChange={(e) => set('email', e.target.value)} /></F>
+          <F label={t('settings.extInvPhone')}><Input value={s.phone} maxLength={40} onChange={(e) => set('phone', e.target.value)} /></F>
+          <F label={t('settings.extInvWebsite')}><Input value={s.website} maxLength={120} onChange={(e) => set('website', e.target.value)} /></F>
+        </div>
+        <F label={t('settings.extInvAddress')}><textarea className={TEXTAREA_CLASS} rows={3} maxLength={400} value={s.address} onChange={(e) => set('address', e.target.value)} /></F>
+      </div>
+
+      <div className="rounded-md border bg-muted/20 p-3 space-y-3">
+        <h4 className="text-sm font-medium">{t('settings.extInvLook')}</h4>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <F label={t('settings.extInvTitleField')}><Input value={s.invoice_title} maxLength={60} onChange={(e) => set('invoice_title', e.target.value)} placeholder="FACTURE" /></F>
+          <F label={t('settings.extInvColor')}>
+            <div className="flex items-center gap-2">
+              <input type="color" value={/^#[0-9a-fA-F]{6}$/.test(s.accent_color) ? s.accent_color : '#e5532d'} onChange={(e) => set('accent_color', e.target.value)} className="h-9 w-12 cursor-pointer rounded border bg-transparent p-1" aria-label={t('settings.extInvColor')} />
+              <Input value={s.accent_color} maxLength={7} onChange={(e) => set('accent_color', e.target.value)} className="font-mono w-28" />
+            </div>
+          </F>
+        </div>
+        <F label={t('settings.extInvLogo')}>
+          <div className="flex flex-wrap items-center gap-3">
+            {s.logo_data_url ? <img src={s.logo_data_url} alt="" className="h-12 max-w-[160px] rounded border bg-white object-contain p-1" /> : <span className="text-xs text-muted-foreground">{t('settings.extInvNoLogo')}</span>}
+            <input type="file" accept="image/png,image/jpeg" onChange={(e) => { onLogo(e.target.files?.[0]); e.target.value = ''; }} className="text-xs" />
+            {s.logo_data_url && <Button type="button" variant="outline" size="sm" onClick={() => set('logo_data_url', '')}>{t('settings.extInvRemoveLogo')}</Button>}
+          </div>
+          <p className="text-xs text-muted-foreground mt-1">{t('settings.extInvLogoHint')}</p>
+        </F>
+        <F label={t('settings.extInvFooter')}><textarea className={TEXTAREA_CLASS} rows={2} maxLength={300} value={s.footer_text} onChange={(e) => set('footer_text', e.target.value)} /></F>
+        <F label={t('settings.extInvTerms')}><Input value={s.payment_terms} maxLength={200} onChange={(e) => set('payment_terms', e.target.value)} /></F>
+      </div>
+
+      <div className="rounded-md border bg-muted/20 p-3 space-y-3">
+        <h4 className="text-sm font-medium">{t('settings.extInvNumbering')}</h4>
+        <div className="grid gap-3 sm:grid-cols-4">
+          <F label={t('settings.extInvPrefix')}><Input value={s.number_prefix} maxLength={12} onChange={(e) => set('number_prefix', e.target.value)} /></F>
+          <F label={t('settings.extInvPadding')}><Input type="number" min={1} max={10} value={s.number_padding} onChange={(e) => set('number_padding', num(e.target.value, 5))} /></F>
+          <F label={t('settings.extInvNext')}><Input type="number" min={1} value={s.next_number} onChange={(e) => set('next_number', num(e.target.value, 1))} /></F>
+          <div className="flex items-end justify-between gap-2 pb-2">
+            <Label className="text-sm">{t('settings.extInvYear')}</Label>
+            <Switch checked={s.number_include_year} onCheckedChange={(v) => set('number_include_year', v)} />
+          </div>
+        </div>
+        <p className="text-xs text-muted-foreground">{t('settings.extInvNextHint')}</p>
+      </div>
+
+      <div className="rounded-md border bg-muted/20 p-3 space-y-3">
+        <h4 className="text-sm font-medium">{t('settings.extInvVat')}</h4>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <F label={t('settings.extInvVatRate')}>
+            <Input type="number" min={0} max={100} step="0.1" value={s.vat_rate} onChange={(e) => set('vat_rate', num(e.target.value, 0))} className="w-32" />
+            <p className="text-xs text-muted-foreground mt-1">{t('settings.extInvVatRateHint')}</p>
+          </F>
+          <div className="flex items-center justify-between gap-2">
+            <Label className="text-sm">{t('settings.extInvIncl')}</Label>
+            <Switch checked={s.prices_include_vat} onCheckedChange={(v) => set('prices_include_vat', v)} />
+          </div>
+        </div>
+        <F label={t('settings.extInvExempt')}><Input value={s.vat_exemption_note} maxLength={200} onChange={(e) => set('vat_exemption_note', e.target.value)} /></F>
+      </div>
+
+      <div className="flex flex-wrap justify-end gap-2">
+        <Button type="button" variant="outline" onClick={() => void preview('receipt')} disabled={previewing || saving}>{t('settings.extInvPreviewReceipt')}</Button>
+        <Button type="button" variant="outline" onClick={() => void preview('invoice')} disabled={previewing || saving}>{t('settings.extInvPreviewInvoice')}</Button>
         <Button type="button" onClick={save} disabled={saving}>{t('common.save')}</Button>
       </div>
     </div>
