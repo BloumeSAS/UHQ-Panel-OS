@@ -32,6 +32,8 @@ export class PanelDatabaseController {
   /** Sonde la base embarquée Docker (service `db`). Public, pas de garde. */
   @Get('db-probe')
   async probe() {
+    // Une fois la base configurée, cette route ne renseigne plus RIEN (avant : elle renvoyait l'URL de la base embarquée, identifiants compris).
+    if (this.dbConfig.status().configured) return { status: 'success', available: false };
     const url = await this.dbConfig.probeBundled();
     return { status: 'success', available: !!url, url };
   }

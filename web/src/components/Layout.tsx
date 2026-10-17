@@ -70,7 +70,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const { theme, toggle } = useTheme();
   const { density, toggle: toggleDensity } = useDensity();
   const [open, setOpen] = useState(false);
-  const { start: startTour } = useTour();
+  const { start: startTour, categories: tourCategories } = useTour();
+  const [tourMenu, setTourMenu] = useState(false);
 
   // La visite guidée ouvre/ferme le menu sur mobile pour pouvoir le mettre en lumière.
   useEffect(() => {
@@ -409,9 +410,30 @@ export function Layout({ children }: { children: React.ReactNode }) {
             {open ? <X /> : <Menu />}
           </Button>
           <div className="flex flex-1 items-center justify-end gap-2">
-            <Button variant="ghost" size="icon" onClick={startTour} aria-label={t('tour.start')} title={t('tour.startHint')}>
-              <HelpCircle className="h-4 w-4" />
-            </Button>
+            <div className="relative">
+              <Button variant="ghost" size="icon" onClick={() => setTourMenu((v) => !v)} aria-label={t('tour.start')} title={t('tour.startHint')} aria-expanded={tourMenu}>
+                <HelpCircle className="h-4 w-4" />
+              </Button>
+              {tourMenu && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setTourMenu(false)} />
+                  <div className="absolute left-0 top-full z-50 mt-2 w-72 rounded-xl border bg-popover p-1.5 shadow-xl" role="menu">
+                    <div className="px-2.5 pb-1 pt-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{t('tour.menu.title')}</div>
+                    <button type="button" role="menuitem" className="flex w-full items-start gap-2.5 rounded-lg px-2.5 py-2 text-left hover:bg-accent" onClick={() => { setTourMenu(false); startTour(); }}>
+                      <span className="mt-0.5">🧭</span>
+                      <span><span className="block text-sm font-medium">{t('tour.menu.all')}</span><span className="block text-xs text-muted-foreground">{t('tour.menu.allHint')}</span></span>
+                    </button>
+                    <div className="my-1 h-px bg-border" />
+                    {tourCategories.map((c) => (
+                      <button key={c.id} type="button" role="menuitem" className="flex w-full items-start gap-2.5 rounded-lg px-2.5 py-2 text-left hover:bg-accent" onClick={() => { setTourMenu(false); startTour(c.id); }}>
+                        <span className="mt-0.5">{t(`tour.cat.${c.id}.i`)}</span>
+                        <span><span className="block text-sm font-medium">{t(`tour.cat.${c.id}.t`)}</span><span className="block text-xs text-muted-foreground">{t(`tour.cat.${c.id}.d`)}</span></span>
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
             <div data-tour="topbar-search" className="flex items-center"><GlobalSearch nav={nav} /></div>
             <div data-tour="topbar-lang" className="relative">
               <select

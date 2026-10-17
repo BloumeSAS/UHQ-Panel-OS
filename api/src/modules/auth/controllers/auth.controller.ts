@@ -16,6 +16,8 @@ import * as bcrypt from 'bcryptjs';
 import { randomBytes } from 'crypto';
 import { PrismaService } from '../../../database/prisma.service';
 import { SettingsService } from '../../../config/settings.service';
+import { RolesGuard } from '../../../common/guards/roles.guard';
+import { Roles } from '../../../common/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../../common/decorators/current-user.decorator';
 import type { JwtUser } from '../../../common/guards/jwt-auth.guard';
@@ -374,6 +376,19 @@ export class PanelAuthController {
     });
 
     return { status: 'success', message: 'Mot de passe réinitialisé.' };
+  }
+
+  /**
+   * Contrôle SERVEUR du rôle « staff » : le panel n'affiche l'interface d'administration que si cette route répond (403 sinon).
+   * La réponse de `auth/me` seule ne suffit pas : elle peut être réécrite dans le navigateur (DevTools « override content »).
+   * Rappel : la sécurité réelle reste côté serveur — chaque route d'administration vérifie le rôle en base à chaque appel.
+   */
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN', 'SUPPORT')
+  @Get('auth/staff-check')
+  staffCheck(@CurrentUser() user: JwtUser) {
+    return { status: 'success', role: user.role };
   }
 
   @ApiBearerAuth()

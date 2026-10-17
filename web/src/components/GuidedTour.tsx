@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 import { useT } from '@/lib/i18n';
-import { stepsForRole } from '@/lib/tour/steps';
+import { categoriesForRole, stepsForRole } from '@/lib/tour/steps';
 import { Button } from '@/components/ui';
 
 /** Posé par Setup.tsx à la fin de l'installation : la visite démarre alors toute seule sur le tableau de bord. */
@@ -11,10 +11,12 @@ export const TOUR_PENDING_KEY = 'uhq_tour_pending';
 const DONE_KEY = 'uhq_tour_done';
 
 interface TourCtx {
-  start: () => void;
+  /** Sans argument : visite complète ; avec un identifiant : une seule catégorie. */
+  start: (category?: string) => void;
   running: boolean;
+  categories: { id: string }[];
 }
-const Ctx = createContext<TourCtx>({ start: () => undefined, running: false });
+const Ctx = createContext<TourCtx>({ start: () => undefined, running: false, categories: [] });
 export const useTour = () => useContext(Ctx);
 
 interface Box {
@@ -69,10 +71,13 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
   const pathRef = useRef(location.pathname);
   pathRef.current = location.pathname;
 
-  const steps = useMemo(() => stepsForRole(user?.role), [user?.role]);
+  const [category, setCategory] = useState<string | undefined>(undefined);
+  const steps = useMemo(() => stepsForRole(user?.role, category), [user?.role, category]);
+  const categories = useMemo(() => categoriesForRole(user?.role), [user?.role]);
   const step = running ? steps[index] : undefined;
 
-  const start = useCallback(() => {
+  const start = useCallback((cat?: string) => {
+    setCategory(typeof cat === 'string' ? cat : undefined);
     setIndex(0);
     setFocusBox(null);
     setNavBox(null);
@@ -189,7 +194,7 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener('keydown', onKey);
   }, [running, next, prev, stop]);
 
-  const ctx = useMemo(() => ({ start, running }), [start, running]);
+  const ctx = useMemo(() => ({ start, running, categories }), [start, running, categories]);
 
   let overlay: React.ReactNode = null;
   if (running && step) {

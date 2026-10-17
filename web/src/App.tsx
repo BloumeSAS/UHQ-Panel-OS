@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react';
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { useAuth } from '@/lib/auth';
 import { useSite } from '@/lib/site';
@@ -10,29 +11,29 @@ import Login from '@/pages/Login';
 import Register from '@/pages/Register';
 import ForgotPassword from '@/pages/ForgotPassword';
 import ResetPassword from '@/pages/ResetPassword';
-import Dashboard from '@/pages/admin/Dashboard';
-import Analytics from '@/pages/admin/Analytics';
-import SubUsers from '@/pages/admin/SubUsers';
-import Users from '@/pages/admin/Users';
-import Pool from '@/pages/admin/Pool';
-import Logs from '@/pages/admin/Logs';
-import Scraper from '@/pages/admin/Scraper';
-import Settings from '@/pages/admin/Settings';
-import Reports from '@/pages/admin/Reports';
-import About from '@/pages/admin/About';
-import Checker from '@/pages/admin/Checker';
-import Audit from '@/pages/admin/Audit';
-import BannedIps from '@/pages/admin/BannedIps';
+const Dashboard = lazy(() => import('@/pages/admin/Dashboard'));
+const Analytics = lazy(() => import('@/pages/admin/Analytics'));
+const SubUsers = lazy(() => import('@/pages/admin/SubUsers'));
+const Users = lazy(() => import('@/pages/admin/Users'));
+const Pool = lazy(() => import('@/pages/admin/Pool'));
+const Logs = lazy(() => import('@/pages/admin/Logs'));
+const Scraper = lazy(() => import('@/pages/admin/Scraper'));
+const Settings = lazy(() => import('@/pages/admin/Settings'));
+const Reports = lazy(() => import('@/pages/admin/Reports'));
+const About = lazy(() => import('@/pages/admin/About'));
+const Checker = lazy(() => import('@/pages/admin/Checker'));
+const Audit = lazy(() => import('@/pages/admin/Audit'));
+const BannedIps = lazy(() => import('@/pages/admin/BannedIps'));
 import MyProxies from '@/pages/user/MyProxies';
 import SecurityPage from '@/pages/user/Security';
 import ApiKeysPage from '@/pages/user/ApiKeys';
 import ProfilePage from '@/pages/Profile';
-import ProxyPools from '@/pages/admin/ProxyPools';
-import Addons from '@/pages/admin/Addons';
-import AddonDocs from '@/pages/admin/AddonDocs';
+const ProxyPools = lazy(() => import('@/pages/admin/ProxyPools'));
+const Addons = lazy(() => import('@/pages/admin/Addons'));
+const AddonDocs = lazy(() => import('@/pages/admin/AddonDocs'));
 import AddonIframe from '@/pages/AddonIframe';
-import Diagnostics from '@/pages/admin/Diagnostics';
-import ErrorCodes from '@/pages/admin/ErrorCodes';
+const Diagnostics = lazy(() => import('@/pages/admin/Diagnostics'));
+const ErrorCodes = lazy(() => import('@/pages/admin/ErrorCodes'));
 import Status from '@/pages/Status';
 import Help from '@/pages/Help';
 
@@ -104,6 +105,7 @@ function AppRoutes() {
   }
 
   return (
+    <Suspense fallback={<Loader />}>
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
@@ -142,6 +144,7 @@ function AppRoutes() {
 
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+    </Suspense>
   );
 }
 

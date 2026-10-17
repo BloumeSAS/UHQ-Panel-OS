@@ -38,7 +38,7 @@ const DOCS_URL = 'https://uhq-panel-os-docs.bloume.fr/';
 export default function Help() {
   const t = useT();
   const { user } = useAuth();
-  const { start } = useTour();
+  const { start, categories } = useTour();
   const [params] = useSearchParams();
   const [query, setQuery] = useState(params.get('q') ?? '');
   const [open, setOpen] = useState<number | null>(null);
@@ -91,11 +91,25 @@ export default function Help() {
           <BookOpen className="h-4 w-4" />
           {t('help.docs')}
         </a>
-        <Button type="button" variant="outline" onClick={start}>
+        <Button type="button" variant="outline" onClick={() => start()}>
           <PlayCircle className="mr-2 h-4 w-4" />
           {t('help.tour')}
         </Button>
       </div>
+
+      {categories.length > 0 && (
+        <section className="space-y-2">
+          <h2 className="text-sm font-semibold">{t('tour.menu.title')}</h2>
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+            {categories.map((c) => (
+              <button key={c.id} type="button" onClick={() => start(c.id)} className="flex items-start gap-2.5 rounded-xl border bg-card p-3 text-left transition-colors hover:border-primary/60 hover:bg-accent">
+                <span className="text-lg leading-none">{t(`tour.cat.${c.id}.i`)}</span>
+                <span><span className="block text-sm font-medium">{t(`tour.cat.${c.id}.t`)}</span><span className="block text-xs text-muted-foreground">{t(`tour.cat.${c.id}.d`)}</span></span>
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
 
       {items.length === 0 ? (
         <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">{t('help.empty')}</p>

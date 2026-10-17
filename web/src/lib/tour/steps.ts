@@ -100,10 +100,36 @@ export const TOUR_STEPS: TourStep[] = [
   { id: 'finish', audience: 'all' },
 ];
 
-export function stepsForRole(role?: string): TourStep[] {
+/** Catégories de la visite : on peut relire UNE catégorie (pool de proxies, sécurité…) sans refaire toute la visite. */
+export interface TourCategory {
+  id: string;
+  /** Identifiants d'étapes (les étapes `s_<onglet>` des Paramètres se déclarent avec le préfixe `s_`). */
+  steps: string[];
+}
+
+export const TOUR_CATEGORIES: TourCategory[] = [
+  { id: 'start', steps: ['welcome', 'welcomeUser', 'architecture', 'install', 'network', 'flow', 'checklist'] },
+  { id: 'interface', steps: ['sidebar', 'search', 'lang', 'theme', 'density', 'notifs'] },
+  { id: 'accounts', steps: ['dashboard', 'onboarding', 'myproxies', 'subusers', 'testaccount', 'users'] },
+  { id: 'pool', steps: ['pool', 'proxypools', 'scraper', 'checker', 'bannedips'] },
+  { id: 'monitoring', steps: ['analytics', 'logs', 'reports', 'audit', 'diagnostics', 'errors'] },
+  { id: 'settings', steps: ['settings', 's_dashboard', 's_general', 's_theme', 's_security', 's_captcha', 's_apikey', 's_proxy', 's_scraper', 's_smtp', 's_webhooks', 's_backups', 's_extensions'] },
+  { id: 'extensions', steps: ['addons', 'addondocs', 'docs'] },
+  { id: 'account', steps: ['apikeys', 'profile', 'security', 'help', 'about'] },
+];
+
+/** Catégories qui contiennent au moins une étape visible pour ce rôle. */
+export function categoriesForRole(role?: string): TourCategory[] {
+  const visible = new Set(stepsForRole(role).map((s) => s.id));
+  return TOUR_CATEGORIES.filter((c) => c.steps.some((id) => visible.has(id)));
+}
+
+export function stepsForRole(role?: string, category?: string): TourStep[] {
   const isAdmin = role === 'ADMIN';
   const isStaff = isAdmin || role === 'SUPPORT';
+  const only = category ? new Set(TOUR_CATEGORIES.find((c) => c.id === category)?.steps ?? []) : null;
   return TOUR_STEPS.filter((s) => {
+    if (only && !only.has(s.id)) return false;
     if (s.audience === 'all') return true;
     if (s.audience === 'admin') return isAdmin;
     if (s.audience === 'staff') return isStaff;

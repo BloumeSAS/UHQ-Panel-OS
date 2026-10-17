@@ -28,6 +28,22 @@ interface AuthCtx {
 
 const Ctx = createContext<AuthCtx | null>(null);
 
+/**
+ * Rôle EFFECTIF = celui confirmé par le serveur. `auth/me` / la réponse de connexion peuvent être réécrites dans le navigateur
+ * (DevTools) : un compte « staff » doit donc être confirmé par `auth/staff-check` (403 pour un simple utilisateur), sinon il est
+ * traité comme USER. Ce n'est qu'un garde-fou d'interface : les routes d'administration vérifient le rôle côté serveur à chaque appel.
+ */
+async function withVerifiedRole(u: PanelUser): Promise<PanelUser> {
+  if (u.role === 'USER') return u;
+  try {
+    const { data } = await api.get('/auth/staff-check');
+    const role = data?.role === 'ADMIN' || data?.role === 'SUPPORT' ? data.role : 'USER';
+    return { ...u, role };
+  } catch {
+    return { ...u, role: 'USER' };
+  }
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<PanelUser | null>(null);
   const [loading, setLoading] = useState(true);
@@ -40,7 +56,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       try {
         const { data } = await api.get('/auth/me');
-        setUser(data.user);
+        setUser(await withVerifiedRole(data.user));
       } catch {
         clearToken();
       } finally {
@@ -51,7 +67,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const applyToken = (token: string, u: PanelUser) => {
     setToken(token);
-    setUser(u);
+    setUser({ ...u, role: 'USER' }); // provisoire : le rôle staff n'est accordé qu'après confirmation du serveur
+    void withVerifiedRole(u).then(setUser);
   };
 
   const login = async (email: string, password: string, captchaToken?: string): Promise<LoginResult> => {
@@ -75,7 +92,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!getToken()) return;
     try {
       const { data } = await api.get('/auth/me');
-      setUser(data.user);
+      setUser(await withVerifiedRole(data.user));
     } catch {
       /* non-bloquant — le prochain appel API échouera proprement si le token est mort */
     }
