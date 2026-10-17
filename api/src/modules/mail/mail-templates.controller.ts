@@ -4,12 +4,14 @@ import { IsBoolean, IsEmail, IsIn, IsObject, IsOptional, IsString, MaxLength } f
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { ApiKeyGuard } from '../../common/guards/api-key.guard';
+import { MasterKeyGuard } from '../../common/guards/master-key.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
-import { Scopes } from '../../common/decorators/scopes.decorator';
 import { MailService } from './mail.service';
 import { MAIL_TEMPLATE_BY_ID } from './mail-templates';
 import { PrismaService } from '../../database/prisma.service';
 import { Audited } from '../audit/audited.decorator';
+import { SettingsService } from '../../config/settings.service';
+import { panelBaseUrl } from '../../common/utils/panel-url';
 
 class SaveTemplateDto {
   @IsOptional() @IsBoolean() enabled?: boolean;
@@ -84,8 +86,8 @@ export class MailTemplatesController {
 
 class AddonMailDto {
   @IsString() @MaxLength(60) template!: string;
-  /** Adresse d'un utilisateur du panel (jamais d'adresse arbitraire : pas de relais de spam). */
-  @IsEmail() to!: string;
+  /** Adresse d'un utilisateur du panel (jamais d'adresse arbitraire : pas de relais de spam) ou « admins » (modèles destinés aux administrateurs). */
+  @IsString() @MaxLength(254) to!: string;
   @IsOptional() @IsObject() vars?: Record<string, unknown>;
   @IsOptional() @IsIn(['fr', 'en']) lang?: 'fr' | 'en';
 }
@@ -97,25 +99,41 @@ class AddonMailDto {
 @ApiTags('legacy-mail')
 @ApiSecurity('x-api-key')
 @Controller('api/v1/mail')
-@UseGuards(ApiKeyGuard)
+// Clé API MAÎTRE uniquement (addons embarqués / intégrations admin) : une clé personnelle créée par un utilisateur (scopes libres) est refusée,
+// sinon n'importe quel client pourrait faire envoyer des e-mails du site à d'autres utilisateurs.
+@UseGuards(ApiKeyGuard, MasterKeyGuard)
 export class AddonMailController {
-  constructor(private readonly mail: MailService, private readonly prisma: PrismaService) {}
+  constructor(private readonly mail: MailService, private readonly prisma: PrismaService, private readonly settings: SettingsService) {}
 
   @Post('send')
-  @Scopes('send:mail')
   @HttpCode(200)
   async send(@Body() dto: AddonMailDto) {
     const def = MAIL_TEMPLATE_BY_ID.get(dto.template);
     if (!def || !def.addon) throw new BadRequestException('UNKNOWN_TEMPLATE');
     const to = dto.to.trim().toLowerCase();
-    const user = await this.prisma.panelUser.findFirst({ where: { email: { equals: to, mode: 'insensitive' } }, select: { email: true } });
-    if (!user) return { status: 'skipped', reason: 'unknown_user' };
     // Valeurs bornées (chaînes uniquement) : jamais d'objet ni de contenu arbitrairement long.
     const vars: Record<string, string> = {};
     for (const [k, v] of Object.entries(dto.vars ?? {}).slice(0, 30)) {
       if (def.vars.includes(k) && (typeof v === 'string' || typeof v === 'number')) vars[k] = String(v).slice(0, 500);
     }
-    const sent = await this.mail.sendTemplate(dto.template, user.email, vars, { lang: dto.lang });
-    return { status: sent ? 'sent' : 'skipped', reason: sent ? undefined : this.mail.isEnabled(dto.template) ? 'smtp' : 'disabled' };
+    // Liens vers le panel : TOUJOURS l'adresse du panel (jamais un lien fourni par l'appelant : pas de bouton vers un site tiers).
+    const base = panelBaseUrl(this.settings);
+    for (const k of ['ordersUrl', 'walletUrl', 'adminUrl', 'loginUrl']) {
+      delete vars[k];
+      if (def.vars.includes(k) && base) vars[k] = base;
+    }
+
+    if (to === 'admins') {
+      if (def.audience !== 'admin') throw new BadRequestException('ADMIN_TEMPLATE_ONLY');
+      if (!this.mail.isEnabled(dto.template)) return { status: 'skipped', reason: 'disabled' };
+      const admins = await this.prisma.panelUser.findMany({ where: { role: 'ADMIN', isActive: true }, select: { email: true }, take: 20 });
+      let n = 0;
+      for (const a of admins) if (await this.mail.sendTemplate(dto.template, a.email, vars, { lang: dto.lang })) n += 1;
+      return { status: 'accepted', sent: n };
+    }
+    const user = await this.prisma.panelUser.findFirst({ where: { email: { equals: to, mode: 'insensitive' } }, select: { email: true } });
+    // Réponse identique que le destinataire existe ou non.
+    if (user) await this.mail.sendTemplate(dto.template, user.email, vars, { lang: dto.lang });
+    return { status: 'accepted' };
   }
 }
