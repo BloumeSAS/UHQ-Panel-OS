@@ -39,6 +39,9 @@ export const updateEn: Record<string, string> = {
   'update.sameVersion': 'The panel is back but the version did not change: the update may have failed. Check the deployment in your platform (Coolify → Deployments).',
   'update.timeout': 'The update is taking over 25 minutes. Check the deployment in your platform (Coolify → Deployments): the build may have failed.',
   'update.keepWaiting': 'Keep waiting',
+  'update.running': 'Update in progress…',
+  'update.reopen': 'Reopen the update progress',
+  'update.close': 'Close',
   'update.hide': 'Hide',
 
   'settings.autoUpdate': 'Automatic update',

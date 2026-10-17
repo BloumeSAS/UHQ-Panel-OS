@@ -81,7 +81,7 @@ export default function About() {
       // Le serveur travaille en tâche de fond (sauvegarde puis webhook) : l'écran de progression suit l'avancement.
       const pending = { from: res.fromVersion as string, startedAt: Date.now(), prepare: true };
       try {
-        sessionStorage.setItem(UPDATE_PENDING_KEY, JSON.stringify(pending));
+        localStorage.setItem(UPDATE_PENDING_KEY, JSON.stringify(pending));
       } catch {
         /* ignore */
       }

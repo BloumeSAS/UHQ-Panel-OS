@@ -39,6 +39,9 @@ export const updateFr: Record<string, string> = {
   'update.sameVersion': "Le panel est revenu mais la version n'a pas changé : la mise à jour a peut-être échoué. Vérifiez le déploiement dans votre plateforme (Coolify → Deployments).",
   'update.timeout': "La mise à jour dépasse 25 minutes. Vérifiez le déploiement dans votre plateforme (Coolify → Deployments) : la construction a peut-être échoué.",
   'update.keepWaiting': 'Continuer à attendre',
+  'update.running': 'Mise à jour en cours…',
+  'update.reopen': 'Rouvrir le suivi de la mise à jour',
+  'update.close': 'Fermer',
   'update.hide': 'Masquer',
 
   'settings.autoUpdate': 'Mise à jour automatique',

@@ -7,6 +7,7 @@ import { Button } from '@/components/ui';
 import { cn } from '@/lib/utils';
 
 export const UPDATE_PENDING_KEY = 'uhq_update_pending';
+const MIN_KEY = 'uhq_update_min';
 export const UPDATE_START_EVENT = 'uhq-update-start';
 const TIMEOUT_MS = 25 * 60_000;
 
@@ -21,15 +22,18 @@ interface Pending {
 
 const readPending = (): Pending | null => {
   try {
-    const raw = sessionStorage.getItem(UPDATE_PENDING_KEY);
-    return raw ? (JSON.parse(raw) as Pending) : null;
+    const raw = localStorage.getItem(UPDATE_PENDING_KEY);
+    const p = raw ? (JSON.parse(raw) as Pending) : null;
+    // Suivi périmé (onglet rouvert bien plus tard) : on l'abandonne.
+    if (p && Date.now() - p.startedAt > 60 * 60_000) { localStorage.removeItem(UPDATE_PENDING_KEY); return null; }
+    return p;
   } catch {
     return null;
   }
 };
 const clearPending = () => {
   try {
-    sessionStorage.removeItem(UPDATE_PENDING_KEY);
+    localStorage.removeItem(UPDATE_PENDING_KEY);
   } catch {
     /* ignore */
   }
@@ -40,12 +44,19 @@ const fmt = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '
 /**
  * Suivi d'une mise à jour automatique : le panel est reconstruit et redémarré par la plateforme
  * (Coolify…). On interroge /health : serveur injoignable = redémarrage ; serveur revenu avec une
- * autre version = terminé (rechargement de la page). L'état survit à un rechargement (sessionStorage).
+ * autre version = terminé (rechargement de la page). L'état survit à un rechargement (localStorage).
  */
 export function UpdateOverlay() {
   const t = useT();
   const [pending, setPending] = useState<Pending | null>(readPending);
   const [phase, setPhase] = useState<Phase>('building');
+  const [minimized, setMinimized] = useState(() => {
+    try { return localStorage.getItem(MIN_KEY) === '1'; } catch { return false; }
+  });
+  const setMin = (v: boolean) => {
+    setMinimized(v);
+    try { if (v) localStorage.setItem(MIN_KEY, '1'); else localStorage.removeItem(MIN_KEY); } catch { /* ignore */ }
+  };
   const [elapsed, setElapsed] = useState(0);
   const [newVersion, setNewVersion] = useState('');
   const [jobPhase, setJobPhase] = useState<'backup' | 'triggering'>('triggering');
@@ -59,6 +70,7 @@ export function UpdateOverlay() {
       const p = (e as CustomEvent<Pending>).detail;
       wasDown.current = false;
       setJobError(null);
+      setMin(false);
       setPhase(p.prepare ? 'prepare' : 'building');
       setPending(p);
     };
@@ -66,8 +78,11 @@ export function UpdateOverlay() {
     return () => window.removeEventListener(UPDATE_START_EVENT, h);
   }, []);
 
+  // Fermer une fenêtre d'erreur / terminée : on arrête le suivi. Pendant la mise à jour, « Masquer » la réduit en pastille.
   const close = useCallback(() => {
     clearPending();
+    try { localStorage.removeItem(MIN_KEY); } catch { /* ignore */ }
+    setMinimized(false);
     setPending(null);
   }, []);
 
@@ -87,7 +102,7 @@ export function UpdateOverlay() {
           stopped = true;
           const next = { ...pending, prepare: false, startedAt: Date.now() };
           try {
-            sessionStorage.setItem(UPDATE_PENDING_KEY, JSON.stringify(next));
+            localStorage.setItem(UPDATE_PENDING_KEY, JSON.stringify(next));
           } catch {
             /* ignore */
           }
@@ -170,6 +185,23 @@ export function UpdateOverlay() {
 
   const warn = phase === 'sameversion' || phase === 'timeout' || phase === 'error';
 
+  // Réduite en pastille en bas à gauche tant que ça tourne ; un événement important (fin, erreur, délai) rouvre la fenêtre.
+  if (minimized && !warn && phase !== 'done') {
+    return (
+      <button
+        type="button"
+        onClick={() => setMin(false)}
+        className="fixed bottom-4 left-4 z-[110] flex items-center gap-2 rounded-full border bg-popover px-3.5 py-2 text-sm font-medium shadow-lg transition-colors hover:bg-accent"
+        aria-label={t('update.reopen')}
+        title={t('update.reopen')}
+      >
+        <Loader2 className="h-4 w-4 animate-spin text-primary" />
+        <span>{t('update.running')}</span>
+        <span className="font-mono text-xs text-muted-foreground">{fmt(elapsed)}</span>
+      </button>
+    );
+  }
+
   return (
     <div className="fixed inset-0 z-[110] flex items-center justify-center bg-background/90 p-4 backdrop-blur-sm" role="alertdialog" aria-live="polite">
       <div className="w-full max-w-md space-y-5 rounded-2xl border bg-popover p-6 shadow-2xl">
@@ -236,7 +268,7 @@ export function UpdateOverlay() {
                 onClick={() => {
                   const p = { ...pending, startedAt: Date.now() };
                   try {
-                    sessionStorage.setItem(UPDATE_PENDING_KEY, JSON.stringify(p));
+                    localStorage.setItem(UPDATE_PENDING_KEY, JSON.stringify(p));
                   } catch {
                     /* ignore */
                   }
@@ -246,8 +278,8 @@ export function UpdateOverlay() {
                 {t('update.keepWaiting')}
               </Button>
             )}
-            <Button type="button" variant="ghost" onClick={close}>
-              {t('update.hide')}
+            <Button type="button" variant="ghost" onClick={() => (warn ? close() : setMin(true))}>
+              {warn ? t('update.close') : t('update.hide')}
             </Button>
           </div>
         )}
