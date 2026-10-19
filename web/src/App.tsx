@@ -38,6 +38,7 @@ import Status from '@/pages/Status';
 import Help from '@/pages/Help';
 
 import Maintenance from '@/pages/Maintenance';
+import VitrineHome from '@/pages/VitrineHome';
 import ShareLinkView from '@/pages/ShareLinkView';
 
 function Loader() {
@@ -161,8 +162,9 @@ export default function App() {
 /** L'accueil dépend du rôle : admin → dashboard, user → ses proxies. */
 function HomeRouter() {
   const { user, loading } = useAuth();
+  const { status } = useSite();
   if (loading) return <Loader />;
-  if (!user) return <Navigate to="/login" replace />;
+  if (!user) return status?.vitrine ? <VitrineHome /> : <Navigate to="/login" replace />;
   const isStaff = user.role === 'ADMIN' || user.role === 'SUPPORT';
   return <Protected>{isStaff ? <Dashboard /> : <MyProxies />}</Protected>;
 }

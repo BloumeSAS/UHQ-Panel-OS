@@ -36,7 +36,7 @@
   {
     "name": "Orders",
     "slug": "orders",
-    "version": "1.5.0",
+    "version": "1.5.1",
     "description": "Boutique interne — commandes payées via Wallet. Livraison automatique de comptes proxy après paiement.",
     "icon": "ShoppingCart",
     "free": true,
@@ -163,6 +163,39 @@
     "bundlePort": 3105,
     "extraEnv": {
       "WALLET_URL": "http://127.0.0.1:3101"
+    }
+  },
+  {
+    "name": "Vitrine",
+    "slug": "vitrine",
+    "version": "1.0.0",
+    "description": "Page d'accueil publique pour les visiteurs non connectés : logo et nom du site, catalogue par catégorie (Orders), pays disponibles, simulateur de prix, avantages et FAQ.",
+    "icon": "Store",
+    "free": true,
+    "official": true,
+    "license": "MIT",
+    "author": {
+      "name": "Bloume SAS",
+      "url": "https://bloume.fr"
+    },
+    "repository": "https://github.com/BloumeSAS/UHQ-Addon-Vitrine",
+    "homepage": "https://uhq-panel-os-docs.bloume.fr/addons/official/vitrine",
+    "tags": [
+      "landing",
+      "showcase",
+      "pricing",
+      "public"
+    ],
+    "features": [
+      "Page d'accueil publique (visiteurs non connectés)",
+      "Catalogue par catégorie avec prix et caractéristiques",
+      "Pays disponibles par catégorie",
+      "Simulateur de prix et de consommation",
+      "Textes, FAQ et contacts modifiables"
+    ],
+    "bundlePort": 3106,
+    "extraEnv": {
+      "ORDERS_URL": "http://127.0.0.1:3102"
     }
   }
 ]

@@ -70,8 +70,13 @@ export class PanelAuthController {
     const meta = await this.prisma.appMeta.findUnique({ where: { id: SINGLETON } });
     const adminCount = await this.prisma.panelUser.count({ where: { role: 'ADMIN' } });
     const setupCompleted = !!meta?.setupCompleted && adminCount > 0;
+    // Addon Vitrine actif : la page d'accueil « / » devient la vitrine pour les visiteurs non connectés.
+    const vitrine = setupCompleted
+      ? !!(await this.prisma.addon.findFirst({ where: { baseUrl: '/addon-proxy/vitrine', enabled: true }, select: { id: true } }).catch(() => null))
+      : false;
     return {
       setupCompleted,
+      vitrine,
       setupTokenRequired: !setupCompleted && setupTokenRequired(),
       registrationEnabled: this.settings.getBool('registrationEnabled'),
       siteName: this.settings.get('siteName'),

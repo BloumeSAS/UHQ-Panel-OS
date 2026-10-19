@@ -6,6 +6,8 @@ export interface SiteStatus {
   registrationEnabled: boolean;
   siteName: string;
   logoUrl: string;
+  /** Addon Vitrine actif : « / » affiche la vitrine aux visiteurs non connectés. */
+  vitrine?: boolean;
   defaultLang: string;
   version: string;
   captchaProvider?: string;
