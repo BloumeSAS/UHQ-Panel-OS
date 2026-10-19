@@ -44,7 +44,13 @@ export class AddonProxyMiddleware implements NestMiddleware {
     // On retrouve l'addon d'origine via `Referer` (même origine : la page
     // qui a émis la requête est forcément /addon-proxy/<slug>/...) et on
     // la proxifie quand même, sans toucher au code de l'addon.
-    const referer = req.headers.referer;
+    // JAMAIS pour une NAVIGATION du navigateur (clic sur un lien, ex. « Créer un compte » depuis la vitrine affichée en iframe) :
+    // le Referer est celui de l'addon, mais la page demandée est celle du PANEL (/register, /login…). La proxifier affichait
+    // l'addon à la place → page blanche (actualiser, sans Referer, fonctionnait).
+    const dest = String(req.headers['sec-fetch-dest'] ?? '');
+    const mode = String(req.headers['sec-fetch-mode'] ?? '');
+    const isNavigation = mode === 'navigate' || dest === 'document' || dest === 'iframe' || dest === 'frame';
+    const referer = isNavigation ? undefined : req.headers.referer;
     const refSlug = referer && this.slugFromPath(this.safePathname(referer));
     if (refSlug) {
       const entry = this.lookup(refSlug);
