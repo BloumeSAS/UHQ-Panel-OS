@@ -168,7 +168,7 @@
   {
     "name": "Vitrine",
     "slug": "vitrine",
-    "version": "1.1.1",
+    "version": "1.2.0",
     "description": "Page d'accueil publique pour les visiteurs non connectés : logo et nom du site, catalogue par catégorie (Orders), pays disponibles, simulateur de prix, avantages et FAQ.",
     "icon": "Store",
     "free": true,
