@@ -336,6 +336,9 @@ model ProxyPool {
   // fallback global (setting scraperProxy). `fallbackEnabled=false` = AUCUN fallback pour cette catégorie.
   fallbackProxyUrl String?
   fallbackEnabled  Boolean @default(true)
+  // true = `fallbackCountryFormat` sert AUSSI de gabarit "pays sélectionnable" par défaut pour les proxies de cette catégorie qui ont des
+  // identifiants et pas de gabarit propre (passerelles dc-{country}, etc.). false (défaut) = le format ne concerne que le fallback.
+  countryFormatForProxies Boolean @default(false)
   // Anti-VPN : si activé, toute connexion dont l'IP cliente est identifiée
   // comme VPN/hébergeur (heuristique sur l'organisation ASN, base DB-IP
   // Lite — cf. VpnDetectionService) est refusée ET l'IP est bannie

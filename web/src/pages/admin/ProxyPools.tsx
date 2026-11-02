@@ -50,6 +50,7 @@ interface ProxyPool {
   fallbackCountryFormat: string | null;
   fallbackProxyUrl: string | null;
   fallbackEnabled: boolean;
+  countryFormatForProxies?: boolean;
   createdAt: string;
 }
 
@@ -310,6 +311,7 @@ const EMPTY_POOL_FORM = {
   fakeIpRotateEnabled: false,
   fakeIpRotateSeconds: '',
   fallbackCountryFormat: '',
+  countryFormatForProxies: false,
 };
 
 function CreateDialog({ onCreated }: { onCreated: () => void }) {
@@ -341,6 +343,7 @@ function CreateDialog({ onCreated }: { onCreated: () => void }) {
         fakeIpCountMax: fakeMax ? Number(fakeMax) : undefined,
         fakeIpRotateSeconds: form.fakeIpRotateEnabled && form.fakeIpRotateSeconds ? Number(form.fakeIpRotateSeconds) : undefined,
         fallbackCountryFormat: form.fallbackCountryFormat || undefined,
+        countryFormatForProxies: form.countryFormatForProxies,
       });
       setOpen(false);
       setForm(EMPTY_POOL_FORM);
@@ -389,6 +392,7 @@ function EditDialog({ pool, onClose, onSaved }: { pool: ProxyPool; onClose: () =
     fakeIpRotateEnabled: pool.fakeIpRotateSeconds != null,
     fakeIpRotateSeconds: pool.fakeIpRotateSeconds != null ? String(pool.fakeIpRotateSeconds) : '',
     fallbackCountryFormat: pool.fallbackCountryFormat ?? '',
+    countryFormatForProxies: !!pool.countryFormatForProxies,
   });
   const [error, setError] = useState('');
   const set = (k: string, v: any) => setForm((f) => ({ ...f, [k]: v }));
@@ -424,6 +428,7 @@ function EditDialog({ pool, onClose, onSaved }: { pool: ProxyPool; onClose: () =
         fakeIpCountMax: fakeMax ? Number(fakeMax) : null,
         fakeIpRotateSeconds: form.fakeIpRotateEnabled && form.fakeIpRotateSeconds ? Number(form.fakeIpRotateSeconds) : null,
         fallbackCountryFormat: form.fallbackCountryFormat || null,
+        countryFormatForProxies: form.countryFormatForProxies,
       });
       toast.success(t('pools.updated'));
       onSaved();
@@ -462,6 +467,7 @@ function PoolForm({
     fakeIpFixed: string; fakeIpMin: string; fakeIpMax: string;
     fakeIpRotateEnabled: boolean; fakeIpRotateSeconds: string;
     fallbackCountryFormat: string;
+    countryFormatForProxies: boolean;
   };
   set: (k: string, v: any) => void;
   error: string;
@@ -668,6 +674,13 @@ function PoolForm({
           className="font-mono text-xs"
         />
         <p className="text-xs text-muted-foreground">{t('pools.fallbackCountryFormatHint')}</p>
+        <label className="flex cursor-pointer items-start gap-2.5 rounded-md border p-2.5">
+          <input type="checkbox" className="mt-0.5" checked={form.countryFormatForProxies} onChange={(e) => set('countryFormatForProxies', e.target.checked)} />
+          <span>
+            <span className="block text-sm font-medium">{t('pools.countryFormatForProxies')}</span>
+            <span className="block text-xs text-muted-foreground">{t('pools.countryFormatForProxiesHint')}</span>
+          </span>
+        </label>
         <p className="text-xs rounded-md bg-primary/5 border border-primary/20 px-2.5 py-1.5 text-muted-foreground">
           {t('pools.fallbackCountryFormatVsProxies')}
         </p>

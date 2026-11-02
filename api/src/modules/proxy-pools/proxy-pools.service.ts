@@ -103,6 +103,7 @@ export class ProxyPoolsService {
         fallbackCountryFormat: validateFallbackFormat(dto.fallbackCountryFormat),
         fallbackProxyUrl: validateFallbackUrl(dto.fallbackProxyUrl) ?? null,
         fallbackEnabled: dto.fallbackEnabled ?? true,
+        countryFormatForProxies: dto.countryFormatForProxies ?? false,
       },
     });
     // Toujours invalider (pas seulement si `port` a changé) : ça rafraîchit
@@ -185,6 +186,7 @@ export class ProxyPoolsService {
           }),
           ...(validateFallbackUrl(dto.fallbackProxyUrl) !== undefined && { fallbackProxyUrl: validateFallbackUrl(dto.fallbackProxyUrl) }),
           ...(dto.fallbackEnabled !== undefined && { fallbackEnabled: dto.fallbackEnabled }),
+          ...(dto.countryFormatForProxies !== undefined && { countryFormatForProxies: dto.countryFormatForProxies }),
         },
       });
       // Toujours invalider (pas seulement si `port` a changé) : ça rafraîchit

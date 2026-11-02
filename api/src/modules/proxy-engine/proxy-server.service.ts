@@ -98,6 +98,8 @@ export class ProxyServerService implements OnModuleDestroy {
    * ("{user}__country__{country}"), cf. `getFallbackUpstream`.
    */
   private readonly poolFallbackFormatMap = new Map<string, string>();
+  /** Catégories dont le format « pays » sert AUSSI de gabarit par défaut à leurs proxies avec identifiants (option `countryFormatForProxies`). */
+  private readonly poolProxyFormatMap = new Map<string, string>();
   /** nom de pool → fallback propre (URL) et interrupteur (false = aucun fallback pour cette catégorie). */
   private readonly poolFallbackCfg = new Map<string, { url: string | null; enabled: boolean }>();
   /** port → username : ce port est exclusif à CE compte (407 pour tout autre). */
@@ -300,7 +302,7 @@ export class ProxyServerService implements OnModuleDestroy {
         // pools partagent le port par défaut et seraient exclues du fetch ci-dessus.
         this.prisma.proxyPool.findMany({
           where: { OR: [{ fallbackCountryFormat: { not: null } }, { fallbackProxyUrl: { not: null } }, { fallbackEnabled: false }] },
-          select: { name: true, fallbackCountryFormat: true, fallbackProxyUrl: true, fallbackEnabled: true },
+          select: { name: true, fallbackCountryFormat: true, fallbackProxyUrl: true, fallbackEnabled: true, countryFormatForProxies: true },
         }),
         this.prisma.proxyPool.findMany({ where: { antiVpnEnabled: true }, select: { name: true } }),
         this.prisma.proxyPool.findMany({
@@ -319,9 +321,11 @@ export class ProxyServerService implements OnModuleDestroy {
       this.alwaysOnlinePoolSet.clear();
       for (const p of alwaysOnlinePools) this.alwaysOnlinePoolSet.add(p.name);
       this.poolFallbackFormatMap.clear();
+      this.poolProxyFormatMap.clear();
       this.poolFallbackCfg.clear();
       for (const p of fallbackFormatPools) {
         if (p.fallbackCountryFormat) this.poolFallbackFormatMap.set(p.name, p.fallbackCountryFormat);
+        if (p.fallbackCountryFormat && p.countryFormatForProxies) this.poolProxyFormatMap.set(p.name, p.fallbackCountryFormat);
         this.poolFallbackCfg.set(p.name, { url: p.fallbackProxyUrl, enabled: p.fallbackEnabled });
       }
       this.antiVpnPoolSet.clear();
@@ -1808,13 +1812,21 @@ export class ProxyServerService implements OnModuleDestroy {
    * quel tant qu'on ne passe pas par ici.
    */
   private applyCountrySelector(upstream: UpstreamProxy, requestedCountry: string | null): UpstreamProxy {
-    if (!upstream.countryFormat || !requestedCountry || !upstream.auth) return upstream;
+    // Gabarit du proxy, sinon (option de la catégorie) celui de sa catégorie : les proxies AVEC identifiants d'une catégorie « passerelle »
+    // reçoivent le pays dans leur username sans avoir à configurer chaque lot importé.
+    const format = upstream.countryFormat || (upstream.auth && upstream.pool ? this.poolProxyFormatMap.get(upstream.pool) : undefined);
+    if (!format || !requestedCountry || !upstream.auth) return upstream;
     const sepIdx = upstream.auth.indexOf(':');
     if (sepIdx === -1) return upstream;
     const origUser = upstream.auth.slice(0, sepIdx);
     const pass = upstream.auth.slice(sepIdx + 1);
-    const newUser = ProxyServerService.renderCountryFormat(upstream.countryFormat, origUser, requestedCountry);
+    const newUser = ProxyServerService.renderCountryFormat(format, origUser, requestedCountry);
     return { ...upstream, auth: `${newUser}:${pass}` };
+  }
+
+  /** Proxy « pays sélectionnable » : gabarit propre, ou (option de la catégorie) identifiants + format de catégorie. */
+  private isCountrySelectable(p: { countryFormat?: string | null; auth?: string | null; pool?: string | null }): boolean {
+    return !!p.countryFormat || (!!p.auth && !!p.pool && this.poolProxyFormatMap.has(p.pool));
   }
 
   /** Tirage pondéré (roulette wheel) parmi une liste selon leur trust score. */
@@ -1854,7 +1866,7 @@ export class ProxyServerService implements OnModuleDestroy {
         // n'importe quel pays demandé — son username est réécrit à la volée
         // plus bas (cf. applyCountrySelector), son `country` stocké n'a pas
         // à correspondre (souvent null/générique pour ce genre de proxy).
-        pool = pool.filter((p) => (p.country && countries.includes(p.country)) || !!p.countryFormat);
+        pool = pool.filter((p) => (p.country && countries.includes(p.country)) || this.isCountrySelectable(p));
       }
       if (excludeIds.length > 0) pool = pool.filter((p) => !excludeIds.includes(p.id));
       if (pool.length > 0) {
@@ -1889,6 +1901,7 @@ export class ProxyServerService implements OnModuleDestroy {
       // Même règle que le cache mémoire ci-dessus : un proxy "pays
       // sélectionnable" matche n'importe quel filtre pays.
       where.OR = [{ country: countryClause }, { countryFormat: { not: null } }];
+      if (poolName && this.poolProxyFormatMap.has(poolName)) where.OR.push({ url: { contains: '@' } });
     }
     // Pas de tri par `successCount` ici non plus (même raison que dans
     // `loadProxyPoolCache` : ça exclurait à jamais les proxies neufs de ce

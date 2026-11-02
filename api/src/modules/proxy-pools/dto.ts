@@ -103,6 +103,11 @@ export class CreatePoolDto {
   @IsOptional()
   @IsBoolean()
   fallbackEnabled?: boolean;
+
+  @ApiPropertyOptional({ description: 'true = le format de username par pays sert aussi de gabarit par défaut aux proxies de la catégorie (passerelles). Défaut false.' })
+  @IsOptional()
+  @IsBoolean()
+  countryFormatForProxies?: boolean;
 }
 
 export class UpdatePoolDto {
@@ -195,4 +200,9 @@ export class UpdatePoolDto {
   @IsOptional()
   @IsBoolean()
   fallbackEnabled?: boolean;
+
+  @ApiPropertyOptional({ description: 'true = le format de username par pays sert aussi de gabarit par défaut aux proxies de la catégorie.' })
+  @IsOptional()
+  @IsBoolean()
+  countryFormatForProxies?: boolean;
 }
