@@ -7,7 +7,9 @@ import * as os from 'os';
 import * as path from 'path';
 import { PrismaService } from '../../database/prisma.service';
 import { SettingsService } from '../../config/settings.service';
-import { ParsedVpn, VpnKind, parseVpnText, singBoxConfig } from './configs';
+import { ParsedVpn, VpnKind, parseSubscription, parseVpnText, protocolLabel, singBoxConfig } from './configs';
+import { isPrivateIp } from '../../common/utils/ip-range';
+import * as dns from 'dns/promises';
 import { startSocksServer } from './socks-server';
 import { fetchVpnGate, pickVpnGate } from './vpngate';
 
@@ -36,11 +38,44 @@ interface Tunnel {
 
 export interface VpnSource {
   id: string;
-  provider: 'vpngate';
+  provider: 'vpngate' | 'url';
   countries: string[];
   perCountry: number;
   pool: string;
   enabled: boolean;
+  /** provider « url » : page / liste / abonnement publiant des configurations en clair (https). */
+  url?: string;
+  /** provider « url » : nombre maximum de VPN gardés pour cette source. */
+  max?: number;
+}
+
+/** URL unique d'un VPN (dédoublonnage) — identique pour une même configuration. */
+export function vpnUrlOf(it: { kind: string; host: string; port: number; config: string }): string {
+  const hash = crypto.createHash('sha1').update(it.config).digest('hex').slice(0, 8);
+  return `vpn://${it.kind}/${it.host}:${it.port}/${hash}`;
+}
+
+/** Récupère un texte (https uniquement, ≤ 15 Mo, adresses publiques seulement, redirections revérifiées) : jamais d'accès au réseau interne. */
+export async function fetchPublicText(startUrl: string): Promise<string> {
+  let url = startUrl;
+  for (let hop = 0; hop < 4; hop++) {
+    const u = new URL(url);
+    if (u.protocol !== 'https:') throw new Error('URL https requise');
+    const addrs = await dns.lookup(u.hostname, { all: true });
+    if (!addrs.length || addrs.some((a) => isPrivateIp(a.address) || a.address === '127.0.0.1' || a.address === '::1' || /^(fe80|fc|fd)/i.test(a.address) || a.address.startsWith('169.254.'))) {
+      throw new Error('adresse non publique refusée');
+    }
+    const res = await fetch(url, { redirect: 'manual', signal: AbortSignal.timeout(20_000), headers: { 'User-Agent': 'Mozilla/5.0 UHQ-Panel', Accept: 'text/plain,text/html,*/*' } });
+    if (res.status >= 300 && res.status < 400 && res.headers.get('location')) {
+      url = new URL(res.headers.get('location')!, url).toString();
+      continue;
+    }
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const buf = Buffer.from(await res.arrayBuffer());
+    if (buf.length > 15_000_000) throw new Error("réponse trop volumineuse");
+    return buf.toString('utf8');
+  }
+  throw new Error('trop de redirections');
 }
 
 const HELPER = '/usr/local/bin/uhq-vpn-helper';
@@ -191,15 +226,14 @@ export class VpnService implements OnModuleInit, OnModuleDestroy {
   ): Promise<number> {
     let created = 0;
     for (const it of items) {
-      const hash = crypto.createHash('sha1').update(it.config).digest('hex').slice(0, 8);
-      const url = `vpn://${it.kind}/${it.host}:${it.port}/${hash}`;
+      const url = vpnUrlOf(it);
       const exists = await this.prisma.backendProxy.findUnique({ where: { url }, select: { id: true } });
       if (exists) continue;
       await this.prisma.backendProxy.create({
         data: {
           id: crypto.randomUUID(),
           url,
-          protocol: 'socks5',
+          protocol: protocolLabel(it.kind, it.config),
           ip: it.host,
           port: it.port,
           country: it.country?.toUpperCase() || null,
@@ -214,6 +248,22 @@ export class VpnService implements OnModuleInit, OnModuleDestroy {
       created += 1;
     }
     return created;
+  }
+
+  /** Aperçu d'une source URL : combien de configurations par type (sans rien importer). */
+  async previewUrl(url: string) {
+    const parsed = parseSubscription(await fetchPublicText(url));
+    const byKind: Record<string, number> = {};
+    for (const p of parsed) {
+      const k = protocolLabel(p.kind, p.config);
+      byKind[k] = (byKind[k] ?? 0) + 1;
+    }
+    return { total: parsed.length, byKind, sample: parsed.slice(0, 5).map((p) => `${protocolLabel(p.kind, p.config)} ${p.host}:${p.port}`) };
+  }
+
+  async syncOneUrl(url: string, max: number, pool: string | null, sourceId?: string): Promise<number> {
+    const items = parseSubscription(await fetchPublicText(url)).slice(0, max);
+    return this.importConfigs(items, { pool, provider: 'VPN', sourceId });
   }
 
   async importText(text: string, opts: { pool?: string | null; country?: string }) {
@@ -236,7 +286,9 @@ export class VpnService implements OnModuleInit, OnModuleDestroy {
   async setSources(list: VpnSource[]) {
     const clean = list.slice(0, 20).map((s) => ({
       id: String(s.id || crypto.randomUUID()).slice(0, 40),
-      provider: 'vpngate' as const,
+      provider: (s.provider === 'url' ? 'url' : 'vpngate') as 'vpngate' | 'url',
+      url: s.provider === 'url' ? String(s.url ?? '').slice(0, 500) : undefined,
+      max: Math.min(200, Math.max(1, Number(s.max) || 20)),
       countries: (s.countries ?? []).map((c) => String(c).toUpperCase().slice(0, 2)).filter(Boolean).slice(0, 60),
       perCountry: Math.min(20, Math.max(1, Number(s.perCountry) || 3)),
       pool: String(s.pool ?? '').slice(0, 80),
@@ -252,20 +304,31 @@ export class VpnService implements OnModuleInit, OnModuleDestroy {
     let removed = 0;
     const sources = this.getSources().filter((s) => s.enabled);
     if (sources.length === 0) return { added, removed };
-    const list = await fetchVpnGate(true);
+    let gate: Awaited<ReturnType<typeof fetchVpnGate>> | null = null;
     for (const src of sources) {
-      const best = pickVpnGate(list, src.countries, src.perCountry);
-      added += await this.importConfigs(
-        best.map((s) => ({ kind: 'openvpn' as const, config: s.config, host: s.ip, port: s.port, country: s.countryCode })),
-        { pool: src.pool || null, provider: 'VPNGate', sourceId: src.id },
-      );
-      const keepIps = new Set(best.map((s) => s.ip));
-      const mine = await this.prisma.backendProxy.findMany({ where: { tags: `vpnsrc:${src.id}` }, select: { id: true, ip: true, isWorking: true } });
-      for (const row of mine) {
-        if (!keepIps.has(row.ip) && !row.isWorking) {
-          await this.prisma.backendProxy.delete({ where: { id: row.id } }).catch(() => undefined);
-          removed += 1;
+      try {
+        let items: (ParsedVpn & { country?: string })[];
+        let provider: string;
+        if (src.provider === 'url') {
+          provider = 'VPN';
+          const parsed = parseSubscription(await fetchPublicText(String(src.url)));
+          items = parsed.slice(0, src.max ?? 20);
+        } else {
+          provider = 'VPNGate';
+          gate = gate ?? (await fetchVpnGate(true));
+          items = pickVpnGate(gate, src.countries, src.perCountry).map((s) => ({ kind: 'openvpn' as const, config: s.config, host: s.ip, port: s.port, country: s.countryCode }));
         }
+        added += await this.importConfigs(items, { pool: src.pool || null, provider, sourceId: src.id });
+        const keep = new Set(items.map((i) => vpnUrlOf(i)));
+        const mine = await this.prisma.backendProxy.findMany({ where: { tags: `vpnsrc:${src.id}` }, select: { id: true, url: true, isWorking: true } });
+        for (const row of mine) {
+          if (!keep.has(row.url) && !row.isWorking) {
+            await this.prisma.backendProxy.delete({ where: { id: row.id } }).catch(() => undefined);
+            removed += 1;
+          }
+        }
+      } catch (e) {
+        this.logger.warn(`Source VPN ${src.id} : ${(e as Error).message}`);
       }
     }
     if (added || removed) this.logger.log(`Sources VPN synchronisées : +${added} / -${removed}`);
@@ -291,11 +354,17 @@ export class VpnService implements OnModuleInit, OnModuleDestroy {
     const max = Math.max(0, this.settings.getNumber('vpnMaxTunnels'));
     const rows = await this.prisma.backendProxy.findMany({
       where: { vpnKind: { not: null }, archived: false, isBlacklisted: false },
-      select: { id: true, vpnKind: true, vpnConfig: true, country: true, isWorking: true },
+      select: { id: true, vpnKind: true, vpnConfig: true, country: true, isWorking: true, protocol: true },
       orderBy: [{ isWorking: 'desc' }, { lastChecked: 'desc' }],
       take: max,
     });
     const wanted = new Map(rows.filter((r) => r.vpnConfig).map((r) => [r.id, r]));
+    // Les lignes créées avant la 2.9.3 affichaient « socks5 » : on y met le vrai protocole du VPN.
+    for (const r of rows) {
+      if (r.vpnConfig && r.protocol === 'socks5') {
+        await this.prisma.backendProxy.update({ where: { id: r.id }, data: { protocol: protocolLabel(r.vpnKind as VpnKind, r.vpnConfig) } }).catch(() => undefined);
+      }
+    }
 
     for (const id of [...this.tunnels.keys()]) if (!wanted.has(id)) await this.stop(id);
 

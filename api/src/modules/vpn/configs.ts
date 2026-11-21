@@ -282,3 +282,29 @@ export function singBoxConfig(kind: VpnKind, config: string, port: number): Reco
     route: { final: 'proxy', default_domain_resolver: 'local' },
   };
 }
+
+/** Libellé de protocole affiché dans le pool (le proxy réel est un SOCKS5 local ; l'utilisateur voit le vrai protocole du VPN). */
+export function protocolLabel(kind: VpnKind, config: string): string {
+  if (kind === 'openvpn') return 'openvpn';
+  if (kind === 'wireguard') return 'wireguard';
+  const scheme = /^([a-z0-9]+):\/\//i.exec(config.trim())?.[1]?.toLowerCase() ?? 'link';
+  return scheme === 'hysteria2' ? 'hy2' : scheme;
+}
+
+/** Contenu d'une page / d'un abonnement : texte brut, liste de liens, ou liste encodée en base64 (format « subscription »). */
+export function parseSubscription(body: string): ParsedVpn[] {
+  const direct = parseVpnText(body);
+  if (direct.length) return direct;
+  const compact = body.replace(/\s+/g, '');
+  if (compact.length > 40 && /^[A-Za-z0-9+/=_-]+$/.test(compact)) {
+    try {
+      const dec = Buffer.from(compact.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8');
+      return parseVpnText(dec);
+    } catch {
+      return [];
+    }
+  }
+  // Page HTML : on cherche les liens dans le texte (entités HTML décodées a minima).
+  const text = body.replace(/&amp;/g, '&').replace(/&#x2F;/g, '/').replace(/<[^>]+>/g, '\n');
+  return parseVpnText(text);
+}

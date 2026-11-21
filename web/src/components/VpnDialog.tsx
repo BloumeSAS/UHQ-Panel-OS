@@ -17,7 +17,7 @@ interface Status {
     details: { openvpnBinary: boolean; tunDevice: boolean; netAdmin: boolean; singboxBinary: boolean };
   };
   tunnels: { id: string; kind: string; state: string; error?: string; exitIp?: string; latencyMs?: number }[];
-  sources: { id: string; countries: string[]; perCountry: number; pool: string; enabled: boolean }[];
+  sources: { id: string; provider?: 'vpngate' | 'url'; url?: string; max?: number; countries: string[]; perCountry: number; pool: string; enabled: boolean }[];
 }
 interface Country {
   code: string;
@@ -41,6 +41,11 @@ const L = {
     intro: 'Chaque VPN devient un proxy de la catégorie choisie (une IP de sortie fixe par VPN). OpenVPN, WireGuard et V2Ray (VLESS, VMess, Trojan, Shadowsocks, Hysteria2) sont pris en charge.',
     tabGate: 'VPNGate (automatique)',
     tabManual: 'Import manuel',
+    tabUrl: 'URL / abonnement',
+    urlHelp: 'Adresse (https) d’une page, d’un fichier texte ou d’un abonnement qui publie des configurations en clair : liens vless:// vmess:// trojan:// ss:// hy2://, liste encodée en base64, ou une configuration WireGuard / OpenVPN. Les pages protégées par un contrôle anti-robot ou qui créent un compte par visiteur ne peuvent pas être lues automatiquement : utilisez l’import manuel.',
+    urlMax: 'Nombre maximum de VPN',
+    urlFound: '{n} configuration(s) trouvée(s)',
+    urlNone: 'Aucune configuration reconnue à cette adresse.',
     tabState: 'Sources & état',
     openvpnOff: 'OpenVPN indisponible dans ce conteneur',
     openvpnOffHint: 'Ajoutez NET_ADMIN et le périphérique /dev/net/tun à ce service (docker-compose.yml du dépôt, déjà inclus), puis redéployez. WireGuard et V2Ray fonctionnent sans.',
@@ -75,6 +80,11 @@ const L = {
     intro: 'Each VPN becomes a proxy of the chosen category (one fixed exit IP per VPN). OpenVPN, WireGuard and V2Ray (VLESS, VMess, Trojan, Shadowsocks, Hysteria2) are supported.',
     tabGate: 'VPNGate (automatic)',
     tabManual: 'Manual import',
+    tabUrl: 'URL / subscription',
+    urlHelp: 'Address (https) of a page, text file or subscription that publishes plain configurations: vless:// vmess:// trojan:// ss:// hy2:// links, a base64 list, or a WireGuard / OpenVPN configuration. Pages behind bot protection or that create one account per visitor cannot be read automatically: use manual import.',
+    urlMax: 'Maximum number of VPNs',
+    urlFound: '{n} configuration(s) found',
+    urlNone: 'No configuration recognised at this address.',
     tabState: 'Sources & status',
     openvpnOff: 'OpenVPN is unavailable in this container',
     openvpnOffHint: 'Add NET_ADMIN and the /dev/net/tun device to this service (the repository docker-compose.yml already does), then redeploy. WireGuard and V2Ray work without it.',
@@ -111,7 +121,7 @@ export function VpnDialog({ onDone }: { onDone: () => void }) {
   const T = L[l];
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
-  const [tab, setTab] = useState<'gate' | 'manual' | 'state'>('gate');
+  const [tab, setTab] = useState<'gate' | 'manual' | 'url' | 'state'>('gate');
 
   const { data: status, refetch: refetchStatus } = useQuery({
     queryKey: ['vpn-status'],
@@ -153,7 +163,7 @@ export function VpnDialog({ onDone }: { onDone: () => void }) {
         <p className="text-xs text-muted-foreground">{T.warn}</p>
 
         <div className="inline-flex rounded-lg border p-1">
-          {([['gate', T.tabGate], ['manual', T.tabManual], ['state', T.tabState]] as const).map(([k, label]) => (
+          {([['gate', T.tabGate], ['url', T.tabUrl], ['manual', T.tabManual], ['state', T.tabState]] as const).map(([k, label]) => (
             <button key={k} type="button" onClick={() => setTab(k)} className={cn('rounded-md px-3 py-1.5 text-sm font-medium transition', tab === k ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground')}>
               {label}
             </button>
@@ -161,6 +171,7 @@ export function VpnDialog({ onDone }: { onDone: () => void }) {
         </div>
 
         {tab === 'gate' && <GateTab T={T} pools={pools ?? []} onDone={() => { onDone(); void refetchStatus(); qc.invalidateQueries({ queryKey: ['vpn-status'] }); }} />}
+        {tab === 'url' && <UrlTab T={T} pools={pools ?? []} onDone={() => { onDone(); void refetchStatus(); }} />}
         {tab === 'manual' && <ManualTab T={T} pools={pools ?? []} onDone={() => { onDone(); void refetchStatus(); }} />}
         {tab === 'state' && <StateTab T={T} status={status} onChanged={() => void refetchStatus()} />}
       </DialogContent>
@@ -292,6 +303,60 @@ function GateTab({ T, pools, onDone }: { T: Dict; pools: { id: string; name: str
   );
 }
 
+function UrlTab({ T, pools, onDone }: { T: Dict; pools: { id: string; name: string }[]; onDone: () => void }) {
+  const [url, setUrl] = useState('');
+  const [pool, setPool] = useState('');
+  const [max, setMax] = useState(20);
+  const [keep, setKeep] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [info, setInfo] = useState('');
+  const preview = async () => {
+    setBusy(true);
+    setInfo('');
+    try {
+      const { data: r } = await api.post('/vpn/url/preview', { url });
+      setInfo(r.total ? `${T.urlFound.replace('{n}', String(r.total))} — ${Object.entries(r.byKind as Record<string, number>).map(([k, n]) => `${k}: ${n}`).join(', ')}` : T.urlNone);
+    } catch (e) {
+      setInfo(apiError(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const doImport = async () => {
+    setBusy(true);
+    try {
+      const { data: r } = await api.post('/vpn/url/import', { url, pool: pool || undefined, max, keepUpdated: keep });
+      toast.success(T.imported.replace('{n}', String(r.imported)));
+      onDone();
+    } catch (e) {
+      toast.error(apiError(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="space-y-3">
+      <p className="text-xs text-muted-foreground">{T.urlHelp}</p>
+      <Input value={url} onChange={(e) => { setUrl(e.target.value); setInfo(''); }} placeholder="https://…" className="font-mono text-xs" />
+      <div className="grid gap-3 sm:grid-cols-2">
+        <PoolSelect T={T} pools={pools} value={pool} onChange={setPool} />
+        <div className="space-y-1.5">
+          <Label>{T.urlMax}</Label>
+          <Input type="number" min={1} max={200} value={max} onChange={(e) => setMax(Number(e.target.value) || 1)} />
+        </div>
+      </div>
+      <label className="flex cursor-pointer items-center gap-2 text-sm">
+        <input type="checkbox" checked={keep} onChange={(e) => setKeep(e.target.checked)} /> {T.keep}
+      </label>
+      {info && <p className="rounded-md border bg-muted/30 p-2 text-xs">{info}</p>}
+      <div className="flex justify-end gap-2">
+        <Button type="button" variant="outline" disabled={busy || !url.trim()} onClick={preview}>{T.preview}</Button>
+        <Button type="button" disabled={busy || !url.trim()} onClick={doImport}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : T.import}</Button>
+      </div>
+    </div>
+  );
+}
+
 function ManualTab({ T, pools, onDone }: { T: Dict; pools: { id: string; name: string }[]; onDone: () => void }) {
   const [text, setText] = useState('');
   const [pool, setPool] = useState('');
@@ -368,7 +433,11 @@ function StateTab({ T, status, onChanged }: { T: Dict; status?: Status; onChange
               <li key={s.id} className="flex items-center gap-2 rounded-md border p-2 text-xs">
                 <input type="checkbox" checked={s.enabled} onChange={(e) => save(status.sources.map((x) => (x.id === s.id ? { ...x, enabled: e.target.checked } : x)))} />
                 <span className="min-w-0 flex-1">
-                  <b>VPNGate</b> · {s.countries.length ? s.countries.join(', ') : '*'} · {s.perCountry}/{T.perCountry.toLowerCase()} · {s.pool || T.noPool}
+                  {s.provider === 'url' ? (
+                    <><b>URL</b> · <span className="font-mono">{(s.url ?? '').replace(/^https:\/\//, '').slice(0, 48)}</span> · max {s.max ?? 20} · {s.pool || T.noPool}</>
+                  ) : (
+                    <><b>VPNGate</b> · {s.countries.length ? s.countries.join(', ') : '*'} · {s.perCountry}/{T.perCountry.toLowerCase()} · {s.pool || T.noPool}</>
+                  )}
                 </span>
                 <button type="button" className="text-muted-foreground hover:text-destructive" onClick={() => save(status.sources.filter((x) => x.id !== s.id))} aria-label="delete"><Trash2 className="h-3.5 w-3.5" /></button>
               </li>

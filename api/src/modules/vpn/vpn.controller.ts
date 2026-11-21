@@ -82,6 +82,37 @@ export class VpnController {
     return { status: 'success', ...r };
   }
 
+  @Post('url/preview')
+  async urlPreview(@Body() body: { url?: string }) {
+    try {
+      return { status: 'success', ...(await this.vpn.previewUrl(String(body?.url ?? ''))) };
+    } catch (e) {
+      throw new BadRequestException(`Lecture impossible : ${(e as Error).message}`);
+    }
+  }
+
+  @Audited('vpn.import')
+  @Post('url/import')
+  async urlImport(@Body() body: { url?: string; pool?: string; max?: number; keepUpdated?: boolean }) {
+    const url = String(body?.url ?? '').trim();
+    const max = Math.min(200, Math.max(1, Number(body?.max) || 20));
+    let sourceId: string | undefined;
+    if (body?.keepUpdated) {
+      const sources = this.vpn.getSources();
+      sourceId = `url-${Date.now().toString(36)}`;
+      sources.push({ id: sourceId, provider: 'url', url, max, countries: [], perCountry: 0, pool: body.pool ?? '', enabled: true });
+      await this.vpn.setSources(sources);
+    }
+    try {
+      const prev = await this.vpn.previewUrl(url);
+      if (prev.total === 0) throw new Error('aucune configuration reconnue à cette adresse');
+      const r = await this.vpn.syncOneUrl(url, max, body?.pool ?? null, sourceId);
+      return { status: 'success', found: prev.total, imported: r };
+    } catch (e) {
+      throw new BadRequestException(`Import impossible : ${(e as Error).message}`);
+    }
+  }
+
   @Get('sources')
   sources() {
     return { status: 'success', sources: this.vpn.getSources() };
