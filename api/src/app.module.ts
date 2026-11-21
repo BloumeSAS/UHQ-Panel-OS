@@ -98,7 +98,7 @@ export function resolveWebDist(): string {
     // (addons officiels embarqués, cf. BundledAddonsService) exclus du fallback.
     ServeStaticModule.forRoot({
       rootPath: resolveWebDist(),
-      exclude: ['/api/(.*)', '/docs', '/docs/(.*)', '/static/(.*)', '/addon-proxy/(.*)'],
+      exclude: ['/api/*path', '/docs', '/docs/*path', '/static/*path', '/addon-proxy/*path'],
       serveStaticOptions: { fallthrough: true },
     }),
   ],
@@ -106,7 +106,7 @@ export function resolveWebDist(): string {
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
-    consumer.apply(I18nMiddleware).forRoutes('*');
+    consumer.apply(I18nMiddleware).forRoutes('{*splat}');
     // AddonProxyMiddleware n'est PAS enregistré ici : un NestMiddleware
     // appliqué via MiddlewareConsumer/forRoutes n'était jamais invoqué pour
     // /addon-proxy/* en local (vérifié à coups de logs qui ne s'affichaient
