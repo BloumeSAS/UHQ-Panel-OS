@@ -57,6 +57,16 @@ export function vpnUrlOf(it: { kind: string; host: string; port: number; config:
   return `vpn://${it.kind}/${it.host}:${it.port}/${hash}`;
 }
 
+/** Mélange (Fisher-Yates) : une liste publique de milliers de configurations dont beaucoup sont mortes — on en tire au hasard, jamais toujours les mêmes premières. */
+function shuffled<T>(arr: T[]): T[] {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = crypto.randomInt(i + 1);
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
 /** Récupère un texte (https uniquement, ≤ 15 Mo, adresses publiques seulement, redirections revérifiées) : jamais d'accès au réseau interne. */
 export async function fetchPublicText(startUrl: string): Promise<string> {
   let url = startUrl;
@@ -233,8 +243,8 @@ export class VpnService implements OnModuleInit, OnModuleDestroy {
       const url = vpnUrlOf(it);
       const exists = await this.prisma.backendProxy.findUnique({ where: { url }, select: { id: true } });
       if (exists) {
-        // Toujours publié par la source : la durée de vie repart de zéro.
-        if (expiresAt && opts.sourceId) await this.prisma.backendProxy.update({ where: { id: exists.id }, data: { vpnExpiresAt: expiresAt } }).catch(() => undefined);
+        // Toujours publié par la source : la durée de vie repart de zéro — UNIQUEMENT pour les lignes de CETTE source (jamais un VPN permanent importé à la main ou par une autre source).
+        if (expiresAt && opts.sourceId) await this.prisma.backendProxy.updateMany({ where: { id: exists.id, tags: `vpnsrc:${opts.sourceId}` }, data: { vpnExpiresAt: expiresAt } }).catch(() => undefined);
         continue;
       }
       await this.prisma.backendProxy.create({
@@ -271,7 +281,7 @@ export class VpnService implements OnModuleInit, OnModuleDestroy {
   }
 
   async syncOneUrl(url: string, max: number, pool: string | null, sourceId?: string, expiresDays?: number): Promise<number> {
-    const items = parseSubscription(await fetchPublicText(url)).slice(0, max);
+    const items = shuffled(parseSubscription(await fetchPublicText(url))).slice(0, max);
     return this.importConfigs(items, { pool, provider: 'VPN', sourceId, expiresDays });
   }
 
@@ -328,8 +338,23 @@ export class VpnService implements OnModuleInit, OnModuleDestroy {
         let provider: string;
         if (src.provider === 'url') {
           provider = 'VPN';
-          const parsed = parseSubscription(await fetchPublicText(String(src.url)));
-          items = parsed.slice(0, src.max ?? 20);
+          const all = parseSubscription(await fetchPublicText(String(src.url)));
+          const target = src.max ?? 20;
+          const mine = await this.prisma.backendProxy.findMany({ where: { tags: `vpnsrc:${src.id}` }, select: { id: true, url: true, isWorking: true, failCount: true } });
+          // 1) retire les VPN essayés et morts ; 2) comble jusqu'au plafond avec un tirage au hasard dans la liste (jamais les mêmes premiers) ;
+          // 3) les VPN encore publiés et vivants voient leur durée de vie repartir (cf. importConfigs).
+          const dead = mine.filter((r) => !r.isWorking && r.failCount >= 3);
+          for (const r of dead) {
+            await this.prisma.backendProxy.delete({ where: { id: r.id } }).catch(() => undefined);
+            removed += 1;
+          }
+          const alive = new Set(mine.filter((r) => !dead.includes(r)).map((r) => r.url));
+          const listed = new Map(all.map((i) => [vpnUrlOf(i), i]));
+          const stillListed = [...alive].filter((u) => listed.has(u)).map((u) => listed.get(u)!);
+          const fresh = shuffled(all.filter((i) => !alive.has(vpnUrlOf(i)))).slice(0, Math.max(0, target - alive.size));
+          items = [...stillListed, ...fresh];
+          added += await this.importConfigs(items, { pool: src.pool || null, provider, sourceId: src.id, expiresDays: src.expiresDays });
+          continue;
         } else {
           provider = 'VPNGate';
           gate = gate ?? (await fetchVpnGate(true));

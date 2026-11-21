@@ -43,6 +43,7 @@ const L = {
     tabManual: 'Import manuel',
     tabUrl: 'URL / abonnement',
     urlHelp: 'Adresse (https) d’une page, d’un fichier texte ou d’un abonnement qui publie des configurations en clair : liens vless:// vmess:// trojan:// ss:// hy2://, liste encodée en base64, ou une configuration WireGuard / OpenVPN. Les pages protégées par un contrôle anti-robot ou qui créent un compte par visiteur ne peuvent pas être lues automatiquement : utilisez l’import manuel.',
+    suggested: 'Sources suggérées (cliquer pour utiliser)',
     urlMax: 'Nombre maximum de VPN',
     urlFound: '{n} configuration(s) trouvée(s)',
     urlNone: 'Aucune configuration reconnue à cette adresse.',
@@ -87,6 +88,7 @@ const L = {
     tabManual: 'Manual import',
     tabUrl: 'URL / subscription',
     urlHelp: 'Address (https) of a page, text file or subscription that publishes plain configurations: vless:// vmess:// trojan:// ss:// hy2:// links, a base64 list, or a WireGuard / OpenVPN configuration. Pages behind bot protection or that create one account per visitor cannot be read automatically: use manual import.',
+    suggested: 'Suggested sources (click to use)',
     urlMax: 'Maximum number of VPNs',
     urlFound: '{n} configuration(s) found',
     urlNone: 'No configuration recognised at this address.',
@@ -190,6 +192,19 @@ export function VpnDialog({ onDone }: { onDone: () => void }) {
 }
 
 type Dict = (typeof L)['fr'] | (typeof L)['en'];
+/** Listes publiques mises à jour automatiquement (GitHub) : liens V2Ray en clair ou en base64. À l'import, un tirage au hasard évite de retomber toujours sur les mêmes serveurs. */
+const SUGGESTED: { name: string; hint: string; url: string }[] = [
+  { name: 'Alirewa — Top 100 TLS / Reality', hint: '100 · maj 30 min', url: 'https://raw.githubusercontent.com/Alirewa/V2ray-Configs/main/sub1.txt' },
+  { name: 'Alirewa — pool complet', hint: '~1 800 · tous protocoles', url: 'https://raw.githubusercontent.com/Alirewa/V2ray-Configs/main/config.txt' },
+  { name: '0xRadikal — vérifiés (base64)', hint: '~1 000 · vérifiés', url: 'https://raw.githubusercontent.com/0xRadikal/Free-v2ray-Configs/main/verified/configs_base64.txt' },
+  { name: '0xRadikal — VLESS', hint: '~4 500', url: 'https://raw.githubusercontent.com/0xRadikal/Free-v2ray-Configs/main/protocols/vless.txt' },
+  { name: '0xRadikal — Trojan', hint: '~1 500', url: 'https://raw.githubusercontent.com/0xRadikal/Free-v2ray-Configs/main/protocols/trojan.txt' },
+  { name: 'Morpheusadam — VLESS Reality', hint: '~13 000 · testés', url: 'https://raw.githubusercontent.com/morpheusadam/v2ray-config/main/subs/bundles/reality.txt' },
+  { name: 'Morpheusadam — Trojan', hint: '~10 800 · testés', url: 'https://raw.githubusercontent.com/morpheusadam/v2ray-config/main/subs/bundles/trojan.txt' },
+  { name: 'Morpheusadam — VMess', hint: '~10 000 · testés', url: 'https://raw.githubusercontent.com/morpheusadam/v2ray-config/main/subs/bundles/vmess.txt' },
+  { name: 'Au1rxx — liste globale (base64)', hint: '~1 750 · tous protocoles', url: 'https://github.com/Au1rxx/free-vpn-subscriptions/raw/main/output/v2ray-base64.txt' },
+  { name: 'barry-far — toutes les configs', hint: '~9 000', url: 'https://raw.githubusercontent.com/barry-far/V2ray-Config/main/All_Configs_Sub.txt' },
+];
 const ExpiresField = ({ T, value, onChange }: { T: Dict; value: number; onChange: (v: number) => void }) => (
   <div className="space-y-1.5">
     <Label>{T.expires}</Label>
@@ -357,6 +372,17 @@ function UrlTab({ T, pools, onDone }: { T: Dict; pools: { id: string; name: stri
   return (
     <div className="space-y-3">
       <p className="text-xs text-muted-foreground">{T.urlHelp}</p>
+      <div className="space-y-1.5">
+        <Label>{T.suggested}</Label>
+        <div className="flex flex-wrap gap-1.5">
+          {SUGGESTED.map((x) => (
+            <button key={x.url} type="button" title={x.url} onClick={() => { setUrl(x.url); setInfo(''); }} className={cn('rounded-md border px-2 py-1 text-left text-[11px] transition hover:bg-accent', url === x.url && 'border-primary bg-primary/10')}>
+              <span className="block font-medium">{x.name}</span>
+              <span className="block text-muted-foreground">{x.hint}</span>
+            </button>
+          ))}
+        </div>
+      </div>
       <Input value={url} onChange={(e) => { setUrl(e.target.value); setInfo(''); }} placeholder="https://…" className="font-mono text-xs" />
       <div className="grid gap-3 sm:grid-cols-2">
         <PoolSelect T={T} pools={pools} value={pool} onChange={setPool} />
