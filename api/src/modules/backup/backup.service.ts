@@ -87,9 +87,45 @@ export class BackupService implements OnModuleInit {
     if (waited) this.logger.log('Fenêtre calme trouvée — sauvegarde planifiée démarre.');
   }
 
+  /** Empreinte de ce qui est actuellement planifié (activé|cron|stockage) ; null = rien de planifié. */
+  private scheduledSig: string | null = null;
+  private watchdog?: NodeJS.Timeout;
+
+  private desiredSig(): string {
+    return `${this.settings.getBool('backupDatabaseEnabled')}|${this.settings.get('backupIntervalCron') || '0 0 * * *'}|${this.settings.get('backupStorageType') || 'local'}`;
+  }
+
   async onModuleInit() {
     // Schedule cron job on startup
     this.reschedule();
+    // Chien de garde : la planification ne doit JAMAIS dépendre d'un seul appel au démarrage. Si la base n'était pas encore prête
+    // (réglages restés aux valeurs par défaut = sauvegarde « désactivée »), ou si l'ordre d'initialisation a joué contre nous, la
+    // sauvegarde automatique ne partait plus jamais. On recharge les réglages tant qu'ils ne sont pas lus et on replanifie dès que
+    // la configuration réelle diffère de ce qui est planifié.
+    this.watchdog = setInterval(() => {
+      void (async () => {
+        try {
+          if (!this.settings.isLoaded()) await this.settings.reload();
+          if (!this.settings.isLoaded()) return;
+          const want = this.desiredSig();
+          const enabled = want.startsWith('true|');
+          const jobAlive = (() => {
+            try {
+              return !!this.schedulerRegistry.getCronJob(this.jobName);
+            } catch {
+              return false;
+            }
+          })();
+          if (want !== this.scheduledSig || (enabled && !jobAlive)) {
+            this.logger.warn('Planification des sauvegardes absente ou obsolète — replanification.');
+            this.reschedule();
+          }
+        } catch (e) {
+          this.logger.error(`Backup watchdog: ${(e as Error)?.message ?? e}`);
+        }
+      })();
+    }, 60_000);
+    this.watchdog.unref?.();
   }
 
   /**
@@ -108,6 +144,7 @@ export class BackupService implements OnModuleInit {
       // Ignored
     }
 
+    this.scheduledSig = this.desiredSig();
     const enabled = this.settings.getBool('backupDatabaseEnabled');
     if (!enabled) {
       this.logger.log('Database backups are currently disabled in settings.');

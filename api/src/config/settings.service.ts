@@ -201,6 +201,11 @@ export class SettingsService implements OnModuleInit {
     await this.reload();
   }
 
+  /** Les réglages ont-ils été lus depuis la base (sinon ce sont des valeurs par défaut) ? */
+  isLoaded(): boolean {
+    return this.loaded;
+  }
+
   /** Recharge tout le cache depuis la base. */
   async reload(): Promise<void> {
     try {
