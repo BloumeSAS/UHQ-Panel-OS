@@ -77,7 +77,7 @@ export function vpnGateCountries(list: VpnGateServer[]): { code: string; name: s
   return [...m.values()].sort((a, b) => b.servers - a.servers);
 }
 
-/** Meilleurs serveurs : filtre pays, trié par score décroissant, `perCountry` par pays. */
+/** Meilleurs serveurs : filtre pays, trié par score décroissant, `perCountry` par pays (0 = tous les serveurs du pays). */
 export function pickVpnGate(list: VpnGateServer[], countries: string[], perCountry: number): VpnGateServer[] {
   const wanted = new Set(countries.map((c) => c.trim().toUpperCase()).filter(Boolean));
   const byCountry = new Map<string, VpnGateServer[]>();
@@ -88,7 +88,7 @@ export function pickVpnGate(list: VpnGateServer[], countries: string[], perCount
   const out: VpnGateServer[] = [];
   for (const arr of byCountry.values()) {
     arr.sort((a, b) => b.score - a.score);
-    out.push(...arr.slice(0, Math.max(1, perCountry)));
+    out.push(...perCountry > 0 ? arr.slice(0, perCountry) : arr);
   }
   return out;
 }

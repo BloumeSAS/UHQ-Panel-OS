@@ -44,7 +44,7 @@ const L = {
     tabUrl: 'URL / abonnement',
     urlHelp: 'Adresse (https) d’une page, d’un fichier texte ou d’un abonnement qui publie des configurations en clair : liens vless:// vmess:// trojan:// ss:// hy2://, liste encodée en base64, ou une configuration WireGuard / OpenVPN. Les pages protégées par un contrôle anti-robot ou qui créent un compte par visiteur ne peuvent pas être lues automatiquement : utilisez l’import manuel.',
     suggested: 'Sources suggérées (cliquer pour utiliser)',
-    urlMax: 'Nombre maximum de VPN',
+    urlMax: 'Nombre maximum de VPN (0 = tous)',
     urlFound: '{n} configuration(s) trouvée(s)',
     urlNone: 'Aucune configuration reconnue à cette adresse.',
     tabState: 'Sources & état',
@@ -54,7 +54,7 @@ const L = {
     pickCountries: 'Pays (aucun = tous)',
     search: 'Rechercher un pays…',
     servers: 'serveurs',
-    perCountry: 'Serveurs par pays',
+    perCountry: 'Serveurs par pays (0 = tous)',
     pool: 'Catégorie (pool)',
     noPool: 'Pool par défaut',
     keep: 'Garder à jour automatiquement (remplace les serveurs morts)',
@@ -88,7 +88,7 @@ const L = {
     tabUrl: 'URL / subscription',
     urlHelp: 'Address (https) of a page, text file or subscription that publishes plain configurations: vless:// vmess:// trojan:// ss:// hy2:// links, a base64 list, or a WireGuard / OpenVPN configuration. Pages behind bot protection or that create one account per visitor cannot be read automatically: use manual import.',
     suggested: 'Suggested sources (click to use)',
-    urlMax: 'Maximum number of VPNs',
+    urlMax: 'Maximum number of VPNs (0 = all)',
     urlFound: '{n} configuration(s) found',
     urlNone: 'No configuration recognised at this address.',
     tabState: 'Sources & status',
@@ -98,7 +98,7 @@ const L = {
     pickCountries: 'Countries (none = all)',
     search: 'Search a country…',
     servers: 'servers',
-    perCountry: 'Servers per country',
+    perCountry: 'Servers per country (0 = all)',
     pool: 'Category (pool)',
     noPool: 'Default pool',
     keep: 'Keep updated automatically (replaces dead servers)',
@@ -299,7 +299,7 @@ function GateTab({ T, pools, onDone }: { T: Dict; pools: { id: string; name: str
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="space-y-1.5">
           <Label>{T.perCountry}</Label>
-          <Input type="number" min={1} max={20} value={perCountry} onChange={(e) => { setPerCountry(Number(e.target.value) || 1); setServers(null); }} />
+          <Input type="number" min={0} value={perCountry} onChange={(e) => { setPerCountry(Math.max(0, Number(e.target.value) || 0)); setServers(null); }} />
         </div>
         <PoolSelect T={T} pools={pools} value={pool} onChange={setPool} />
       </div>
@@ -386,7 +386,7 @@ function UrlTab({ T, pools, onDone }: { T: Dict; pools: { id: string; name: stri
         <PoolSelect T={T} pools={pools} value={pool} onChange={setPool} />
         <div className="space-y-1.5">
           <Label>{T.urlMax}</Label>
-          <Input type="number" min={1} max={200} value={max} onChange={(e) => setMax(Number(e.target.value) || 1)} />
+          <Input type="number" min={0} value={max} onChange={(e) => setMax(Math.max(0, Number(e.target.value) || 0))} />
         </div>
       </div>
       <label className="flex cursor-pointer items-center gap-2 text-sm">

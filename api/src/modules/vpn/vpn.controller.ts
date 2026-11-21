@@ -4,7 +4,7 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { Audited } from '../audit/audited.decorator';
-import { VpnService, VpnSource } from './vpn.service';
+import { VpnService, VpnSource, importLimit } from './vpn.service';
 import { fetchVpnGate, pickVpnGate, vpnGateCountries } from './vpngate';
 
 /** VPN dans les catégories de proxies (ADMIN) : état, import manuel (OpenVPN / WireGuard / liens V2Ray), source automatique VPNGate. */
@@ -36,7 +36,7 @@ export class VpnController {
     const list = await fetchVpnGate().catch((e) => {
       throw new BadRequestException(`VPNGate injoignable : ${(e as Error).message}`);
     });
-    const best = pickVpnGate(list, body?.countries ?? [], Math.min(20, Number(body?.perCountry) || 3));
+    const best = pickVpnGate(list, body?.countries ?? [], importLimit(body?.perCountry, 3));
     return {
       status: 'success',
       servers: best.map((s) => ({
@@ -53,7 +53,7 @@ export class VpnController {
       throw new BadRequestException(`VPNGate injoignable : ${(e as Error).message}`);
     });
     const countries = (body?.countries ?? []).map((c) => String(c).toUpperCase()).filter(Boolean);
-    const perCountry = Math.min(20, Math.max(1, Number(body?.perCountry) || 3));
+    const perCountry = importLimit(body?.perCountry, 3);
     const best = pickVpnGate(list, countries, perCountry);
     if (best.length === 0) throw new BadRequestException('Aucun serveur VPNGate pour ce(s) pays');
     let sourceId: string | undefined;
@@ -95,7 +95,7 @@ export class VpnController {
   @Post('url/import')
   async urlImport(@Body() body: { url?: string; pool?: string; max?: number; keepUpdated?: boolean; expiresDays?: number }) {
     const url = String(body?.url ?? '').trim();
-    const max = Math.min(200, Math.max(1, Number(body?.max) || 20));
+    const max = importLimit(body?.max, 20);
     let sourceId: string | undefined;
     if (body?.keepUpdated) {
       const sources = this.vpn.getSources();
