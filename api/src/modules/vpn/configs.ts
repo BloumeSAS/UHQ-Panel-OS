@@ -17,28 +17,62 @@ export interface ParsedVpn {
   name?: string;
 }
 
-const OVPN_FORBIDDEN = /^\s*(script-security|up|down|up-restart|route-up|route-pre-down|tls-verify|auth-user-pass-verify|client-connect|client-disconnect|learn-address|ipchange|plugin|management|setenv-safe|setenv|echo|writepid|daemon|log|log-append|status|cd|chroot|dev-node|up-delay|iproute|ifconfig-noexec|route-noexec|persist-tun)\b.*$/i;
+/**
+ * LISTE BLANCHE des directives OpenVPN acceptées. Les configurations viennent de listes publiques non fiables et OpenVPN est ensuite lancé
+ * avec des privilèges élevés : tout ce qui n'est pas explicitement connu et inoffensif est supprimé (exécution de commandes, plugins, inclusion
+ * ou lecture de fichiers locaux, scripts, gestion à distance…). Les directives qui référencent un fichier (ca/cert/key/tls-auth/auth-user-pass
+ * avec chemin) sont aussi retirées : seuls les blocs en ligne <ca>, <cert>, <key>, <tls-auth>, <tls-crypt>, <tls-crypt-v2> sont conservés.
+ */
+const OVPN_ALLOWED = new Set([
+  'client', 'tls-client', 'pull', 'proto', 'remote', 'port', 'rport', 'nobind', 'persist-key', 'resolv-retry', 'cipher', 'data-ciphers',
+  'data-ciphers-fallback', 'ncp-ciphers', 'auth', 'verb', 'mute', 'key-direction', 'remote-cert-tls', 'remote-cert-ku', 'remote-cert-eku',
+  'ns-cert-type', 'verify-x509-name', 'comp-lzo', 'compress', 'keepalive', 'ping', 'ping-restart', 'ping-exit', 'tls-cipher', 'tls-ciphersuites',
+  'tls-version-min', 'tls-version-max', 'tls-cert-profile', 'reneg-sec', 'tun-mtu', 'link-mtu', 'mssfix', 'fragment', 'sndbuf', 'rcvbuf', 'float',
+  'explicit-exit-notify', 'remote-random', 'connect-retry', 'connect-retry-max', 'connect-timeout', 'server-poll-timeout', 'single-session',
+  'allow-compression', 'auth-retry', 'multihome', 'key-method', 'tran-window', 'hand-window', 'replay-window', 'engine-none',
+]);
+const OVPN_BLOCKS = new Set(['ca', 'cert', 'key', 'tls-auth', 'tls-crypt', 'tls-crypt-v2']);
+const OVPN_SAFE_ARG = /^[A-Za-z0-9_.:,+\/=@-]*$/;
 
-/** Nettoie un .ovpn : pas de scripts / plugins / gestion à distance, une seule directive `remote` utile conservée en tête. */
+/** Nettoie un .ovpn (liste blanche). Lève une erreur si un bloc en ligne est mal fermé ou non autorisé. */
 export function sanitizeOvpn(text: string): string {
   const out: string[] = [];
   let inBlock: string | null = null;
   for (const raw of text.replace(/\r/g, '').split('\n')) {
-    const line = raw.trimEnd();
-    const open = /^<([a-z-]+)>$/i.exec(line.trim());
-    if (open && !inBlock) {
-      inBlock = open[1].toLowerCase();
-      out.push(line);
-      continue;
-    }
+    const line = raw.trim();
     if (inBlock) {
-      out.push(line);
-      if (new RegExp(`^</${inBlock}>$`, 'i').test(line.trim())) inBlock = null;
+      if (new RegExp(`^</${inBlock}>$`, 'i').test(line)) {
+        out.push(line);
+        inBlock = null;
+      } else if (/^<\/?[a-z]/i.test(line)) {
+        throw new Error('bloc OpenVPN invalide');
+      } else {
+        out.push(line); // contenu PEM / clé
+      }
       continue;
     }
-    if (OVPN_FORBIDDEN.test(line)) continue;
-    out.push(line);
+    if (!line || line.startsWith('#') || line.startsWith(';')) continue;
+    const open = /^<([a-z0-9-]+)>$/i.exec(line);
+    if (open) {
+      const tag = open[1].toLowerCase();
+      if (!OVPN_BLOCKS.has(tag)) {
+        // Bloc inconnu (ex. <connection>, <extra-certs>) : on refuse tout le fichier plutôt que de deviner.
+        throw new Error(`bloc OpenVPN non autorisé : <${tag}>`);
+      }
+      inBlock = tag;
+      out.push(`<${tag}>`);
+      continue;
+    }
+    // « --option » autorisé dans un fichier : on normalise ; guillemets / échappements : directive ignorée.
+    const norm = line.replace(/^--/, '');
+    if (/["'\\`$;|&<>]/.test(norm)) continue;
+    const parts = norm.split(/\s+/);
+    const name = parts[0].toLowerCase();
+    if (!OVPN_ALLOWED.has(name)) continue;
+    if (!parts.slice(1).every((a) => OVPN_SAFE_ARG.test(a))) continue;
+    out.push([name, ...parts.slice(1)].join(' '));
   }
+  if (inBlock) throw new Error('bloc OpenVPN non fermé');
   return out.join('\n').trim() + '\n';
 }
 
@@ -110,9 +144,13 @@ export function parseVpnText(text: string): ParsedVpn[] {
   const t = text.replace(/\r/g, '');
   // Blocs OpenVPN : de « client » / première directive jusqu'au prochain </ca>… difficile à couper : on accepte UN .ovpn par appel.
   if (/^\s*(client|remote\s+\S+)/im.test(t) && /^\s*remote\s+\S+/im.test(t) && /<ca>|^\s*ca\s+/im.test(t)) {
-    const clean = sanitizeOvpn(t);
-    const r = ovpnRemote(clean);
-    if (r.host) out.push({ kind: 'openvpn', config: clean, host: r.host, port: r.port });
+    try {
+      const clean = sanitizeOvpn(t);
+      const r = ovpnRemote(clean);
+      if (r.host) out.push({ kind: 'openvpn', config: clean, host: r.host, port: r.port });
+    } catch {
+      /* configuration refusée : rien n'est importé */
+    }
     return out;
   }
   if (/\[Interface\]/i.test(t)) {
