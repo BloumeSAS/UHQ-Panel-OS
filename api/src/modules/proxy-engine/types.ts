@@ -14,6 +14,8 @@ export interface UpstreamProxy {
   /** Embedded creds (residential fallback only) "user:pass" */
   auth?: string | null;
   country?: string | null;
+  /** 'VPN' / 'VPNGate' : tunnel géré par le module vpn (proxy SOCKS5 local résolu au moment de la connexion). */
+  provider?: string | null;
   isWorking?: boolean;
   pool?: string | null;
   /**

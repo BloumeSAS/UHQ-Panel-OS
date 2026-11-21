@@ -380,6 +380,11 @@ model BackendProxy {
   // (minuscule), {COUNTRY} (majuscule). Différents proxies d'une même pool
   // peuvent avoir des gabarits différents (fournisseurs différents).
   countryFormat  String?
+  // Tunnel VPN (provider 'VPN' / 'VPNGate') : type (openvpn | wireguard | link) + configuration brute (.ovpn, .conf WireGuard ou lien
+  // vless:// vmess:// trojan:// ss:// hy2://). Le gestionnaire de tunnels (modules/vpn) en fait un proxy SOCKS5 local ; la ligne reste
+  // un proxy comme les autres dans la catégorie.
+  vpnKind        String?
+  vpnConfig      String?
   targetBlocks   TargetBlock[]
 
   @@index([pool])

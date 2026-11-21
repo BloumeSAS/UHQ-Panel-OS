@@ -11,6 +11,7 @@ import { randomString, isDomainBlocked } from '../../common/utils/proxy-format';
 import { allowedPortRange } from '../../common/utils/port-validation';
 import { NotificationService } from '../notifications/notification.service';
 import { RateLimiterService } from '../../common/rate-limiter.service';
+import { VpnService } from '../vpn/vpn.service';
 import { VpnDetectionService } from './vpn-detection.service';
 import { errorResponse } from './error-catalog';
 import {
@@ -186,6 +187,7 @@ export class ProxyServerService implements OnModuleDestroy {
     private readonly notificationService: NotificationService,
     private readonly rateLimiter: RateLimiterService,
     private readonly vpnDetection: VpnDetectionService,
+    private readonly vpnTunnels: VpnService,
   ) {
     // Après chaque écriture du trafic en base, le cache mémoire reçoit le
     // `usedGb` réel — sinon il restait figé jusqu'au refresh 60s et le quota
@@ -270,6 +272,7 @@ export class ProxyServerService implements OnModuleDestroy {
             port: true,
             country: true,
             pool: true,
+            provider: true,
             countryFormat: true,
             successCount: true,
             failureCount: true,
@@ -1492,7 +1495,7 @@ export class ProxyServerService implements OnModuleDestroy {
       // Un proxy amont du pool PARTAGÉ (scrapé / importé) ne doit jamais mener vers le serveur lui-même, le réseau
       // Docker ou l'endpoint de métadonnées cloud (la requête du client y serait relayée). Vérifié sur l'adresse
       // RÉELLEMENT connectée (couvre les noms de domaine). Listes privées de compte et proxy de secours : exemptés.
-      if (!isCustom && upstream.id !== 'fallback' && this.isForbiddenUpstreamAddress(socket.remoteAddress)) {
+      if (!isCustom && upstream.id !== 'fallback' && upstream.provider !== 'VPN' && upstream.provider !== 'VPNGate' && this.isForbiddenUpstreamAddress(socket.remoteAddress)) {
         socket.destroy();
         socket = null;
         throw new Error('upstream address forbidden');
@@ -1812,6 +1815,11 @@ export class ProxyServerService implements OnModuleDestroy {
    * quel tant qu'on ne passe pas par ici.
    */
   private applyCountrySelector(upstream: UpstreamProxy, requestedCountry: string | null): UpstreamProxy {
+    // VPN : le « proxy » est un tunnel local — on se connecte à son SOCKS5 (127.0.0.1:port) ; s'il n'est pas prêt, port 1 (échec immédiat).
+    if (upstream.provider === 'VPN' || upstream.provider === 'VPNGate') {
+      const ep = this.vpnTunnels.endpointFor(upstream.id);
+      return { ...upstream, protocol: 'socks5', ip: ep?.host ?? '127.0.0.1', port: ep?.port ?? 1, auth: null, countryFormat: null };
+    }
     // Gabarit du proxy, sinon (option de la catégorie) celui de sa catégorie : les proxies AVEC identifiants d'une catégorie « passerelle »
     // reçoivent le pays dans leur username sans avoir à configurer chaque lot importé.
     const format = upstream.countryFormat || (upstream.auth && upstream.pool ? this.poolProxyFormatMap.get(upstream.pool) : undefined);

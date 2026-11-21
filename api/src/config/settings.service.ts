@@ -146,6 +146,8 @@ export const SETTING_DEFS = {
   // URL publique du panel (liens e-mail). Vide = https://<publicProxyHost>.
   panelUrl: { def: '', env: 'PANEL_URL', secret: false },
   // Autorise les proxies amont du pool PARTAGÉ sur des adresses privées (RFC 1918). Loopback / lien-local : toujours refusés.
+  vpnMaxTunnels: { def: '15', env: 'VPN_MAX_TUNNELS', secret: false },
+  vpnSources: { def: '[]', env: undefined, secret: false },
   allowPrivateUpstreams: { def: 'false', env: 'ALLOW_PRIVATE_UPSTREAMS', secret: false },
   // Alertes e-mail/cloche aux propriétaires de comptes (quota 80/100 %, expiration).
   customerAlertsEnabled: { def: 'true', env: undefined, secret: false },

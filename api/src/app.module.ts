@@ -28,6 +28,7 @@ import { MeModule } from './modules/me/me.module';
 import { AboutModule } from './modules/about/about.module';
 import { TrafficModule } from './modules/traffic/traffic.module';
 import { ProxyEngineModule } from './modules/proxy-engine/proxy-engine.module';
+import { VpnModule } from './modules/vpn/vpn.module';
 import { CheckerModule } from './modules/checker/checker.module';
 import { ScraperModule } from './modules/scraper/scraper.module';
 import { V1ApiModule } from './modules/legacy-api/v1.module';
@@ -76,6 +77,7 @@ export function resolveWebDist(): string {
     // Cœur métier
     TrafficModule,
     ProxyEngineModule,
+    VpnModule,
     CheckerModule,
     ScraperModule,
     // API panel (JWT) + legacy (Basic Auth)

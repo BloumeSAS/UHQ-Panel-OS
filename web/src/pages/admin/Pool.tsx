@@ -6,6 +6,7 @@ import { CountryFlag } from '@/components/CountryFlag';
 import { useConfirm } from '@/components/ConfirmDialog';
 import { AddonPageBar } from '@/components/AddonPageBar';
 import { ResellerProxyDialog, PoolProxyRef } from '@/components/ResellerProxyDialog';
+import { VpnDialog } from '@/components/VpnDialog';
 import { api, apiError } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { toast } from '@/lib/toast';
@@ -414,6 +415,7 @@ export default function Pool() {
             <Download className="h-3.5 w-3.5" />
             {t('pool.export')}
           </Button>
+          <VpnDialog onDone={invalidate} />
           <ImportDialog onDone={invalidate} />
         </div>
       </div>

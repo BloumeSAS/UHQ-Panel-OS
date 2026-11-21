@@ -54,6 +54,12 @@ RUN npm prune --production --legacy-peer-deps
 
 
 # ----- Stage 4 : runner -----------------------------------------
+# ----- Stage : sing-box (client V2Ray / VLESS / VMess / Trojan / Shadowsocks / WireGuard / Hysteria2, SANS privilèges) -----
+FROM alpine:3.20 AS singbox
+ARG TARGETARCH
+ARG SINGBOX_VERSION=1.14.4
+RUN apk add --no-cache curl tar  && case "${TARGETARCH:-amd64}" in arm64) A=arm64;; *) A=amd64;; esac  && curl -fsSL "https://github.com/SagerNet/sing-box/releases/download/v${SINGBOX_VERSION}/sing-box-${SINGBOX_VERSION}-linux-${A}-musl.tar.gz" -o /tmp/sb.tgz  && tar -xzf /tmp/sb.tgz -C /tmp && mv /tmp/sing-box-*/sing-box /sing-box && chmod +x /sing-box
+
 FROM node:20-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
@@ -69,8 +75,21 @@ ENV UV_THREADPOOL_SIZE=16
 # (instance temporaire sur le dossier de données + pg_dump/psql) — jamais lancé en service.
 RUN apk add --no-cache openssl curl postgresql16 postgresql16-client
 
+# Utilisateur non-root, ids FIXES (100:101 = ceux des images précédentes : les volumes de données existants leur appartiennent).
+# Créé AVANT les paquets qui ajoutent des utilisateurs système (openvpn) pour que les ids ne se décalent jamais.
+RUN addgroup -S -g 101 app && adduser -S -u 100 -G app app
+
+# VPN dans les catégories de proxies : OpenVPN (tunnel noyau, nécessite NET_ADMIN + /dev/net/tun — voir docker-compose.yml) et iproute2
+# (routage par adresse source : chaque tunnel a SON IP de sortie). Le panel tourne en non-root : il appelle UNIQUEMENT l'aide ci-dessous
+# via sudo (sous-commandes et arguments validés — cf. api/scripts/uhq-vpn-helper.sh).
+RUN apk add --no-cache openvpn iproute2 sudo
+COPY api/scripts/uhq-vpn-helper.sh /usr/local/bin/uhq-vpn-helper
+RUN sed -i 's/\r$//' /usr/local/bin/uhq-vpn-helper \
+ && chown root:root /usr/local/bin/uhq-vpn-helper && chmod 755 /usr/local/bin/uhq-vpn-helper \
+ && echo 'app ALL=(root) NOPASSWD: /usr/local/bin/uhq-vpn-helper' > /etc/sudoers.d/uhq-vpn && chmod 440 /etc/sudoers.d/uhq-vpn
+COPY --from=singbox /sing-box /usr/local/bin/sing-box
+
 # Non-root user (good hygiene + Coolify-friendly)
-RUN addgroup -S app && adduser -S app -G app
 # Dossier de données inscriptible par l'utilisateur non-root (monté en volume).
 RUN mkdir -p /app/data && chown app:app /app/data
 

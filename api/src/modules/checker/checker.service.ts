@@ -129,7 +129,7 @@ export class CheckerService implements OnModuleInit {
       // Archivé = mort définitif : jamais re-testé (et jamais réactivé par un
       // re-scrape, cf. scraper.service.ts). Seule une suppression manuelle
       // admin peut le faire sortir de la base.
-      const andConditions: any[] = [{ isBlacklisted: false }, { archived: false }];
+      const andConditions: any[] = [{ isBlacklisted: false }, { archived: false }, { vpnKind: null }];
       if (skippedNames.length > 0) {
         // `pool` est nullable : un simple `notIn` exclurait à tort les lignes
         // sans pool (NULL NOT IN (...) = NULL côté SQL) — OR explicite requis.

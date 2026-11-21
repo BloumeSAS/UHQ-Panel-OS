@@ -54,6 +54,13 @@ services:
       - "8000"
     labels:
       - "traefik.http.services.uhq-panel-app.loadbalancer.server.port=8000"
+    # VPN dans les catégories de proxies (OpenVPN) : le tunnel a besoin de NET_ADMIN et du périphérique /dev/net/tun de l'hôte.
+    # WireGuard / V2Ray / VLESS / Trojan… fonctionnent SANS (client userspace). Hôte sans /dev/net/tun (rare : OpenVZ/LXC) →
+    # supprimez ces deux blocs : seul OpenVPN sera indisponible.
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
     ulimits:
       nofile:
         soft: 1048576
