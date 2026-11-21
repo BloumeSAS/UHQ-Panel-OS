@@ -91,6 +91,8 @@ export async function fetchPublicText(startUrl: string): Promise<string> {
 }
 
 const HELPER = '/usr/local/bin/uhq-vpn-helper';
+/** Démarrages (essais) simultanés autorisés au-delà du plafond de tunnels actifs. */
+const PROBE_EXTRA = 4;
 /** Commande privilégiée : uniquement l'aide validée (sudo), jamais un binaire arbitraire. */
 const helper = (args: string[], timeout = 8000) => run('sudo', ['-n', HELPER, ...args], timeout);
 
@@ -391,62 +393,117 @@ export class VpnService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  private lastRotateAt = Date.now();
+  private protoFixAt = 0;
+
+  /** Un tunnel est-il actif (prêt à servir) ? Utilisé par le moteur : seuls les VPN réellement démarrés sont candidats. */
+  isUp(id: string): boolean {
+    return this.tunnels.get(id)?.state === 'up';
+  }
+
+  /**
+   * Supervision par ROTATION : le pool peut contenir des milliers de VPN, mais seuls `vpnMaxTunnels` tournent en même temps (un tunnel =
+   * un processus). Pour que TOUS servent à tour de rôle, une fraction des tunnels actifs (`vpnRotatePercent` %) est remplacée toutes les
+   * `vpnRotateMinutes` minutes par ceux qui n'ont pas servi depuis le plus longtemps (les derniers connus vivants d'abord, puis les jamais
+   * essayés). Un tunnel qui échoue est retenté avec un délai croissant ; les VPN morts sont essayés en dernier.
+   */
   private async reconcile() {
     const caps = await this.capabilities();
     // Plafond dur : 100 emplacements (tables de routage 200-299 et noms de périphériques de l'aide privilégiée).
     const max = Math.min(100, Math.max(0, this.settings.getNumber('vpnMaxTunnels')));
+    const rotateMs = Math.max(0, this.settings.getNumber('vpnRotateMinutes')) * 60_000;
+    const rotatePct = Math.min(100, Math.max(1, this.settings.getNumber('vpnRotatePercent') || 34));
     // Expiration automatique (abonnements / listes gratuites) : retiré du pool, le tunnel s'arrête au passage suivant.
     const expired = await this.prisma.backendProxy.deleteMany({ where: { vpnKind: { not: null }, vpnExpiresAt: { lt: new Date() } } }).catch(() => ({ count: 0 }));
     if (expired.count) this.logger.log(`${expired.count} VPN expiré(s) retiré(s) du pool.`);
+
+    // Métadonnées de TOUS les VPN (sans la configuration, parfois volumineuse) : la configuration n'est lue que pour ceux qu'on démarre.
     const rows = await this.prisma.backendProxy.findMany({
       where: { vpnKind: { not: null }, archived: false, isBlacklisted: false },
-      select: { id: true, vpnKind: true, vpnConfig: true, country: true, isWorking: true, protocol: true },
-      orderBy: [{ isWorking: 'desc' }, { lastChecked: 'desc' }],
-      take: max,
+      select: { id: true, vpnKind: true, country: true, isWorking: true, failCount: true, lastChecked: true },
     });
-    const wanted = new Map(rows.filter((r) => r.vpnConfig).map((r) => [r.id, r]));
-    // Les lignes créées avant la 2.9.3 affichaient « socks5 » : on y met le vrai protocole du VPN.
-    for (const r of rows) {
-      if (r.vpnConfig && r.protocol === 'socks5') {
-        await this.prisma.backendProxy.update({ where: { id: r.id }, data: { protocol: protocolLabel(r.vpnKind as VpnKind, r.vpnConfig) } }).catch(() => undefined);
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    for (const id of [...this.tunnels.keys()]) if (!byId.has(id)) await this.stop(id);
+
+    // Lignes créées avant la 2.10 : le Pool affichait « socks5 » (une fois par minute au plus, par lots).
+    if (Date.now() - this.protoFixAt > 60_000) {
+      this.protoFixAt = Date.now();
+      const old = await this.prisma.backendProxy.findMany({ where: { vpnKind: { not: null }, protocol: 'socks5' }, select: { id: true, vpnKind: true, vpnConfig: true }, take: 100 });
+      for (const r of old) {
+        if (r.vpnConfig) await this.prisma.backendProxy.update({ where: { id: r.id }, data: { protocol: protocolLabel(r.vpnKind as VpnKind, r.vpnConfig) } }).catch(() => undefined);
       }
     }
 
-    for (const id of [...this.tunnels.keys()]) if (!wanted.has(id)) await this.stop(id);
+    // Santé des tunnels actifs.
+    for (const t of this.tunnels.values()) {
+      if (t.state === 'up' && (!t.lastCheck || Date.now() - t.lastCheck > 60_000)) await this.health(t, byId.get(t.id)?.country ?? null);
+    }
 
-    let started = 0;
-    for (const [id, row] of wanted) {
-      let t = this.tunnels.get(id);
-      const kind = row.vpnKind as VpnKind;
-      if (!t) {
-        t = { id, kind, config: row.vpnConfig!, slot: this.freeSlot(), state: 'down', fails: 0, nextTryAt: 0, log: [] };
-        this.tunnels.set(id, t);
+    const active = () => [...this.tunnels.values()].filter((t) => t.state === 'up' || t.state === 'starting');
+    const eligible = () =>
+      rows.filter((r) => {
+        const t = this.tunnels.get(r.id);
+        if (t && (t.state === 'up' || t.state === 'starting')) return false;
+        if (t && Date.now() < t.nextTryAt) return false;
+        return r.vpnKind === 'openvpn' ? caps.openvpn : caps.singbox;
+      });
+
+    // Rotation : on libère de la place pour les VPN qui n'ont pas servi depuis longtemps.
+    if (rotateMs > 0 && max > 0 && Date.now() - this.lastRotateAt >= rotateMs) {
+      this.lastRotateAt = Date.now();
+      const waiting = eligible().length;
+      const n = Math.min(waiting, Math.ceil((max * rotatePct) / 100));
+      if (n > 0) {
+        const oldest = active()
+          .filter((t) => t.state === 'up')
+          .sort((x, y) => (x.startedAt ?? 0) - (y.startedAt ?? 0))
+          .slice(0, n);
+        for (const t of oldest) {
+          await this.stop(t.id, true);
+          t.fails = 0; // remplacé par la rotation (pas en échec) : repart propre
+        }
+        if (oldest.length) this.logger.log(`Rotation VPN : ${oldest.length} tunnel(s) remplacé(s) (${waiting} en attente).`);
       }
-      if (t.state === 'up') {
-        if (!t.lastCheck || Date.now() - t.lastCheck > 60_000) await this.health(t, row.country);
-        continue;
+    }
+
+    // Remplissage : priorité aux derniers connus vivants, puis jamais essayés, puis ceux en échec ; à égalité, le moins récemment utilisé.
+    const tier = (r: (typeof rows)[number]) => (r.failCount >= 3 ? 3 : r.isWorking ? 0 : r.failCount === 0 ? 1 : 2);
+    // Découverte : les essais (démarrages en cours) ont leur propre marge au-dessus du plafond de tunnels ACTIFS — sans elle, chaque
+    // serveur mort bloquerait un emplacement jusqu'à 45 s et trouver les vivants parmi des milliers prendrait des heures. Un essai réussi
+    // au-delà du plafond est marqué vivant puis arrêté aussitôt (il servira à son tour, par la rotation).
+    const up = active().filter((t) => t.state === 'up').length;
+    const starting = active().length - up;
+    const full = up >= max;
+    // Plein : on continue seulement à DÉCOUVRIR des vivants (jamais essayés) avec la marge d'essais ; sinon on remplit les emplacements libres.
+    const probeBudget = (full ? PROBE_EXTRA : PROBE_EXTRA + (max - up)) - starting;
+    const free = Math.min(probeBudget, 4);
+    if (free > 0 && max > 0) {
+      const picks = eligible()
+        .filter((r) => !full || (tier(r) >= 1 && tier(r) <= 2))
+        .sort((x, y) => tier(x) - tier(y) || (x.lastChecked?.getTime() ?? 0) - (y.lastChecked?.getTime() ?? 0))
+        .slice(0, free);
+      if (picks.length) {
+        const cfgs = await this.prisma.backendProxy.findMany({ where: { id: { in: picks.map((p) => p.id) } }, select: { id: true, vpnConfig: true } });
+        const cfgBy = new Map(cfgs.map((c) => [c.id, c.vpnConfig]));
+        for (const r of picks) {
+          const config = cfgBy.get(r.id);
+          if (!config) continue;
+          let t = this.tunnels.get(r.id);
+          if (!t) {
+            t = { id: r.id, kind: r.vpnKind as VpnKind, config, slot: this.freeSlot(), state: 'down', fails: 0, nextTryAt: 0, log: [] };
+            this.tunnels.set(r.id, t);
+          } else {
+            t.config = config;
+          }
+          if (t.slot > 99) continue; // plus d'emplacement de routage libre
+          void this.start(t, r.country, max);
+        }
       }
-      if (t.state === 'starting' || Date.now() < t.nextTryAt || started >= 2) continue;
-      if (kind === 'openvpn' && !caps.openvpn) {
-        t.error = 'OpenVPN indisponible dans ce conteneur (NET_ADMIN et /dev/net/tun requis)';
-        t.state = 'error';
-        t.nextTryAt = Date.now() + 5 * 60_000;
-        await this.mark(id, false, undefined, undefined, undefined);
-        continue;
-      }
-      if (kind !== 'openvpn' && !caps.singbox) {
-        t.error = 'sing-box absent de cette image';
-        t.state = 'error';
-        t.nextTryAt = Date.now() + 5 * 60_000;
-        continue;
-      }
-      started += 1;
-      void this.start(t, row.country);
     }
   }
 
   private freeSlot(): number {
-    const used = new Set([...this.tunnels.values()].map((t) => t.slot));
+    const used = new Set([...this.tunnels.values()].filter((t) => t.state === 'up' || t.state === 'starting').map((t) => t.slot));
     let i = 0;
     while (used.has(i)) i += 1;
     return i;
@@ -487,7 +544,7 @@ export class VpnService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  private async start(t: Tunnel, rowCountry: string | null) {
+  private async start(t: Tunnel, rowCountry: string | null, max = 100) {
     t.state = 'starting';
     t.error = undefined;
     t.log = [];
@@ -503,6 +560,11 @@ export class VpnService implements OnModuleInit, OnModuleDestroy {
       t.lastCheck = Date.now();
       await this.mark(t.id, true, r.ms, r.country, rowCountry);
       this.logger.log(`VPN ${t.kind} ${t.id.slice(0, 8)} actif — IP de sortie ${r.ip} (${r.country}) en ${r.ms} ms`);
+      // Essai réussi au-delà du plafond de tunnels actifs : connu vivant, on le libère (il reviendra par la rotation).
+      if ([...this.tunnels.values()].filter((x) => x.state === 'up').length > max) {
+        await this.stop(t.id, true);
+        t.state = 'down';
+      }
     } catch (e) {
       const msg = (e as Error).message;
       t.fails += 1;
@@ -642,5 +704,8 @@ export class VpnService implements OnModuleInit, OnModuleDestroy {
     }
     for (const ext of ['ovpn', 'json']) fs.rm(path.join(this.dir, `${id}.${ext}`), { force: true }, () => undefined);
     if (!keep) this.tunnels.delete(id);
+    else {
+      t.config = '';
+    }
   }
 }

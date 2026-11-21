@@ -103,6 +103,9 @@ export class RegisterDto {
 }
 
 export class UpdateSettingsDto {
+  @ApiPropertyOptional() @IsOptional() @IsString() vpnMaxTunnels?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() vpnRotateMinutes?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() vpnRotatePercent?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() siteName?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() logoUrl?: string;
   @ApiPropertyOptional() @IsOptional() @IsBoolean() @Transform(({ value }) => value === undefined || value === null ? value : (value === 'true' || value === true)) registrationEnabled?: boolean;

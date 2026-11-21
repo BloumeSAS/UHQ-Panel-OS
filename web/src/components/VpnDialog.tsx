@@ -60,8 +60,7 @@ const L = {
     keep: 'Garder à jour automatiquement (remplace les serveurs morts)',
     expires: 'Expire après (jours, 0 = jamais)',
     expiresHint: 'Retiré automatiquement du pool N jours après l’import — pour une source mise à jour automatiquement, N jours après la dernière publication par la source.',
-    maxTunnels: 'Tunnels simultanés maximum',
-    maxTunnelsHint: 'Chaque VPN actif est un processus (10 à 30 Mo). Plafond : 100. Les VPN au-delà de cette limite restent dans le pool mais ne démarrent pas (les plus fiables sont démarrés en premier).',
+    settingsNote: 'Nombre maximum de tunnels et rotation : Paramètres → Scraper → VPN. Tous les VPN du pool servent à tour de rôle, même s’ils sont plus nombreux que les tunnels actifs.',
     saved: 'Enregistré.',
     preview: 'Aperçu',
     import: 'Importer',
@@ -105,8 +104,7 @@ const L = {
     keep: 'Keep updated automatically (replaces dead servers)',
     expires: 'Expires after (days, 0 = never)',
     expiresHint: 'Automatically removed from the pool N days after import — for an auto-updated source, N days after the source last published it.',
-    maxTunnels: 'Maximum simultaneous tunnels',
-    maxTunnelsHint: 'Each active VPN is a process (10-30 MB). Cap: 100. VPNs beyond the limit stay in the pool but do not start (the most reliable start first).',
+    settingsNote: 'Maximum tunnels and rotation: Settings → Scraper → VPN. Every VPN in the pool takes its turn, even if there are more than active tunnels.',
     saved: 'Saved.',
     preview: 'Preview',
     import: 'Import',
@@ -465,27 +463,9 @@ function StateTab({ T, status, onChanged }: { T: Dict; status?: Status; onChange
     }
   };
   const tunnels = status?.tunnels ?? [];
-  const [maxT, setMaxT] = useState<number | null>(null);
-  const shownMax = maxT ?? status?.capabilities.maxTunnels ?? 15;
-  const saveMax = async () => {
-    try {
-      await api.put('/vpn/settings', { maxTunnels: shownMax });
-      toast.success(T.saved);
-      onChanged();
-    } catch (e) {
-      toast.error(apiError(e));
-    }
-  };
   return (
     <div className="space-y-4">
-      <div className="rounded-md border p-3">
-        <Label>{T.maxTunnels}</Label>
-        <div className="mt-1.5 flex items-center gap-2">
-          <Input type="number" min={1} max={100} value={shownMax} onChange={(e) => setMaxT(Number(e.target.value) || 1)} className="w-24" />
-          <Button type="button" size="sm" variant="outline" onClick={saveMax}>OK</Button>
-        </div>
-        <p className="mt-1 text-[11px] text-muted-foreground">{T.maxTunnelsHint}</p>
-      </div>
+      <p className="rounded-md border bg-muted/30 p-2 text-xs text-muted-foreground">{T.settingsNote}</p>
       <div>
         <div className="mb-1.5 flex items-center justify-between">
           <p className="text-sm font-medium">{T.sources}</p>

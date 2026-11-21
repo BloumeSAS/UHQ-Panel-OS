@@ -969,7 +969,7 @@ export class ProxyServerService implements OnModuleDestroy {
       let winner: { upstream: UpstreamProxy; socket: Socket } | null = null;
 
       // 1) Session sticky : son proxy épinglé, seul, d'abord (même IP de sortie).
-      const stickyTried = !!(stickyProxyObj && stickyProxyObj.isWorking !== false);
+      const stickyTried = !!(stickyProxyObj && stickyProxyObj.isWorking !== false && ((stickyProxyObj.provider !== 'VPN' && stickyProxyObj.provider !== 'VPNGate') || this.vpnTunnels.isUp(stickyProxyObj.id)));
       if (stickyTried) {
         attemptsMade += 1;
         const sticky = this.applyCountrySelector(stickyProxyObj as UpstreamProxy, requestedCountry);
@@ -1868,6 +1868,8 @@ export class ProxyServerService implements OnModuleDestroy {
     if (this.proxyPoolCache.length > 0) {
       let pool = this.proxyPoolCache;
       if (poolName) pool = pool.filter((p) => p.pool === poolName);
+      // VPN : seuls ceux dont le tunnel tourne MAINTENANT sont candidats (le pool peut en contenir bien plus que de tunnels actifs : rotation).
+      pool = pool.filter((p) => (p.provider !== 'VPN' && p.provider !== 'VPNGate') || this.vpnTunnels.isUp(p.id));
       if (country) {
         const countries = country.split(',').map((c) => c.trim().toUpperCase());
         // Un proxy "pays sélectionnable" (countryFormat renseigné) matche
@@ -1916,10 +1918,12 @@ export class ProxyServerService implements OnModuleDestroy {
     // fallback DB, pourtant censé être le filet de sécurité qui les
     // retrouve). `take` reste borné pour ne pas ramener des millions de
     // lignes sur une requête live, mais sans biaiser QUI rentre dans ce lot.
-    const proxies = await this.prisma.backendProxy.findMany({
-      where,
-      take: 2000,
-    });
+    const proxies = (
+      await this.prisma.backendProxy.findMany({
+        where,
+        take: 2000,
+      })
+    ).filter((p) => (p.provider !== 'VPN' && p.provider !== 'VPNGate') || this.vpnTunnels.isUp(p.id));
     if (proxies.length === 0) return null;
 
     const picked = this.weightedPick(proxies as any);

@@ -680,6 +680,20 @@ export default function Settings() {
               />
             </Row>
 
+            <Separator label={t('settings.vpnTitle')} />
+            <p className="text-sm text-muted-foreground">{t('settings.vpnIntro')}</p>
+            <Grid>
+              <F label={t('settings.vpnMaxTunnels')} hint={t('settings.vpnMaxTunnelsHint')}>
+                <Input type="number" min={1} max={100} value={form.vpnMaxTunnels ?? ''} onChange={(e) => set('vpnMaxTunnels', e.target.value)} placeholder="15" />
+              </F>
+              <F label={t('settings.vpnRotateMinutes')} hint={t('settings.vpnRotateMinutesHint')}>
+                <Input type="number" min={0} max={1440} value={form.vpnRotateMinutes ?? ''} onChange={(e) => set('vpnRotateMinutes', e.target.value)} placeholder="10" />
+              </F>
+              <F label={t('settings.vpnRotatePercent')} hint={t('settings.vpnRotatePercentHint')}>
+                <Input type="number" min={1} max={100} value={form.vpnRotatePercent ?? ''} onChange={(e) => set('vpnRotatePercent', e.target.value)} placeholder="34" />
+              </F>
+            </Grid>
+
             <Separator label={t('settings.integrations')} />
 
             <CategoryFallbacks />

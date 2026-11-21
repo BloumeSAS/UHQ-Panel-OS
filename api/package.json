@@ -1,6 +1,6 @@
 {
   "name": "uhq-panel-os",
-  "version": "2.11.1",
+  "version": "2.12.0",
   "description": "UHQ Panel OS by Bloume.fr — passerelle proxy NestJS + panel React (admin/user)",
   "private": true,
   "scripts": {
