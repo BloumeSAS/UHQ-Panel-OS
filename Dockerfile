@@ -81,9 +81,9 @@ RUN addgroup -S -g 101 app && adduser -S -u 100 -G app app
 
 # VPN dans les catégories de proxies : OpenVPN (tunnel noyau, nécessite NET_ADMIN + /dev/net/tun — voir docker-compose.yml) et iproute2
 # (routage par adresse source : chaque tunnel a SON IP de sortie). Le panel tourne en non-root : il appelle UNIQUEMENT l'aide ci-dessous
-# via sudo (sous-commandes et arguments validés — cf. api/scripts/uhq-vpn-helper.sh).
+# via sudo (sous-commandes et arguments validés — cf. api/docker/uhq-vpn-helper.sh).
 RUN apk add --no-cache openvpn iproute2 sudo
-COPY api/scripts/uhq-vpn-helper.sh /usr/local/bin/uhq-vpn-helper
+COPY api/docker/uhq-vpn-helper.sh /usr/local/bin/uhq-vpn-helper
 RUN sed -i 's/\r$//' /usr/local/bin/uhq-vpn-helper \
  && chown root:root /usr/local/bin/uhq-vpn-helper && chmod 755 /usr/local/bin/uhq-vpn-helper \
  && echo 'app ALL=(root) NOPASSWD: /usr/local/bin/uhq-vpn-helper' > /etc/sudoers.d/uhq-vpn && chmod 440 /etc/sudoers.d/uhq-vpn
