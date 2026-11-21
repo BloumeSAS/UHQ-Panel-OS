@@ -57,6 +57,11 @@ const L = {
     pool: 'Catégorie (pool)',
     noPool: 'Pool par défaut',
     keep: 'Garder à jour automatiquement (remplace les serveurs morts)',
+    expires: 'Expire après (jours, 0 = jamais)',
+    expiresHint: 'Retiré automatiquement du pool N jours après l’import — pour une source mise à jour automatiquement, N jours après la dernière publication par la source.',
+    maxTunnels: 'Tunnels simultanés maximum',
+    maxTunnelsHint: 'Chaque VPN actif est un processus (10 à 30 Mo). Plafond : 100. Les VPN au-delà de cette limite restent dans le pool mais ne démarrent pas (les plus fiables sont démarrés en premier).',
+    saved: 'Enregistré.',
     preview: 'Aperçu',
     import: 'Importer',
     imported: '{n} VPN ajouté(s).',
@@ -96,6 +101,11 @@ const L = {
     pool: 'Category (pool)',
     noPool: 'Default pool',
     keep: 'Keep updated automatically (replaces dead servers)',
+    expires: 'Expires after (days, 0 = never)',
+    expiresHint: 'Automatically removed from the pool N days after import — for an auto-updated source, N days after the source last published it.',
+    maxTunnels: 'Maximum simultaneous tunnels',
+    maxTunnelsHint: 'Each active VPN is a process (10-30 MB). Cap: 100. VPNs beyond the limit stay in the pool but do not start (the most reliable start first).',
+    saved: 'Saved.',
     preview: 'Preview',
     import: 'Import',
     imported: '{n} VPN(s) added.',
@@ -180,6 +190,13 @@ export function VpnDialog({ onDone }: { onDone: () => void }) {
 }
 
 type Dict = (typeof L)['fr'] | (typeof L)['en'];
+const ExpiresField = ({ T, value, onChange }: { T: Dict; value: number; onChange: (v: number) => void }) => (
+  <div className="space-y-1.5">
+    <Label>{T.expires}</Label>
+    <Input type="number" min={0} max={3650} value={value} onChange={(e) => onChange(Math.max(0, Number(e.target.value) || 0))} />
+    <p className="text-[11px] text-muted-foreground">{T.expiresHint}</p>
+  </div>
+);
 const PoolSelect = ({ T, pools, value, onChange }: { T: Dict; pools: { id: string; name: string }[]; value: string; onChange: (v: string) => void }) => (
   <div className="space-y-1.5">
     <Label>{T.pool}</Label>
@@ -196,6 +213,7 @@ function GateTab({ T, pools, onDone }: { T: Dict; pools: { id: string; name: str
   const [perCountry, setPerCountry] = useState(3);
   const [pool, setPool] = useState('');
   const [keep, setKeep] = useState(false);
+  const [expiresDays, setExpiresDays] = useState(0);
   const [busy, setBusy] = useState(false);
   const [servers, setServers] = useState<Server[] | null>(null);
 
@@ -219,7 +237,7 @@ function GateTab({ T, pools, onDone }: { T: Dict; pools: { id: string; name: str
     });
     setServers(null);
   };
-  const body = { countries: [...picked], perCountry, pool: pool || undefined, keepUpdated: keep };
+  const body = { countries: [...picked], perCountry, pool: pool || undefined, keepUpdated: keep, expiresDays };
 
   const preview = async () => {
     setBusy(true);
@@ -275,6 +293,7 @@ function GateTab({ T, pools, onDone }: { T: Dict; pools: { id: string; name: str
       <label className="flex cursor-pointer items-center gap-2 text-sm">
         <input type="checkbox" checked={keep} onChange={(e) => setKeep(e.target.checked)} /> {T.keep}
       </label>
+      <ExpiresField T={T} value={expiresDays} onChange={setExpiresDays} />
       {servers && (
         <div className="max-h-44 overflow-auto rounded-md border text-xs">
           <table className="w-full">
@@ -308,6 +327,7 @@ function UrlTab({ T, pools, onDone }: { T: Dict; pools: { id: string; name: stri
   const [pool, setPool] = useState('');
   const [max, setMax] = useState(20);
   const [keep, setKeep] = useState(true);
+  const [expiresDays, setExpiresDays] = useState(0);
   const [busy, setBusy] = useState(false);
   const [info, setInfo] = useState('');
   const preview = async () => {
@@ -325,7 +345,7 @@ function UrlTab({ T, pools, onDone }: { T: Dict; pools: { id: string; name: stri
   const doImport = async () => {
     setBusy(true);
     try {
-      const { data: r } = await api.post('/vpn/url/import', { url, pool: pool || undefined, max, keepUpdated: keep });
+      const { data: r } = await api.post('/vpn/url/import', { url, pool: pool || undefined, max, keepUpdated: keep, expiresDays });
       toast.success(T.imported.replace('{n}', String(r.imported)));
       onDone();
     } catch (e) {
@@ -348,6 +368,7 @@ function UrlTab({ T, pools, onDone }: { T: Dict; pools: { id: string; name: stri
       <label className="flex cursor-pointer items-center gap-2 text-sm">
         <input type="checkbox" checked={keep} onChange={(e) => setKeep(e.target.checked)} /> {T.keep}
       </label>
+      <ExpiresField T={T} value={expiresDays} onChange={setExpiresDays} />
       {info && <p className="rounded-md border bg-muted/30 p-2 text-xs">{info}</p>}
       <div className="flex justify-end gap-2">
         <Button type="button" variant="outline" disabled={busy || !url.trim()} onClick={preview}>{T.preview}</Button>
@@ -361,11 +382,12 @@ function ManualTab({ T, pools, onDone }: { T: Dict; pools: { id: string; name: s
   const [text, setText] = useState('');
   const [pool, setPool] = useState('');
   const [country, setCountry] = useState('');
+  const [expiresDays, setExpiresDays] = useState(0);
   const [busy, setBusy] = useState(false);
   const submit = async () => {
     setBusy(true);
     try {
-      const { data: r } = await api.post('/vpn/import', { text, pool: pool || undefined, country: country || undefined });
+      const { data: r } = await api.post('/vpn/import', { text, pool: pool || undefined, country: country || undefined, expiresDays });
       toast.success(T.imported.replace('{n}', String(r.imported)));
       setText('');
       onDone();
@@ -386,6 +408,7 @@ function ManualTab({ T, pools, onDone }: { T: Dict; pools: { id: string; name: s
           <Input value={country} maxLength={2} onChange={(e) => setCountry(e.target.value.toUpperCase())} placeholder="FR" />
         </div>
       </div>
+      <ExpiresField T={T} value={expiresDays} onChange={setExpiresDays} />
       <div className="flex justify-end">
         <Button type="button" disabled={busy || !text.trim()} onClick={submit}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : T.import}</Button>
       </div>
@@ -416,8 +439,27 @@ function StateTab({ T, status, onChanged }: { T: Dict; status?: Status; onChange
     }
   };
   const tunnels = status?.tunnels ?? [];
+  const [maxT, setMaxT] = useState<number | null>(null);
+  const shownMax = maxT ?? status?.capabilities.maxTunnels ?? 15;
+  const saveMax = async () => {
+    try {
+      await api.put('/vpn/settings', { maxTunnels: shownMax });
+      toast.success(T.saved);
+      onChanged();
+    } catch (e) {
+      toast.error(apiError(e));
+    }
+  };
   return (
     <div className="space-y-4">
+      <div className="rounded-md border p-3">
+        <Label>{T.maxTunnels}</Label>
+        <div className="mt-1.5 flex items-center gap-2">
+          <Input type="number" min={1} max={100} value={shownMax} onChange={(e) => setMaxT(Number(e.target.value) || 1)} className="w-24" />
+          <Button type="button" size="sm" variant="outline" onClick={saveMax}>OK</Button>
+        </div>
+        <p className="mt-1 text-[11px] text-muted-foreground">{T.maxTunnelsHint}</p>
+      </div>
       <div>
         <div className="mb-1.5 flex items-center justify-between">
           <p className="text-sm font-medium">{T.sources}</p>

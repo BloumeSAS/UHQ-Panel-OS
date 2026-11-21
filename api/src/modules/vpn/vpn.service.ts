@@ -47,6 +47,8 @@ export interface VpnSource {
   url?: string;
   /** provider « url » : nombre maximum de VPN gardés pour cette source. */
   max?: number;
+  /** Durée de vie en jours (0 / absent = jamais) : un VPN est retiré N jours après la dernière fois où la source l'a publié. */
+  expiresDays?: number;
 }
 
 /** URL unique d'un VPN (dédoublonnage) — identique pour une même configuration. */
@@ -222,13 +224,19 @@ export class VpnService implements OnModuleInit, OnModuleDestroy {
   /** Crée (ou ignore si déjà présent) les lignes de proxies correspondantes. Renvoie le nombre de nouveaux VPN. */
   async importConfigs(
     items: (ParsedVpn & { country?: string })[],
-    opts: { pool?: string | null; provider: string; sourceId?: string },
+    opts: { pool?: string | null; provider: string; sourceId?: string; expiresDays?: number },
   ): Promise<number> {
     let created = 0;
+    const days = Math.min(3650, Math.max(0, Number(opts.expiresDays) || 0));
+    const expiresAt = days > 0 ? new Date(Date.now() + days * 86_400_000) : null;
     for (const it of items) {
       const url = vpnUrlOf(it);
       const exists = await this.prisma.backendProxy.findUnique({ where: { url }, select: { id: true } });
-      if (exists) continue;
+      if (exists) {
+        // Toujours publié par la source : la durée de vie repart de zéro.
+        if (expiresAt && opts.sourceId) await this.prisma.backendProxy.update({ where: { id: exists.id }, data: { vpnExpiresAt: expiresAt } }).catch(() => undefined);
+        continue;
+      }
       await this.prisma.backendProxy.create({
         data: {
           id: crypto.randomUUID(),
@@ -242,6 +250,7 @@ export class VpnService implements OnModuleInit, OnModuleDestroy {
           isWorking: false,
           vpnKind: it.kind,
           vpnConfig: it.config,
+          vpnExpiresAt: expiresAt,
           tags: opts.sourceId ? `vpnsrc:${opts.sourceId}` : null,
         },
       });
@@ -261,18 +270,25 @@ export class VpnService implements OnModuleInit, OnModuleDestroy {
     return { total: parsed.length, byKind, sample: parsed.slice(0, 5).map((p) => `${protocolLabel(p.kind, p.config)} ${p.host}:${p.port}`) };
   }
 
-  async syncOneUrl(url: string, max: number, pool: string | null, sourceId?: string): Promise<number> {
+  async syncOneUrl(url: string, max: number, pool: string | null, sourceId?: string, expiresDays?: number): Promise<number> {
     const items = parseSubscription(await fetchPublicText(url)).slice(0, max);
-    return this.importConfigs(items, { pool, provider: 'VPN', sourceId });
+    return this.importConfigs(items, { pool, provider: 'VPN', sourceId, expiresDays });
   }
 
-  async importText(text: string, opts: { pool?: string | null; country?: string }) {
+  async importText(text: string, opts: { pool?: string | null; country?: string; expiresDays?: number }) {
     const parsed = parseVpnText(text);
-    const n = await this.importConfigs(parsed.map((p) => ({ ...p, country: opts.country })), { pool: opts.pool, provider: 'VPN' });
+    const n = await this.importConfigs(parsed.map((p) => ({ ...p, country: opts.country })), { pool: opts.pool, provider: 'VPN', expiresDays: opts.expiresDays });
     return { parsed: parsed.length, imported: n };
   }
 
   // ───────────────────────────── Sources automatiques ─────────────────────────────
+
+  async setMaxTunnels(n: number): Promise<number> {
+    const v = Math.min(100, Math.max(1, Math.round(Number(n) || 15)));
+    await this.settings.setMany({ vpnMaxTunnels: String(v) } as any);
+    this.caps = null;
+    return v;
+  }
 
   getSources(): VpnSource[] {
     try {
@@ -289,6 +305,7 @@ export class VpnService implements OnModuleInit, OnModuleDestroy {
       provider: (s.provider === 'url' ? 'url' : 'vpngate') as 'vpngate' | 'url',
       url: s.provider === 'url' ? String(s.url ?? '').slice(0, 500) : undefined,
       max: Math.min(200, Math.max(1, Number(s.max) || 20)),
+      expiresDays: Math.min(3650, Math.max(0, Number(s.expiresDays) || 0)),
       countries: (s.countries ?? []).map((c) => String(c).toUpperCase().slice(0, 2)).filter(Boolean).slice(0, 60),
       perCountry: Math.min(20, Math.max(1, Number(s.perCountry) || 3)),
       pool: String(s.pool ?? '').slice(0, 80),
@@ -318,7 +335,7 @@ export class VpnService implements OnModuleInit, OnModuleDestroy {
           gate = gate ?? (await fetchVpnGate(true));
           items = pickVpnGate(gate, src.countries, src.perCountry).map((s) => ({ kind: 'openvpn' as const, config: s.config, host: s.ip, port: s.port, country: s.countryCode }));
         }
-        added += await this.importConfigs(items, { pool: src.pool || null, provider, sourceId: src.id });
+        added += await this.importConfigs(items, { pool: src.pool || null, provider, sourceId: src.id, expiresDays: src.expiresDays });
         const keep = new Set(items.map((i) => vpnUrlOf(i)));
         const mine = await this.prisma.backendProxy.findMany({ where: { tags: `vpnsrc:${src.id}` }, select: { id: true, url: true, isWorking: true } });
         for (const row of mine) {
@@ -351,7 +368,11 @@ export class VpnService implements OnModuleInit, OnModuleDestroy {
 
   private async reconcile() {
     const caps = await this.capabilities();
-    const max = Math.max(0, this.settings.getNumber('vpnMaxTunnels'));
+    // Plafond dur : 100 emplacements (tables de routage 200-299 et noms de périphériques de l'aide privilégiée).
+    const max = Math.min(100, Math.max(0, this.settings.getNumber('vpnMaxTunnels')));
+    // Expiration automatique (abonnements / listes gratuites) : retiré du pool, le tunnel s'arrête au passage suivant.
+    const expired = await this.prisma.backendProxy.deleteMany({ where: { vpnKind: { not: null }, vpnExpiresAt: { lt: new Date() } } }).catch(() => ({ count: 0 }));
+    if (expired.count) this.logger.log(`${expired.count} VPN expiré(s) retiré(s) du pool.`);
     const rows = await this.prisma.backendProxy.findMany({
       where: { vpnKind: { not: null }, archived: false, isBlacklisted: false },
       select: { id: true, vpnKind: true, vpnConfig: true, country: true, isWorking: true, protocol: true },

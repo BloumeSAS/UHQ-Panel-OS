@@ -385,6 +385,8 @@ model BackendProxy {
   // un proxy comme les autres dans la catégorie.
   vpnKind        String?
   vpnConfig      String?
+  // Expiration automatique du VPN (null = jamais) : retiré du pool à cette date (abonnements / listes gratuites qui expirent).
+  vpnExpiresAt   DateTime?
   targetBlocks   TargetBlock[]
 
   @@index([pool])

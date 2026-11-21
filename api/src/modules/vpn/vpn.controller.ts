@@ -48,7 +48,7 @@ export class VpnController {
 
   @Audited('vpn.import')
   @Post('vpngate/import')
-  async importVpnGate(@Body() body: { countries?: string[]; perCountry?: number; pool?: string; keepUpdated?: boolean }) {
+  async importVpnGate(@Body() body: { countries?: string[]; perCountry?: number; pool?: string; keepUpdated?: boolean; expiresDays?: number }) {
     const list = await fetchVpnGate().catch((e) => {
       throw new BadRequestException(`VPNGate injoignable : ${(e as Error).message}`);
     });
@@ -60,22 +60,22 @@ export class VpnController {
     if (body?.keepUpdated) {
       const sources = this.vpn.getSources();
       sourceId = `vpngate-${Date.now().toString(36)}`;
-      sources.push({ id: sourceId, provider: 'vpngate', countries, perCountry, pool: body.pool ?? '', enabled: true });
+      sources.push({ id: sourceId, provider: 'vpngate', countries, perCountry, pool: body.pool ?? '', enabled: true, expiresDays: body.expiresDays });
       await this.vpn.setSources(sources);
     }
     const imported = await this.vpn.importConfigs(
       best.map((s) => ({ kind: 'openvpn' as const, config: s.config, host: s.ip, port: s.port, country: s.countryCode })),
-      { pool: body?.pool || null, provider: 'VPNGate', sourceId },
+      { pool: body?.pool || null, provider: 'VPNGate', sourceId, expiresDays: body?.expiresDays },
     );
     return { status: 'success', found: best.length, imported };
   }
 
   @Audited('vpn.import')
   @Post('import')
-  async importManual(@Body() body: { text?: string; pool?: string; country?: string }) {
+  async importManual(@Body() body: { text?: string; pool?: string; country?: string; expiresDays?: number }) {
     const text = String(body?.text ?? '');
     if (text.length > 400_000) throw new BadRequestException('Texte trop volumineux');
-    const r = await this.vpn.importText(text, { pool: body?.pool || null, country: body?.country });
+    const r = await this.vpn.importText(text, { pool: body?.pool || null, country: body?.country, expiresDays: body?.expiresDays });
     if (r.parsed === 0) {
       throw new BadRequestException('Aucune configuration reconnue (OpenVPN .ovpn, WireGuard .conf ou liens vless:// vmess:// trojan:// ss:// hy2://)');
     }
@@ -93,24 +93,30 @@ export class VpnController {
 
   @Audited('vpn.import')
   @Post('url/import')
-  async urlImport(@Body() body: { url?: string; pool?: string; max?: number; keepUpdated?: boolean }) {
+  async urlImport(@Body() body: { url?: string; pool?: string; max?: number; keepUpdated?: boolean; expiresDays?: number }) {
     const url = String(body?.url ?? '').trim();
     const max = Math.min(200, Math.max(1, Number(body?.max) || 20));
     let sourceId: string | undefined;
     if (body?.keepUpdated) {
       const sources = this.vpn.getSources();
       sourceId = `url-${Date.now().toString(36)}`;
-      sources.push({ id: sourceId, provider: 'url', url, max, countries: [], perCountry: 0, pool: body.pool ?? '', enabled: true });
+      sources.push({ id: sourceId, provider: 'url', url, max, countries: [], perCountry: 0, pool: body.pool ?? '', enabled: true, expiresDays: body.expiresDays });
       await this.vpn.setSources(sources);
     }
     try {
       const prev = await this.vpn.previewUrl(url);
       if (prev.total === 0) throw new Error('aucune configuration reconnue à cette adresse');
-      const r = await this.vpn.syncOneUrl(url, max, body?.pool ?? null, sourceId);
+      const r = await this.vpn.syncOneUrl(url, max, body?.pool ?? null, sourceId, body?.expiresDays);
       return { status: 'success', found: prev.total, imported: r };
     } catch (e) {
       throw new BadRequestException(`Import impossible : ${(e as Error).message}`);
     }
+  }
+
+  @Audited('vpn.sources')
+  @Put('settings')
+  async setSettings(@Body() body: { maxTunnels?: number }) {
+    return { status: 'success', maxTunnels: await this.vpn.setMaxTunnels(Number(body?.maxTunnels)) };
   }
 
   @Get('sources')

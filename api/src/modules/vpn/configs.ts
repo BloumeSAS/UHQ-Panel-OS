@@ -96,7 +96,7 @@ function b64decode(s: string): string {
 function parseLink(line: string): ParsedVpn | null {
   const l = line.trim();
   const scheme = /^([a-z0-9]+):\/\//i.exec(l)?.[1]?.toLowerCase();
-  if (!scheme || !['vless', 'vmess', 'trojan', 'ss', 'hy2', 'hysteria2'].includes(scheme)) return null;
+  if (!scheme || !['vless', 'vmess', 'trojan', 'ss', 'hy2', 'hysteria2', 'tuic', 'ssh'].includes(scheme)) return null;
   try {
     if (scheme === 'vmess') {
       const j = JSON.parse(b64decode(l.slice(8)));
@@ -232,6 +232,16 @@ function linkOutbound(link: string): Record<string, unknown> {
     const tls = tlsFrom(params, { enabled: true, server: u.hostname });
     const tr = transportFrom(params);
     return { type: 'trojan', ...base, password: decodeURIComponent(u.username), ...(tls ? { tls } : {}), ...(tr ? { transport: tr } : {}) };
+  }
+  if (scheme === 'ssh') {
+    return { type: 'ssh', ...base, server_port: Number(u.port || 22), user: decodeURIComponent(u.username), password: decodeURIComponent(u.password) };
+  }
+  if (scheme === 'tuic') {
+    const tls = tlsFrom(params, { enabled: true, server: u.hostname }) ?? { enabled: true, server_name: u.hostname };
+    return {
+      type: 'tuic', ...base, uuid: decodeURIComponent(u.username), password: decodeURIComponent(u.password),
+      congestion_control: params.get('congestion_control') ?? params.get('congestion-control') ?? 'bbr', udp_relay_mode: params.get('udp_relay_mode') ?? 'native', tls,
+    };
   }
   // hy2 / hysteria2
   const tls = tlsFrom(params, { enabled: true, server: u.hostname }) ?? { enabled: true, server_name: u.hostname };
