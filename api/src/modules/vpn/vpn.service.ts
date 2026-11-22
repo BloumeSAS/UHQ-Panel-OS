@@ -7,7 +7,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { PrismaService } from '../../database/prisma.service';
 import { SettingsService } from '../../config/settings.service';
-import { ParsedVpn, VpnKind, parseSubscription, parseVpnText, protocolLabel, singBoxConfig } from './configs';
+import { ParsedVpn, VpnKind, parseSubscription, validEndpoint, parseVpnText, protocolLabel, singBoxConfig } from './configs';
 import { isPrivateIp } from '../../common/utils/ip-range';
 import * as dns from 'dns/promises';
 import { startSocksServer } from './socks-server';
@@ -252,7 +252,8 @@ export class VpnService implements OnModuleInit, OnModuleDestroy {
     // Par lots (milliers de configurations d'une liste publique) : une requête de lecture et une d'insertion par lot, pas une par ligne.
     const CH = 500;
     for (let i = 0; i < items.length; i += CH) {
-      const chunk = items.slice(i, i + CH);
+      // Garde-fou : une seule ligne sans port valide ferait échouer tout le lot (Prisma « Argument `port` is missing »).
+      const chunk = items.slice(i, i + CH).filter((it) => validEndpoint(it.host, it.port));
       const urls = chunk.map((it) => vpnUrlOf(it));
       const existing = await this.prisma.backendProxy.findMany({ where: { url: { in: urls } }, select: { id: true, url: true } });
       const known = new Map(existing.map((e) => [e.url, e.id]));

@@ -93,7 +93,19 @@ function b64decode(s: string): string {
   return Buffer.from(s.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8');
 }
 
+/** Hôte + port exploitables (rejette NaN, 0, hôtes mangés par du Markdown/HTML…) : sinon Prisma refuse TOUT l'import. */
+export function validEndpoint(host: string, port: number): boolean {
+  if (!Number.isInteger(port) || port < 1 || port > 65535) return false;
+  const h = (host || '').replace(/^\[|\]$/g, '');
+  return h.length > 0 && h.length <= 253 && /^[A-Za-z0-9._:-]+$/.test(h);
+}
+
 function parseLink(line: string): ParsedVpn | null {
+  const r = parseLinkRaw(line);
+  return r && validEndpoint(r.host, r.port) ? r : null;
+}
+
+function parseLinkRaw(line: string): ParsedVpn | null {
   const l = line.trim();
   const scheme = /^([a-z0-9]+):\/\//i.exec(l)?.[1]?.toLowerCase();
   if (!scheme || !['vless', 'vmess', 'trojan', 'ss', 'hy2', 'hysteria2', 'tuic', 'ssh'].includes(scheme)) return null;
@@ -117,7 +129,7 @@ function ssUrl(l: string): { method: string; password: string; host: string; por
   const noScheme = l.slice(5);
   const hashIdx = noScheme.indexOf('#');
   const name = hashIdx >= 0 ? decodeURIComponent(noScheme.slice(hashIdx + 1)) : undefined;
-  const main = (hashIdx >= 0 ? noScheme.slice(0, hashIdx) : noScheme).split('?')[0];
+  const main = (hashIdx >= 0 ? noScheme.slice(0, hashIdx) : noScheme).split('?')[0].replace(/\/+$/, '');
   let creds: string;
   let hostPort: string;
   if (main.includes('@')) {
@@ -147,7 +159,7 @@ export function parseVpnText(text: string): ParsedVpn[] {
     try {
       const clean = sanitizeOvpn(t);
       const r = ovpnRemote(clean);
-      if (r.host) out.push({ kind: 'openvpn', config: clean, host: r.host, port: r.port });
+      if (validEndpoint(r.host, r.port)) out.push({ kind: 'openvpn', config: clean, host: r.host, port: r.port });
     } catch {
       /* configuration refusée : rien n'est importé */
     }
