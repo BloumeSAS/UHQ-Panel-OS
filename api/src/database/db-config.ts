@@ -72,6 +72,26 @@ export function resolveDatabaseUrl(): { url: string | null; source: DbSource } {
 }
 
 /**
+ * Taille du pool Prisma. Par défaut Prisma n'ouvre que (2 × CPU + 1) connexions (9 sur 4 cœurs) : avec beaucoup de
+ * tunnels VPN, le moteur proxy et les tâches de fond, le pool saturait (« Timed out fetching a new connection »)
+ * et tout le panel tombait alors que la base était saine. Surcharge : DB_POOL_SIZE / DB_POOL_TIMEOUT (s) ;
+ * une valeur déjà présente dans l'URL (?connection_limit=…) est respectée. Attention : PostgreSQL accepte 100
+ * connexions par défaut (max_connections) : ne pas dépasser ce plafond.
+ */
+export function withPoolParams(url: string): string {
+  try {
+    const size = Math.max(5, Math.min(500, Number(process.env.DB_POOL_SIZE) || 40));
+    const timeout = Math.max(5, Math.min(300, Number(process.env.DB_POOL_TIMEOUT) || 30));
+    const u = new URL(url);
+    if (!u.searchParams.has('connection_limit')) u.searchParams.set('connection_limit', String(size));
+    if (!u.searchParams.has('pool_timeout')) u.searchParams.set('pool_timeout', String(timeout));
+    return u.toString();
+  } catch {
+    return url;
+  }
+}
+
+/**
  * Pose `process.env.DATABASE_URL` pour que PrismaClient se construise.
  * Retourne l'état de configuration. À appeler tout au début du bootstrap,
  * avant que Nest n'instancie PrismaService.
@@ -79,7 +99,7 @@ export function resolveDatabaseUrl(): { url: string | null; source: DbSource } {
 export function applyDatabaseEnv(): { configured: boolean; source: DbSource } {
   const { url, source } = resolveDatabaseUrl();
   if (url) {
-    process.env.DATABASE_URL = url;
+    process.env.DATABASE_URL = withPoolParams(url);
     return { configured: true, source };
   }
   // Aucune base : placeholder pour permettre la construction du client.
