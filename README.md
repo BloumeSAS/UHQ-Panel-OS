@@ -163,12 +163,29 @@ Au premier accès, un wizard de configuration guide :
 
 ---
 
+## 🎬 Vidéos
+
+| Vidéo | Lien |
+|---|---|
+| Présentation (1 min) | https://youtu.be/UUASI5vbf2Q |
+| Installer UHQ Panel OS de A à Z (Docker + Coolify) | https://youtu.be/bF2yE-W-93s |
+| Addon Wallet | https://youtu.be/TxrwwHY6CKM |
+| Addon Orders | https://youtu.be/YRiaL9PhQ5o |
+| Addon Analytics | https://youtu.be/VW0lURoUj3g |
+| Addon Codes promo | https://youtu.be/9MhQMgCrrvI |
+| Addon UHQ.Monster Reseller | https://youtu.be/MPDvjlLr3l4 |
+| Addon Vitrine | https://youtu.be/1bPm8wEvaCQ |
+
+Chaque page de la [documentation](https://uhq-panel-os-docs.bloume.fr) embarque sa vidéo.
+
+---
+
 ## 🧩 Addons
 
 UHQ Panel OS supporte une architecture d'addons open source et gratuite pour enrichir le produit sans modifier le cœur.
 
 - Les addons sont stockés dans `addons/`
-- Exemple inclus : `addons/wallet`
+- Addons officiels gratuits : **Wallet**, **Orders**, **Analytics**, **Codes promo**, **UHQ.Monster Reseller** et **Vitrine** (activables en un clic depuis la page Extensions, voir la [documentation](https://uhq-panel-os-docs.bloume.fr/addons/overview))
 - Un addon peut contenir un backend, une interface web, une intégration de widget ou une extension du panel
 - Les addons sont conçus pour être partagés, réutilisés et maintenus par la communauté
 
