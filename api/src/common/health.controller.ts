@@ -24,6 +24,8 @@ export class HealthController {
       version: APP_VERSION,
       service: 'UHQ Panel OS',
       company: 'Bloume SAS',
+      // Depuis combien de secondes le processus tourne : l'addon Statut s'en sert pour distinguer un vrai redémarrage du panel.
+      uptimeSec: Math.round(process.uptime()),
     };
   }
 

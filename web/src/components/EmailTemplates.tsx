@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Eye, Pencil, Send, RotateCcw, Mail, ShieldCheck, UserCog, Users, ShoppingCart, Wallet, Ticket } from 'lucide-react';
+import { Eye, Pencil, Send, RotateCcw, Mail, ShieldCheck, UserCog, Users, ShoppingCart, Wallet, Ticket, LifeBuoy, Share2, Activity } from 'lucide-react';
 import { api, apiError } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { toast } from '@/lib/toast';
@@ -33,6 +33,9 @@ const GROUPS: { id: string; icon: React.ElementType }[] = [
   { id: 'orders', icon: ShoppingCart },
   { id: 'wallet', icon: Wallet },
   { id: 'promo', icon: Ticket },
+  { id: 'tickets', icon: LifeBuoy },
+  { id: 'referral', icon: Share2 },
+  { id: 'status', icon: Activity },
 ];
 
 /** Liste des modèles d'e-mails : interrupteur par envoi, aperçu fidèle, édition FR/EN, envoi de test. */

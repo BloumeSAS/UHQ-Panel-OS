@@ -11,7 +11,7 @@
  *  - `[[Libellé|{url}]]` = bouton (URL http/https uniquement) ;
  *  - `{variable}` = valeur injectée (échappée).
  */
-export type MailGroup = 'account' | 'security' | 'admin' | 'customers' | 'orders' | 'wallet' | 'promo';
+export type MailGroup = 'account' | 'security' | 'admin' | 'customers' | 'orders' | 'wallet' | 'promo' | 'tickets' | 'referral' | 'status';
 
 export interface MailTemplateDef {
   id: string;
@@ -241,6 +241,109 @@ export const MAIL_TEMPLATES: MailTemplateDef[] = [
       en: 'Your code **{code}** was applied: {benefit}',
     },
     sample: { siteName: 'UHQ Panel OS', code: 'BIENVENUE10', benefit: '+10 % de bonus sur votre recharge' },
+  },
+  // ───── Addon Tickets ─────
+  {
+    id: 'tickets.created', group: 'tickets', audience: 'customer', defaultEnabled: true, addon: true,
+    vars: [...common, 'ticketId', 'subject', 'excerpt'],
+    subject: { fr: 'Ticket {ticketId} reçu : {subject}', en: 'Ticket {ticketId} received: {subject}' },
+    body: {
+      fr: 'Votre demande a bien été enregistrée sous le numéro **{ticketId}**.\n\n**{subject}**\n\n{excerpt}\n\nNous vous répondrons dès que possible ; la réponse apparaîtra dans l’espace « Support » du panel.',
+      en: 'Your request was recorded as **{ticketId}**.\n\n**{subject}**\n\n{excerpt}\n\nWe will answer as soon as possible; the reply will appear in the “Support” area of the panel.',
+    },
+    sample: { siteName: 'UHQ Panel OS', ticketId: '#12', subject: 'Mon proxy renvoie une erreur 407', excerpt: 'Depuis hier soir, toutes mes requêtes échouent…' },
+  },
+  {
+    id: 'tickets.reply', group: 'tickets', audience: 'customer', defaultEnabled: true, addon: true,
+    vars: [...common, 'ticketId', 'subject', 'excerpt'],
+    subject: { fr: 'Réponse à votre ticket {ticketId}', en: 'Reply to your ticket {ticketId}' },
+    body: {
+      fr: 'Le support a répondu à votre ticket **{ticketId}** — {subject} :\n\n{excerpt}\n\nConnectez-vous au panel (espace « Support ») pour lire la réponse complète et répondre.',
+      en: 'Support replied to your ticket **{ticketId}** — {subject}:\n\n{excerpt}\n\nSign in to the panel (“Support” area) to read the full reply and answer.',
+    },
+    sample: { siteName: 'UHQ Panel OS', ticketId: '#12', subject: 'Mon proxy renvoie une erreur 407', excerpt: 'Votre mot de passe a expiré, pouvez-vous le régénérer ?' },
+  },
+  {
+    id: 'tickets.resolved', group: 'tickets', audience: 'customer', defaultEnabled: true, addon: true,
+    vars: [...common, 'ticketId', 'subject', 'excerpt'],
+    subject: { fr: 'Ticket {ticketId} résolu', en: 'Ticket {ticketId} resolved' },
+    body: {
+      fr: 'Votre ticket **{ticketId}** — {subject} a été marqué comme résolu :\n\n{excerpt}\n\nVous pouvez noter l’aide reçue depuis l’espace « Support », ou répondre pour rouvrir le ticket.',
+      en: 'Your ticket **{ticketId}** — {subject} was marked as resolved:\n\n{excerpt}\n\nYou can rate the help you received in the “Support” area, or reply to reopen the ticket.',
+    },
+    sample: { siteName: 'UHQ Panel OS', ticketId: '#12', subject: 'Mon proxy renvoie une erreur 407', excerpt: 'Parfait, bonne journée !' },
+  },
+  {
+    id: 'tickets.admin-new', group: 'tickets', audience: 'admin', defaultEnabled: true, addon: true,
+    vars: [...common, 'ticketId', 'subject', 'from', 'excerpt'],
+    subject: { fr: 'Nouveau ticket {ticketId} : {subject}', en: 'New ticket {ticketId}: {subject}' },
+    body: {
+      fr: 'Nouveau ticket **{ticketId}** de {from} :\n\n**{subject}**\n\n{excerpt}\n\nOuvrez la console « Support » du panel pour répondre.',
+      en: 'New ticket **{ticketId}** from {from}:\n\n**{subject}**\n\n{excerpt}\n\nOpen the “Support” console in the panel to reply.',
+    },
+    sample: { siteName: 'UHQ Panel OS', ticketId: '#12', subject: 'Mon proxy renvoie une erreur 407', from: 'client@exemple.fr', excerpt: 'Depuis hier soir, toutes mes requêtes échouent…' },
+  },
+  {
+    id: 'tickets.admin-reply', group: 'tickets', audience: 'admin', defaultEnabled: true, addon: true,
+    vars: [...common, 'ticketId', 'subject', 'from', 'excerpt'],
+    subject: { fr: 'Réponse du client sur {ticketId}', en: 'Customer reply on {ticketId}' },
+    body: {
+      fr: '{from} a répondu au ticket **{ticketId}** — {subject} :\n\n{excerpt}',
+      en: '{from} replied to ticket **{ticketId}** — {subject}:\n\n{excerpt}',
+    },
+    sample: { siteName: 'UHQ Panel OS', ticketId: '#12', subject: 'Mon proxy renvoie une erreur 407', from: 'client@exemple.fr', excerpt: 'Ça fonctionne, merci beaucoup !' },
+  },
+  // ───── Addon Referral ─────
+  {
+    id: 'referral.joined', group: 'referral', audience: 'customer', defaultEnabled: true, addon: true,
+    vars: [...common, 'referee'],
+    subject: { fr: 'Un nouveau filleul grâce à vous !', en: 'You have a new referral!' },
+    body: {
+      fr: '**{referee}** vient d’utiliser votre code de parrainage.\n\nVous serez récompensé(e) à chacune de ses commandes : suivez vos gains dans l’espace « Parrainage ».',
+      en: '**{referee}** just used your referral code.\n\nYou will be rewarded on each of their orders: follow your earnings in the “Referral” area.',
+    },
+    sample: { siteName: 'UHQ Panel OS', referee: 'ma***@exemple.fr' },
+  },
+  {
+    id: 'referral.commission', group: 'referral', audience: 'customer', defaultEnabled: true, addon: true,
+    vars: [...common, 'amount', 'referee'],
+    subject: { fr: 'Commission de parrainage : +{amount}', en: 'Referral commission: +{amount}' },
+    body: {
+      fr: 'Une commission de **{amount}** vient d’être ajoutée à votre solde, suite à une commande de {referee}.\n\nMerci d’avoir partagé votre lien !',
+      en: 'A commission of **{amount}** was added to your balance following an order by {referee}.\n\nThank you for sharing your link!',
+    },
+    sample: { siteName: 'UHQ Panel OS', amount: '2,00 €', referee: 'ma***@exemple.fr' },
+  },
+  {
+    id: 'referral.welcome-bonus', group: 'referral', audience: 'customer', defaultEnabled: true, addon: true,
+    vars: [...common, 'amount'],
+    subject: { fr: 'Bonus de bienvenue : +{amount}', en: 'Welcome bonus: +{amount}' },
+    body: {
+      fr: 'Merci pour votre première commande ! Un bonus de bienvenue de **{amount}** a été ajouté à votre solde grâce au parrainage.',
+      en: 'Thanks for your first order! A welcome bonus of **{amount}** was added to your balance thanks to the referral.',
+    },
+    sample: { siteName: 'UHQ Panel OS', amount: '1,00 €' },
+  },
+  // ───── Addon Status ─────
+  {
+    id: 'status.incident', group: 'status', audience: 'customer', defaultEnabled: true, addon: true,
+    vars: [...common, 'title', 'state', 'body'],
+    subject: { fr: '{state} : {title}', en: '{state}: {title}' },
+    body: {
+      fr: '**{title}**\n\n{body}\n\nLe détail et l’historique sont sur la page « État des services » du panel. Vous recevez cet e-mail car vous êtes abonné(e) aux alertes.',
+      en: '**{title}**\n\n{body}\n\nDetails and history are on the panel’s “Service status” page. You receive this e-mail because you subscribed to alerts.',
+    },
+    sample: { siteName: 'UHQ Panel OS', title: 'Service proxy indisponible', state: 'Nouvel incident', body: 'Nous enquêtons.' },
+  },
+  {
+    id: 'status.admin-alert', group: 'status', audience: 'admin', defaultEnabled: true, addon: true,
+    vars: [...common, 'title', 'state', 'body'],
+    subject: { fr: '[Statut] {state} : {title}', en: '[Status] {state}: {title}' },
+    body: {
+      fr: 'Détection automatique — **{title}** ({state}).\n\n{body}',
+      en: 'Automatic detection — **{title}** ({state}).\n\n{body}',
+    },
+    sample: { siteName: 'UHQ Panel OS', title: 'Redémarrage du service', state: 'Nouvel incident', body: 'Le service a redémarré. Interruption : 2 min.' },
   },
 ];
 

@@ -54,3 +54,6 @@ api/logs/
 docker-compose.override.yml
 # Studio graphiste / vidéo (PRIVÉ : vidéos, bannières, médias — ne jamais publier)
 uhq-panel-os-graphiste/
+addons/tickets
+addons/referral
+addons/status

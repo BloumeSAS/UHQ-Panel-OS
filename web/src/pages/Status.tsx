@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import axios from 'axios';
 import { CheckCircle2, XCircle, AlertTriangle } from 'lucide-react';
-import { useT } from '@/lib/i18n';
+import { useI18n, useT } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 
 interface StatusBody {
@@ -18,6 +18,12 @@ interface StatusBody {
 /** Page d'état publique (/status) — activée dans Paramètres → Général, sans connexion requise. */
 export default function Status() {
   const t = useT();
+  const { lang } = useI18n();
+  // Addon « État des services » activé : sa page (incidents, 90 jours, maintenances) remplace la page de base.
+  const [addon, setAddon] = useState<boolean | null>(null);
+  useEffect(() => {
+    axios.get('/addon-proxy/status/api/public/status', { timeout: 6000 }).then((r) => setAddon(r.data?.enabled === true)).catch(() => setAddon(false));
+  }, []);
   const [data, setData] = useState<StatusBody | null>(null);
   const [error, setError] = useState('');
 
@@ -36,6 +42,12 @@ export default function Status() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  if (addon === null) return <div className="min-h-screen bg-muted/30" />;
+  if (addon) {
+    const theme = document.documentElement.classList.contains('dark') ? 'dark' : 'light';
+    return <iframe title={t('status.title')} src={`/addon-proxy/status/?lang=${encodeURIComponent(lang)}&theme=${theme}`} className="block h-screen w-full border-0" />;
+  }
 
   const tone =
     data?.status === 'operational'

@@ -36,7 +36,7 @@
   {
     "name": "Orders",
     "slug": "orders",
-    "version": "1.5.1",
+    "version": "1.6.0",
     "description": "Boutique interne — commandes payées via Wallet. Livraison automatique de comptes proxy après paiement.",
     "icon": "ShoppingCart",
     "free": true,
@@ -197,5 +197,102 @@
     "extraEnv": {
       "ORDERS_URL": "http://127.0.0.1:3102"
     }
+  },
+  {
+    "free": true,
+    "official": true,
+    "license": "MIT",
+    "author": {
+      "name": "Bloume SAS",
+      "url": "https://bloume.fr"
+    },
+    "name": "Tickets",
+    "slug": "tickets",
+    "version": "1.0.0",
+    "description": "Support client intégré : tickets avec pièces jointes, console du personnel (Admin + Support), réponses types, notes internes, notation de satisfaction et e-mails.",
+    "icon": "LifeBuoy",
+    "repository": "https://github.com/BloumeSAS/UHQ-Addon-Tickets",
+    "homepage": "https://uhq-panel-os-docs.bloume.fr/addons/official/tickets",
+    "tags": [
+      "support",
+      "tickets",
+      "helpdesk"
+    ],
+    "features": [
+      "Tickets clients avec pièces jointes (PNG, JPG, PDF, TXT)",
+      "Console Admin + Support : file d'attente, filtres, attribution, étiquettes",
+      "Réponses types et notes internes",
+      "Notation de satisfaction et statistiques de délais",
+      "Fermeture automatique des tickets résolus",
+      "E-mails de notification (client et administrateurs)"
+    ],
+    "bundlePort": 3107
+  },
+  {
+    "free": true,
+    "official": true,
+    "license": "MIT",
+    "author": {
+      "name": "Bloume SAS",
+      "url": "https://bloume.fr"
+    },
+    "name": "Referral",
+    "slug": "referral",
+    "version": "1.0.0",
+    "description": "Parrainage et affiliation : lien et code personnels, commission créditée sur le solde Wallet à chaque commande des filleuls, bonus de bienvenue et délai de protection.",
+    "icon": "Share2",
+    "repository": "https://github.com/BloumeSAS/UHQ-Addon-Referral",
+    "homepage": "https://uhq-panel-os-docs.bloume.fr/addons/official/referral",
+    "tags": [
+      "referral",
+      "affiliate",
+      "wallet"
+    ],
+    "requires": [
+      "wallet",
+      "orders"
+    ],
+    "features": [
+      "Lien et code de parrainage personnalisables",
+      "Commission en % et/ou montant fixe, boutique et recharges",
+      "Bonus de bienvenue pour le filleul",
+      "Délai de protection contre les annulations et remboursements",
+      "Plafonds par filleul et par parrain, suivi et validation admin",
+      "Versement automatique sur le solde Wallet"
+    ],
+    "bundlePort": 3108,
+    "extraEnv": {
+      "WALLET_URL": "http://127.0.0.1:3101",
+      "ORDERS_URL": "http://127.0.0.1:3102"
+    }
+  },
+  {
+    "free": true,
+    "official": true,
+    "license": "MIT",
+    "author": {
+      "name": "Bloume SAS",
+      "url": "https://bloume.fr"
+    },
+    "name": "Status",
+    "slug": "status",
+    "version": "1.0.0",
+    "description": "Page de statut publique : disponibilité sur 90 jours, incidents et maintenances, détection automatique des pannes et des redéploiements, alertes e-mail, Discord et Slack.",
+    "icon": "Activity",
+    "repository": "https://github.com/BloumeSAS/UHQ-Addon-Status",
+    "homepage": "https://uhq-panel-os-docs.bloume.fr/addons/official/status",
+    "tags": [
+      "status",
+      "uptime",
+      "incidents"
+    ],
+    "features": [
+      "Page publique avec disponibilité sur 90 jours par composant",
+      "Détection automatique des pannes, redéploiements et redémarrages",
+      "Incidents et maintenances planifiées publiés à la main",
+      "Alertes e-mail (abonnés), administrateurs, Discord et Slack",
+      "Widget pour le tableau de bord du panel"
+    ],
+    "bundlePort": 3109
   }
 ]

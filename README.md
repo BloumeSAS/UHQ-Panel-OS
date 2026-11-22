@@ -185,7 +185,7 @@ Chaque page de la [documentation](https://uhq-panel-os-docs.bloume.fr) embarque 
 UHQ Panel OS supporte une architecture d'addons open source et gratuite pour enrichir le produit sans modifier le cœur.
 
 - Les addons sont stockés dans `addons/`
-- Addons officiels gratuits : **Wallet**, **Orders**, **Analytics**, **Codes promo**, **UHQ.Monster Reseller** et **Vitrine** (activables en un clic depuis la page Extensions, voir la [documentation](https://uhq-panel-os-docs.bloume.fr/addons/overview))
+- Addons officiels gratuits : **Wallet**, **Orders**, **Analytics**, **Codes promo**, **UHQ.Monster Reseller**, **Vitrine**, **Tickets** (support), **Parrainage** et **Statut** (page de statut publique) (activables en un clic depuis la page Extensions, voir la [documentation](https://uhq-panel-os-docs.bloume.fr/addons/overview))
 - Un addon peut contenir un backend, une interface web, une intégration de widget ou une extension du panel
 - Les addons sont conçus pour être partagés, réutilisés et maintenus par la communauté
 
