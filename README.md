@@ -175,6 +175,9 @@ Au premier accès, un wizard de configuration guide :
 | Addon Codes promo | https://youtu.be/9MhQMgCrrvI |
 | Addon UHQ.Monster Reseller | https://youtu.be/MPDvjlLr3l4 |
 | Addon Vitrine | https://youtu.be/1bPm8wEvaCQ |
+| Addon Tickets | https://youtu.be/1_OG1qAr-N4 |
+| Addon Parrainage | https://youtu.be/15SLX4HXQwE |
+| Addon Statut | https://youtu.be/nTGtTSsZQOA |
 
 Chaque page de la [documentation](https://uhq-panel-os-docs.bloume.fr) embarque sa vidéo.
 
