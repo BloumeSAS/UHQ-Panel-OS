@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ShieldBan, Trash2, Plus, CheckSquare, Square, Search, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ShieldBan, ShieldCheck, Trash2, Plus, CheckSquare, Square, Search, ChevronLeft, ChevronRight } from 'lucide-react';
 import { api, apiError } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import {
@@ -251,6 +251,8 @@ export default function BannedIps() {
         </CardContent>
       </Card>
 
+      <Whitelist />
+
       {total > 0 && (
         <div className="flex items-center justify-between">
           <p className="text-xs text-muted-foreground">
@@ -270,5 +272,69 @@ export default function BannedIps() {
         </div>
       )}
     </div>
+  );
+}
+
+interface WhitelistedIp { id: string; ip: string; label: string | null; createdBy: string | null; createdAt: string }
+
+/** Liste blanche : ces IP ne sont jamais bannies (auto-ban, anti-VPN, ban manuel) — ex. le serveur du site qui utilise les proxies. */
+function Whitelist() {
+  const t = useT();
+  const qc = useQueryClient();
+  const [ipsInput, setIpsInput] = useState('');
+  const [label, setLabel] = useState('');
+  const { data } = useQuery({
+    queryKey: ['whitelisted-ips'],
+    queryFn: async () => (await api.get('/banned-ips/whitelist')).data.data as WhitelistedIp[],
+  });
+  const refresh = () => { qc.invalidateQueries({ queryKey: ['whitelisted-ips'] }); qc.invalidateQueries({ queryKey: ['banned-ips'] }); };
+  const ips = ipsInput.split(/[\n,]/).map((s) => s.trim()).filter(Boolean);
+
+  const add = useMutation({
+    mutationFn: () => api.post('/banned-ips/whitelist', { ips, label: label || undefined }),
+    onSuccess: (res) => { toast.success(t('whitelist.added').replace('{n}', String(res.data.data.length))); setIpsInput(''); setLabel(''); refresh(); },
+    onError: (e) => toast.error(apiError(e)),
+  });
+  const remove = useMutation({
+    mutationFn: (id: string) => api.delete(`/banned-ips/whitelist/${id}`),
+    onSuccess: () => { toast.success(t('whitelist.removed')); refresh(); },
+    onError: (e) => toast.error(apiError(e)),
+  });
+
+  return (
+    <Card className="p-6 space-y-4">
+      <div>
+        <h2 className="text-lg font-semibold flex items-center gap-2"><ShieldCheck className="h-5 w-5 text-emerald-600" />{t('whitelist.title')}</h2>
+        <p className="text-sm text-muted-foreground mt-1">{t('whitelist.subtitle')}</p>
+      </div>
+      <div className="flex flex-wrap gap-3 items-end">
+        <div className="space-y-1.5 flex-1 min-w-[220px]">
+          <Label>{t('bannedIps.ipsLabel')}</Label>
+          <textarea value={ipsInput} onChange={(e) => setIpsInput(e.target.value)} placeholder={'203.0.113.10'} rows={2} className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono resize-y" />
+        </div>
+        <div className="space-y-1.5 min-w-[200px]">
+          <Label>{t('whitelist.label')}</Label>
+          <Input value={label} onChange={(e) => setLabel(e.target.value)} placeholder={t('whitelist.labelPlaceholder')} />
+        </div>
+        <Button onClick={() => add.mutate()} disabled={ips.length === 0 || add.isPending}><Plus className="h-4 w-4 mr-2" />{t('whitelist.add')}{ips.length > 1 ? ` (${ips.length})` : ''}</Button>
+      </div>
+      <Table>
+        <THead><TR><TH>{t('bannedIps.ip')}</TH><TH>{t('whitelist.label')}</TH><TH>{t('whitelist.addedBy')}</TH><TH>{t('whitelist.addedAt')}</TH><TH className="text-right">{t('common.actions')}</TH></TR></THead>
+        <TBody>
+          {!data?.length && <TR><TD colSpan={5} className="text-center text-muted-foreground py-6">{t('whitelist.empty')}</TD></TR>}
+          {data?.map((w) => (
+            <TR key={w.id}>
+              <TD className="font-mono text-xs">{w.ip}</TD>
+              <TD className="text-xs text-muted-foreground">{w.label || '—'}</TD>
+              <TD className="text-xs text-muted-foreground">{w.createdBy || '—'}</TD>
+              <TD className="text-xs text-muted-foreground">{new Date(w.createdAt).toLocaleString()}</TD>
+              <TD className="text-right">
+                <Button variant="ghost" size="icon" className="text-destructive hover:bg-destructive/10" onClick={() => remove.mutate(w.id)} disabled={remove.isPending} title={t('whitelist.remove')}><Trash2 className="h-4 w-4" /></Button>
+              </TD>
+            </TR>
+          ))}
+        </TBody>
+      </Table>
+    </Card>
   );
 }

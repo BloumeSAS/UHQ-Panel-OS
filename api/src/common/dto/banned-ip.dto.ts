@@ -26,3 +26,16 @@ export class UnbanManyDto {
   @IsString({ each: true })
   ids!: string[];
 }
+
+export class WhitelistIpDto {
+  @ApiProperty({ type: [String], example: ['203.0.113.10'], description: 'Une ou plusieurs IP à autoriser (jamais bannies)' })
+  @IsArray()
+  @ArrayMinSize(1)
+  @IsString({ each: true })
+  ips!: string[];
+
+  @ApiPropertyOptional({ example: 'Serveur du site' })
+  @IsOptional()
+  @IsString()
+  label?: string;
+}

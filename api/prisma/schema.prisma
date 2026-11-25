@@ -185,6 +185,15 @@ model BannedIp {
   @@index([expiresAt])
 }
 
+// IP autorisées : jamais bannies (auto-ban, anti-VPN, ban manuel), ex. le serveur du site qui utilise les proxies
+model WhitelistedIp {
+  id        String   @id @default(cuid())
+  ip        String   @unique
+  label     String?
+  createdBy String?
+  createdAt DateTime @default(now())
+}
+
 // Invitation par e-mail (inscription contrôlée)
 model Invitation {
   id        String    @id @default(uuid())

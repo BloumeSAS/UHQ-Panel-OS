@@ -6,7 +6,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { JwtUser } from '../../common/guards/jwt-auth.guard';
 import { BannedIpsService } from './banned-ips.service';
-import { BanIpDto, UnbanManyDto } from '../../common/dto/banned-ip.dto';
+import { BanIpDto, UnbanManyDto, WhitelistIpDto } from '../../common/dto/banned-ip.dto';
 import { AuditService } from '../audit/audit.service';
 
 @ApiTags('panel-banned-ips')
@@ -40,6 +40,33 @@ export class BannedIpsController {
       details: { reason: dto.reason, expiresAt: dto.expiresAt, count: dto.ips.length },
     });
     return { status: 'success', data };
+  }
+
+  // ─── Liste blanche (déclarée avant les routes :id) ───────────────────────────
+
+  @Get('whitelist')
+  async whitelist() {
+    return { status: 'success', data: await this.bannedIps.listWhitelist() };
+  }
+
+  @Post('whitelist')
+  async whitelistAdd(@CurrentUser() me: JwtUser, @Body() dto: WhitelistIpDto) {
+    const data = await this.bannedIps.whitelistMany(dto.ips, dto.label, me.email);
+    await this.auditService.log({
+      userId: me.id,
+      userEmail: me.email,
+      action: 'whitelisted-ip.create',
+      target: dto.ips.join(', '),
+      details: { label: dto.label, count: dto.ips.length },
+    });
+    return { status: 'success', data };
+  }
+
+  @Delete('whitelist/:id')
+  async whitelistRemove(@CurrentUser() me: JwtUser, @Param('id') id: string) {
+    await this.bannedIps.unwhitelist(id);
+    await this.auditService.log({ userId: me.id, userEmail: me.email, action: 'whitelisted-ip.delete', target: id });
+    return { status: 'success' };
   }
 
   @Delete(':id')

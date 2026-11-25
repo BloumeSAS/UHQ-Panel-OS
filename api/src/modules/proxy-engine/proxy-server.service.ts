@@ -138,6 +138,8 @@ export class ProxyServerService implements OnModuleDestroy {
    * les 60s, et immédiatement après chaque écriture via `invalidateBanCache()`.
    */
   private bannedIpSet = new Set<string>();
+  /** IP autorisées : jamais bannies, quelle que soit l'origine du ban. */
+  private whitelistedIpSet = new Set<string>();
   /** Cache des listes privées d'upstreams parsées, clé = texte brut `customProxies`. */
   private readonly customUpstreamCache = new Map<string, UpstreamProxy[]>();
   /** Top-N best-performing working proxies (refreshed every 30s) */
@@ -506,6 +508,8 @@ export class ProxyServerService implements OnModuleDestroy {
       select: { ip: true },
     });
     this.bannedIpSet = new Set(rows.map((r) => r.ip));
+    const white = await this.prisma.whitelistedIp.findMany({ select: { ip: true } });
+    this.whitelistedIpSet = new Set(white.map((r) => r.ip));
   }
 
   /** Déclenchement immédiat depuis le panel après un ban/débannissement. */
@@ -536,7 +540,7 @@ export class ProxyServerService implements OnModuleDestroy {
   }
 
   private isIpBanned(ip: string): boolean {
-    return !!ip && this.bannedIpSet.has(ip);
+    return !!ip && !this.whitelistedIpSet.has(ip) && this.bannedIpSet.has(ip);
   }
 
   /**
@@ -548,7 +552,7 @@ export class ProxyServerService implements OnModuleDestroy {
    * et révocable depuis IP bannies.
    */
   private async registerAuthFailure(ip: string): Promise<void> {
-    if (!ip || this.isLoopback(ip) || !this.settings.getBool('proxyAuthAutoBanEnabled')) return;
+    if (!ip || this.isLoopback(ip) || this.whitelistedIpSet.has(ip) || !this.settings.getBool('proxyAuthAutoBanEnabled')) return;
     const threshold = this.settings.getPositiveNumber('proxyAuthFailBanThreshold') || 15;
     const windowSec = this.settings.getPositiveNumber('proxyAuthFailBanWindowSec') || 60;
     const allowed = this.rateLimiter.check(`proxyauth-fail:${ip}`, threshold, windowSec * 1000);
@@ -583,7 +587,7 @@ export class ProxyServerService implements OnModuleDestroy {
    * n'est pas infaillible, un ban permanent exposerait trop aux faux positifs.
    */
   private async banVpnIp(ip: string, poolName: string): Promise<void> {
-    if (!ip || this.isLoopback(ip) || this.bannedIpSet.has(ip)) return;
+    if (!ip || this.isLoopback(ip) || this.whitelistedIpSet.has(ip) || this.bannedIpSet.has(ip)) return;
     try {
       const durationHours = this.settings.getPositiveNumber('vpnBanDurationHours') || 24;
       const expiresAt = new Date(Date.now() + durationHours * 3600_000);
