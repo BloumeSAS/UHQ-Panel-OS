@@ -1,0 +1,46 @@
+name: 🐞 Bug report
+description: Something does not work as expected
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. **Security issues must not be reported here** — see SECURITY.md.
+  - type: input
+    id: version
+    attributes:
+      label: Panel version
+      description: Shown in the footer of the panel (e.g. v2.15.1)
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: Installation
+      options: [Coolify, Docker Compose, Docker Hub / GHCR image, Local development, Other]
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: "1. Go to …\n2. Click on …\n3. See error"
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Relevant container logs (`docker compose logs app`). Remove passwords, IPs and keys.
+      render: shell
+  - type: input
+    id: addons
+    attributes:
+      label: Add-ons enabled (with versions)

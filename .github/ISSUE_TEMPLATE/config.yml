@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 📚 Documentation
+    url: https://uhq-panel-os-docs.bloume.fr
+    about: Installation, configuration, add-ons and API reference.
+  - name: 🔒 Report a vulnerability
+    url: https://github.com/BloumeSAS/UHQ-Panel-OS/security/advisories/new
+    about: Please report security issues privately.
