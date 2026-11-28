@@ -4,6 +4,10 @@ All notable changes to UHQ Panel OS are listed here (release notes are written i
 
 ## v2.16.x
 
+### v2.16.1 — Addon Sécurité : politique en cas de panne
+- Addon Sécurité : un addon activé mais indisponible applique désormais sa politique « laisser passer / refuser » au lieu d'être ignoré.
+- [UHQ Panel OS v2.16.1](https://github.com/BloumeSAS/UHQ-Panel-OS/releases/tag/v2.16.1)
+
 ### v2.16.0 — Addon Sécurité (BloumeID)
 - **Nouvel addon Sécurité (BloumeID)** : empreinte d'appareil (BloumeID open source, ThumbmarkJS, FingerprintJS, Fingerprint.com en option) sur la connexion, l'inscription et le mot de passe oublié.
 - Addons embarqués : plus de double lancement au démarrage ; révélation des secrets d'addon durcie (Orders 1.6.1).
