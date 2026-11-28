@@ -34,13 +34,10 @@ data/
 web/node_modules/
 web/dist/
 
-# Wallet addon local runtime and dependencies
-addons/wallet
-addons/orders
-addons/analytics
-addons/reseller
-addons/promocodes
-addons/vitrine
+# Addons officiels = dépôts git SÉPARÉS clonés ici en local (le build Docker les reclone depuis GitHub).
+# Tout sous-dossier de addons/ est ignoré (les futurs addons aussi) ; seuls addons.json, build-bundled.sh et ADDON_DEVELOPMENT.md sont suivis.
+addons/*/
+
 docs/
 
 claude/
@@ -54,6 +51,3 @@ api/logs/
 docker-compose.override.yml
 # Studio graphiste / vidéo (PRIVÉ : vidéos, bannières, médias — ne jamais publier)
 uhq-panel-os-graphiste/
-addons/tickets
-addons/referral
-addons/status
