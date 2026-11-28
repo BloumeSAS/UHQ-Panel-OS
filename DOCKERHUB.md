@@ -2,7 +2,7 @@
 
 **The open-source, self-hosted panel to manage, monitor and resell proxies** — by [Bloume SAS](https://bloume.fr), sponsored by [UHQ.Monster](https://uhq.monster).
 
-One image ships the NestJS API, the React admin panel, the TCP proxy engine and 9 free official add-ons (Wallet, Orders, Analytics, Promo Codes, UHQ.Monster Reseller, Vitrine, Tickets, Referral, Status).
+One image ships the NestJS API, the React admin panel, the TCP proxy engine and 10 free official add-ons (Wallet, Orders, Analytics, Promo Codes, UHQ.Monster Reseller, Vitrine, Tickets, Referral, Status, Security).
 
 - 📚 Documentation: https://uhq-panel-os-docs.bloume.fr
 - 💻 Source code: https://github.com/BloumeSAS/UHQ-Panel-OS

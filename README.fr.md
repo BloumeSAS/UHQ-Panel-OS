@@ -57,6 +57,7 @@ Le projet est développé et maintenu par [Bloume SAS](https://bloume.fr), spons
 | [Tickets](https://github.com/BloumeSAS/UHQ-Addon-Tickets) | Support client : pièces jointes, console du personnel, notation | [▶](https://youtu.be/1_OG1qAr-N4) |
 | [Parrainage](https://github.com/BloumeSAS/UHQ-Addon-Referral) | Liens de parrainage, commissions versées sur le Wallet | [▶](https://youtu.be/15SLX4HXQwE) |
 | [Statut](https://github.com/BloumeSAS/UHQ-Addon-Status) | Page de statut publique, détection automatique des pannes et redéploiements | [▶](https://youtu.be/nTGtTSsZQOA) |
+| [Sécurité](https://github.com/BloumeSAS/UHQ-Addon-Security) | Empreinte d'appareil (BloumeID) sur connexion, inscription et mot de passe oublié | [▶](https://youtu.be/kQJuCGh7cV8) |
 
 Tous les addons officiels sont inclus dans l'image et s'activent en un clic depuis **Extensions**. Pour créer le vôtre, voir la [documentation des addons](https://uhq-panel-os-docs.bloume.fr/addons/overview).
 

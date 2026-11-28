@@ -57,6 +57,7 @@ It is built and maintained by [Bloume SAS](https://bloume.fr), sponsored by [UHQ
 | [Tickets](https://github.com/BloumeSAS/UHQ-Addon-Tickets) | Customer support with attachments, staff console, ratings | [▶](https://youtu.be/1_OG1qAr-N4) |
 | [Referral](https://github.com/BloumeSAS/UHQ-Addon-Referral) | Referral links, commissions paid to the Wallet | [▶](https://youtu.be/15SLX4HXQwE) |
 | [Status](https://github.com/BloumeSAS/UHQ-Addon-Status) | Public status page, automatic outage and redeploy detection | [▶](https://youtu.be/nTGtTSsZQOA) |
+| [Security](https://github.com/BloumeSAS/UHQ-Addon-Security) | Device fingerprinting (BloumeID) on sign-in, sign-up and password reset | [▶](https://youtu.be/kQJuCGh7cV8) |
 
 All official add-ons are bundled in the image and enabled in one click from **Extensions**. See the [add-on documentation](https://uhq-panel-os-docs.bloume.fr/addons/overview) to build your own.
 
