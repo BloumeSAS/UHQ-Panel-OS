@@ -7,6 +7,7 @@ import { apiError } from '@/lib/api';
 import { Button, Card, CardContent, CardHeader, CardTitle, Input, Label } from '@/components/ui';
 import { Footer } from '@/components/Footer';
 import { CaptchaWidget } from '@/components/CaptchaWidget';
+import { SecurityBadge } from '@/components/SecurityBadge';
 
 export default function Login() {
   const { login, verify2fa } = useAuth();
@@ -138,6 +139,7 @@ export default function Login() {
               {t('login.submit')}
             </Button>
           </form>
+          <SecurityBadge />
 
           <div className="mt-4 flex flex-col gap-2 text-center text-sm text-muted-foreground">
             {status?.resetPasswordEnabled && (

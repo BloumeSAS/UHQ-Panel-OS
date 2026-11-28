@@ -7,6 +7,7 @@ import { api, apiError } from '@/lib/api';
 import { Button, Card, CardContent, CardHeader, CardTitle, Input, Label } from '@/components/ui';
 import { Footer } from '@/components/Footer';
 import { CaptchaWidget } from '@/components/CaptchaWidget';
+import { SecurityBadge } from '@/components/SecurityBadge';
 
 export default function Register() {
   const { register, applyToken } = useAuth();
@@ -141,6 +142,7 @@ export default function Register() {
               {t('register.submit')}
             </Button>
           </form>
+          <SecurityBadge />
           {!inviteToken && (
             <p className="mt-4 text-center text-sm text-muted-foreground">
               {t('register.haveAccount')}{' '}

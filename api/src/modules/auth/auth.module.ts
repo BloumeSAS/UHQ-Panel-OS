@@ -3,10 +3,11 @@ import { PanelAuthController } from './controllers/auth.controller';
 import { PanelDatabaseController } from './controllers/database.controller';
 import { MailModule } from '../mail/mail.module';
 import { RestoreModule } from '../restore/restore.module';
+import { AddonsModule } from '../addons/addons.module';
 
 /** Authentification du panel + setup (base & 1er admin). Routes publiques sous /api/panel. */
 @Module({
-  imports: [MailModule, RestoreModule],
+  imports: [MailModule, RestoreModule, AddonsModule],
   controllers: [PanelDatabaseController, PanelAuthController],
 })
 export class AuthModule {}

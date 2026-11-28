@@ -74,6 +74,11 @@ export class LoginDto {
   @IsOptional()
   @IsString()
   captchaToken?: string;
+
+  @ApiPropertyOptional({ description: 'Jeton de l\'addon Sécurité (empreinte d\'appareil), si l\'addon est actif' })
+  @IsOptional()
+  @IsString()
+  securityToken?: string;
 }
 
 export class Login2faDto {
@@ -100,6 +105,11 @@ export class RegisterDto {
   @IsOptional()
   @IsString()
   captchaToken?: string;
+
+  @ApiPropertyOptional({ description: 'Jeton de l\'addon Sécurité (empreinte d\'appareil), si l\'addon est actif' })
+  @IsOptional()
+  @IsString()
+  securityToken?: string;
 }
 
 export class UpdateSettingsDto {
@@ -236,6 +246,11 @@ export class ForgotPasswordDto {
   @IsOptional()
   @IsString()
   captchaToken?: string;
+
+  @ApiPropertyOptional({ description: 'Jeton de l\'addon Sécurité (empreinte d\'appareil), si l\'addon est actif' })
+  @IsOptional()
+  @IsString()
+  securityToken?: string;
 }
 
 export class ResetPasswordDto {

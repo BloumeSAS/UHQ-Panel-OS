@@ -24,6 +24,7 @@ import type { JwtUser } from '../../../common/guards/jwt-auth.guard';
 import { LoginDto, Login2faDto, RegisterDto, SetupDto, ForgotPasswordDto, ResetPasswordDto } from '../../../common/dto/panel.dto';
 import { t } from '../../../common/utils/i18n';
 import { verifyCaptcha, type CaptchaProvider } from '../../../common/utils/captcha.util';
+import { SecurityAddonService } from '../../addons/security-addon.service';
 import { getClientIp } from '../../../common/utils/client-ip';
 import { MailService } from '../../mail/mail.service';
 import { panelBaseUrl } from '../../../common/utils/panel-url';
@@ -54,6 +55,7 @@ export class PanelAuthController {
     private readonly auditService: AuditService,
     private readonly rateLimiter: RateLimiterService,
     private readonly restore: RestoreService,
+    private readonly security: SecurityAddonService,
   ) {}
 
   // Cf. common/utils/client-ip.ts : priorise CF-Connecting-IP (Cloudflare)
@@ -74,9 +76,12 @@ export class PanelAuthController {
     const vitrine = setupCompleted
       ? !!(await this.prisma.addon.findFirst({ where: { baseUrl: '/addon-proxy/vitrine', enabled: true }, select: { id: true } }).catch(() => null))
       : false;
+    // Addon Sécurité actif : la page de connexion charge son SDK pour les actions protégées.
+    const security = setupCompleted ? await this.security.publicStatus().catch(() => null) : null;
     return {
       setupCompleted,
       vitrine,
+      security,
       setupTokenRequired: !setupCompleted && setupTokenRequired(),
       registrationEnabled: this.settings.getBool('registrationEnabled'),
       siteName: this.settings.get('siteName'),
@@ -153,6 +158,9 @@ export class PanelAuthController {
 
     await this.assertCaptcha(body.captchaToken);
 
+    // Addon Sécurité : robots, multi-comptes, appareils bannis (403 si bloqué).
+    const securityEvent = await this.security.enforce('register', { token: body.securityToken, ip: this.clientIp(req), email: body.email.toLowerCase() });
+
     const exists = await this.prisma.panelUser.findUnique({
       where: { email: body.email.toLowerCase() },
     });
@@ -167,6 +175,7 @@ export class PanelAuthController {
     });
 
     // E-mail de bienvenue (si SMTP configuré et option activée)
+    void this.security.link(securityEvent, user.id, user.email);
     void this.mail.sendWelcome(user.email, this.settings.get('siteName'));
     void this.notificationService.notifyUserCreated(user.email, user.role);
 
@@ -200,6 +209,9 @@ export class PanelAuthController {
     if (user.expiresAt && user.expiresAt < new Date()) {
       throw new UnauthorizedException('Votre compte a expiré.');
     }
+
+    // Addon Sécurité : vérifié APRÈS le mot de passe (un mauvais mot de passe ne révèle rien) et avant toute session.
+    await this.security.enforce('login', { token: body.securityToken, ip, email, userId: user.id, role: user.role });
 
     // 2FA : mot de passe correct mais pas encore de session — le client doit
     // repasser par /auth/login/2fa avec le code TOTP avant d'obtenir un vrai
@@ -319,6 +331,7 @@ export class PanelAuthController {
     }
 
     await this.assertCaptcha(body.captchaToken);
+    await this.security.enforce('forgot', { token: body.securityToken, ip: this.clientIp(req), email: body.email?.toLowerCase() });
 
     // Toujours répondre de la même façon (évite l'énumération d'e-mails).
     const user = body.email

@@ -16,6 +16,7 @@ import { AddonProxyMiddleware } from './modules/addons/addon-proxy.middleware';
 import { PrismaClient } from '@prisma/client';
 import { PrismaService } from './database/prisma.service';
 import { SettingsService } from './config/settings.service';
+import { SecurityAddonService } from './modules/addons/security-addon.service';
 import { TrafficService } from './modules/traffic/traffic.service';
 import { RingBufferLogger } from './modules/logs/ring-buffer.logger';
 import { applyDatabaseEnv } from './database/db-config';
@@ -117,6 +118,7 @@ async function bootstrap() {
   //     entièrement bloqué ("Failed to fetch", "cap wasm load failed").
   //   - img-src : flagcdn.com (drapeaux pays, Pool/Analytics).
   const settings = app.get(SettingsService);
+  const securityAddon = app.get(SecurityAddonService);
   /** Origine (schéma://hôte[:port]) de l'instance CAP configurée — 'self' si absente/invalide. */
   const capOrigin = (): string => {
     const raw = (settings.get('captchaCapEndpoint') || '').trim();
@@ -153,6 +155,8 @@ async function bootstrap() {
             // cette CSP. Sans 'unsafe-eval' → "instr_timeout" puis 429 sur /redeem.
             // Ouvert UNIQUEMENT quand le provider actif est CAP.
             () => (settings.get('captchaProvider') === 'cap' ? "'unsafe-eval'" : "'self'"),
+            // Addon Sécurité : script Fingerprint.com Pro si activé dans l'addon.
+            () => securityAddon.cspScript().join(' ') || "'self'",
           ],
           workerSrc: ["'self'", 'blob:'],
           styleSrc: ["'self'", "'unsafe-inline'", 'https://cdn.jsdelivr.net'],
@@ -167,6 +171,8 @@ async function bootstrap() {
             'https://*.hcaptcha.com',
             'https://www.google.com',
             'https://challenges.cloudflare.com',
+            // Addon Sécurité : serveur BloumeID auto-hébergé / API Fingerprint.com.
+            () => securityAddon.cspConnect().join(' ') || "'self'",
           ],
           frameSrc: [
             "'self'",
@@ -340,7 +346,7 @@ async function bootstrap() {
   await app.listen(apiPort, '0.0.0.0');
   Logger.log(`API listening on :${apiPort}`, 'Bootstrap');
   // Build marker — bump this string on every deploy you want to confirm is live.
-  Logger.log('BUILD MARKER: panel-os-v2.15.2', 'Bootstrap');
+  Logger.log('BUILD MARKER: panel-os-v2.16.0', 'Bootstrap');
 
   // Le moteur proxy TCP n'a de sens qu'avec une base connectée (auth des
   // sous-utilisateurs). On ne le démarre donc pas tant que la base n'est pas

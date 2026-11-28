@@ -5,6 +5,8 @@ const en = {
     emailTaken: "Email already in use",
     invalidCredentials: "Invalid credentials",
     tooManyAttempts: "Too many attempts — try again in a minute.",
+    securityBlocked: "Request refused by the anti-fraud protection. If you think this is a mistake, contact support.",
+    securityUnavailable: "Security check unavailable, please try again in a moment.",
     invalidPassword: "Incorrect password",
     accountDisabled: "Account disabled",
     dbAlreadyConfigured: "Database already configured",

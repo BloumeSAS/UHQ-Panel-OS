@@ -5,6 +5,8 @@ const fr = {
     emailTaken: "Email déjà utilisé",
     invalidCredentials: "Identifiants invalides",
     tooManyAttempts: "Trop de tentatives — réessayez dans une minute.",
+    securityBlocked: "Connexion refusée par la protection anti-fraude. Si vous pensez que c'est une erreur, contactez le support.",
+    securityUnavailable: "Vérification de sécurité indisponible, réessayez dans un instant.",
     invalidPassword: "Mot de passe incorrect",
     accountDisabled: "Compte désactivé",
     dbAlreadyConfigured: "Base déjà configurée",

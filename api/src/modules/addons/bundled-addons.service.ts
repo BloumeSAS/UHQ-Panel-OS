@@ -132,6 +132,8 @@ export class BundledAddonsService implements OnModuleDestroy {
       try {
         const row = await this.prisma.addon.findUnique({ where: { baseUrl: this.proxyBaseUrl(entry.slug) } });
         if (!row?.enabled) continue;
+        // Déjà lancé (ex. activé à la main pendant le démarrage) : ne pas lancer un 2e processus sur le même port.
+        if (this.processes.has(entry.slug)) continue;
         const depsOk = (entry.requires ?? []).every((dep) => this.processes.has(dep));
         if (!depsOk) {
           this.logger.warn(`Redémarrage auto de "${entry.slug}" ignoré : dépendance non active.`);
@@ -191,7 +193,8 @@ export class BundledAddonsService implements OnModuleDestroy {
     child.stderr?.on('data', (d) => forwardLines(d, (l) => this.logger.warn(l)));
     child.on('exit', (code) => {
       this.logger.warn(`Addon embarqué "${entry.slug}" arrêté (code ${code}).`);
-      this.processes.delete(entry.slug);
+      // Seulement si c'est bien CE processus qui est enregistré (un doublon qui échoue ne doit pas « oublier » l'instance en marche).
+      if (this.processes.get(entry.slug) === child) this.processes.delete(entry.slug);
     });
     this.processes.set(entry.slug, child);
 

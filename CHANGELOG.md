@@ -2,6 +2,13 @@
 
 All notable changes to UHQ Panel OS are listed here (release notes are written in French). Full notes for every version: [GitHub Releases](https://github.com/BloumeSAS/UHQ-Panel-OS/releases) · [online changelog](https://uhq-panel-os-docs.bloume.fr/changelog).
 
+## v2.16.x
+
+### v2.16.0 — Addon Sécurité (BloumeID)
+- **Nouvel addon Sécurité (BloumeID)** : empreinte d'appareil (BloumeID open source, ThumbmarkJS, FingerprintJS, Fingerprint.com en option) sur la connexion, l'inscription et le mot de passe oublié.
+- Addons embarqués : plus de double lancement au démarrage ; révélation des secrets d'addon durcie (Orders 1.6.1).
+- [UHQ Panel OS v2.16.0](https://github.com/BloumeSAS/UHQ-Panel-OS/releases/tag/v2.16.0)
+
 ## v2.15.x
 
 ### v2.15.2 — Dépôt professionnel et image Docker Hub

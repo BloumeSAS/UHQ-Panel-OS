@@ -36,7 +36,7 @@
   {
     "name": "Orders",
     "slug": "orders",
-    "version": "1.6.0",
+    "version": "1.6.1",
     "description": "Boutique interne — commandes payées via Wallet. Livraison automatique de comptes proxy après paiement.",
     "icon": "ShoppingCart",
     "free": true,
@@ -294,5 +294,36 @@
       "Widget pour le tableau de bord du panel"
     ],
     "bundlePort": 3109
+  },
+  {
+    "name": "Security",
+    "slug": "security",
+    "version": "1.0.0",
+    "description": "Protection de la connexion, de l'inscription et du mot de passe oublié par empreinte d'appareil : BloumeID (open source), ThumbmarkJS, FingerprintJS et Fingerprint.com en option. Robots, navigateurs falsifiés, multi-comptes, appareils bannis.",
+    "icon": "ShieldCheck",
+    "free": true,
+    "official": true,
+    "license": "MIT",
+    "author": {
+      "name": "Bloume SAS",
+      "url": "https://bloume.fr"
+    },
+    "repository": "https://github.com/BloumeSAS/UHQ-Addon-Security",
+    "homepage": "https://uhq-panel-os-docs.bloume.fr/addons/official/security",
+    "tags": [
+      "security",
+      "fingerprint",
+      "anti-bot",
+      "bloumeid"
+    ],
+    "features": [
+      "Empreinte d'appareil BloumeID (104 signaux, open source)",
+      "ThumbmarkJS et FingerprintJS inclus, Fingerprint.com Pro en option",
+      "Détection des robots, navigateurs falsifiés et outils d'automatisation",
+      "Limite de comptes et d'inscriptions par appareil, appareils bannis",
+      "Mode observation ou protection active, administrateurs jamais bloqués",
+      "Réglages dans Paramètres → Extensions"
+    ],
+    "bundlePort": 3110
   }
 ]

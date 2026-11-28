@@ -20,6 +20,7 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { PrismaService } from '../../database/prisma.service';
+import { SettingsService } from '../../config/settings.service';
 import { t } from '../../common/utils/i18n';
 import { AddonsService } from './addons.service';
 import { BundledAddonsService } from './bundled-addons.service';
@@ -36,6 +37,7 @@ export class AddonsController {
     private readonly service: AddonsService,
     private readonly bundled: BundledAddonsService,
     private readonly prisma: PrismaService,
+    private readonly settings: SettingsService,
   ) {}
 
   /**
@@ -219,7 +221,8 @@ export class AddonsController {
     const auth = req.headers['authorization'] ?? '';
     const res = await fetch(
       `http://127.0.0.1:${port}/api/payments/settings/reveal?key=${encodeURIComponent(dto.key)}`,
-      { headers: { authorization: auth as string } },
+      // X-Panel-Key : prouve à l'addon que le mot de passe a été vérifié ici (l'addon refuse la révélation sans elle).
+      { headers: { authorization: auth as string, 'x-panel-key': this.settings.get('apiKey') || '' } },
     );
     const json = (await res.json()) as { value?: string };
     return { status: 'success', value: json.value ?? '' };

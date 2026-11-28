@@ -1865,7 +1865,8 @@ function ExtensionsTab() {
   // par son baseUrl relatif `/addon-proxy/<slug>` (cf. BundledAddonsService).
   const ordersActive = (addons ?? []).some((a) => a.baseUrl === '/addon-proxy/orders' && a.enabled);
   const resellerActive = (addons ?? []).some((a) => a.baseUrl === '/addon-proxy/reseller' && a.enabled);
-  const anyExtension = ordersActive || resellerActive; // futurs addons : ajouter leur condition ici.
+  const securityActive = (addons ?? []).some((a) => a.baseUrl === '/addon-proxy/security' && a.enabled);
+  const anyExtension = ordersActive || resellerActive || securityActive; // futurs addons : ajouter leur condition ici.
 
   return (
     <div className="space-y-5">
@@ -1887,6 +1888,108 @@ function ExtensionsTab() {
           <ResellerSettingsCard />
         </Collapse>
       )}
+      {securityActive && (
+        <Collapse id="ext:security" icon={ShieldCheck} title={t('settings.extSecTitle')}>
+          <SecuritySettingsCard />
+        </Collapse>
+      )}
+    </div>
+  );
+}
+
+// ── Sécurité (addon Security : empreinte d'appareil BloumeID / ThumbmarkJS / FingerprintJS / Fingerprint.com) ──
+
+interface SecuritySettings {
+  mode: 'monitor' | 'enforce'; protectLogin: boolean; protectRegister: boolean; protectForgot: boolean; requireToken: boolean; failOpen: boolean;
+  exemptAdmins: boolean; blockThreshold: number; flagThreshold: number; blockBots: boolean; blockTampering: boolean; blockVpn: boolean;
+  maxAccountsPerDevice: number; maxSignupsPerDeviceDay: number; showBadge: boolean; retentionDays: number;
+  engineBloumeid: boolean; engineThumbmark: boolean; engineFingerprintjs: boolean;
+  bloumeidServerEnabled: boolean; bloumeidEndpoint: string; bloumeidPublicKey: string; bloumeidSecretKey: string;
+  fpProEnabled: boolean; fpProPublicKey: string; fpProSecretKey: string; fpProRegion: 'eu' | 'us' | 'ap';
+}
+
+function SecuritySettingsCard() {
+  const t = useT();
+  const [s, setS] = useState<SecuritySettings | null>(null);
+  const [saving, setSaving] = useState(false);
+  useEffect(() => {
+    addonApi.get('/security/api/settings').then(({ data }) => setS(data)).catch((e) => toast.error(apiError(e)));
+  }, []);
+  if (!s) return <p className="text-sm text-muted-foreground">{t('app.loading')}</p>;
+  const set = <K extends keyof SecuritySettings>(k: K, v: SecuritySettings[K]) => setS({ ...s, [k]: v });
+  const sw = (k: keyof SecuritySettings, label: string, hint?: string) => (
+    <div className="flex items-start justify-between gap-4">
+      <div><Label className="text-sm">{label}</Label>{hint && <p className="text-xs text-muted-foreground mt-0.5">{hint}</p>}</div>
+      <Switch checked={!!s[k]} onCheckedChange={(v) => set(k, v as never)} />
+    </div>
+  );
+  const num = (k: keyof SecuritySettings, label: string, hint?: string, max = 1000) => (
+    <F label={label} hint={hint}><Input type="number" min={0} max={max} value={s[k] as number} onChange={(e) => set(k, Math.max(0, Math.min(max, Number(e.target.value) || 0)) as never)} className="w-32" /></F>
+  );
+  const save = async () => {
+    setSaving(true);
+    try { const { data } = await addonApi.put('/security/api/settings', s); setS(data); toast.success(t('settings.saved')); }
+    catch (e) { toast.error(apiError(e)); }
+    finally { setSaving(false); }
+  };
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-muted-foreground">{t('settings.extSecHint')}</p>
+      <div className="rounded-md border bg-muted/20 p-3 space-y-3">
+        <Label className="text-sm font-medium">{t('settings.extSecProtection')}</Label>
+        <F label={t('settings.extSecMode')} hint={t('settings.extSecModeHint')}>
+          <select className="h-9 rounded-md border border-input bg-background px-3 text-sm" value={s.mode} onChange={(e) => set('mode', e.target.value as SecuritySettings['mode'])}>
+            <option value="enforce">{t('settings.extSecModeEnforce')}</option>
+            <option value="monitor">{t('settings.extSecModeMonitor')}</option>
+          </select>
+        </F>
+        {sw('protectLogin', t('settings.extSecLogin'))}
+        {sw('protectRegister', t('settings.extSecRegister'))}
+        {sw('protectForgot', t('settings.extSecForgot'))}
+        {sw('requireToken', t('settings.extSecRequireToken'), t('settings.extSecRequireTokenHint'))}
+        {sw('exemptAdmins', t('settings.extSecExemptAdmins'), t('settings.extSecExemptAdminsHint'))}
+        {sw('failOpen', t('settings.extSecFailOpen'), t('settings.extSecFailOpenHint'))}
+        {sw('showBadge', t('settings.extSecBadge'))}
+      </div>
+      <div className="rounded-md border bg-muted/20 p-3 space-y-3">
+        <Label className="text-sm font-medium">{t('settings.extSecRules')}</Label>
+        <div className="flex flex-wrap gap-4">
+          {num('blockThreshold', t('settings.extSecBlockThreshold'), t('settings.extSecThresholdHint'), 100)}
+          {num('flagThreshold', t('settings.extSecFlagThreshold'), undefined, 100)}
+          {num('maxAccountsPerDevice', t('settings.extSecMaxAccounts'), t('settings.extSecZeroOff'))}
+          {num('maxSignupsPerDeviceDay', t('settings.extSecMaxSignups'), t('settings.extSecZeroOff'))}
+          {num('retentionDays', t('settings.extSecRetention'), undefined, 365)}
+        </div>
+        {sw('blockBots', t('settings.extSecBlockBots'))}
+        {sw('blockTampering', t('settings.extSecBlockTampering'), t('settings.extSecBlockTamperingHint'))}
+        {sw('blockVpn', t('settings.extSecBlockVpn'), t('settings.extSecBlockVpnHint'))}
+      </div>
+      <div className="rounded-md border bg-muted/20 p-3 space-y-3">
+        <Label className="text-sm font-medium">{t('settings.extSecEngines')}</Label>
+        <p className="text-xs text-muted-foreground">{t('settings.extSecEnginesHint')}</p>
+        {sw('engineBloumeid', 'BloumeID (@bloume/id)', t('settings.extSecBloumeidHint'))}
+        {sw('engineThumbmark', 'ThumbmarkJS')}
+        {sw('engineFingerprintjs', 'FingerprintJS (open source)')}
+      </div>
+      <div className="rounded-md border bg-muted/20 p-3 space-y-3">
+        <div className="flex items-center justify-between"><Label className="text-sm font-medium">{t('settings.extSecBloumeidServer')}</Label><Switch checked={s.bloumeidServerEnabled} onCheckedChange={(v) => set('bloumeidServerEnabled', v)} /></div>
+        <p className="text-xs text-muted-foreground">{t('settings.extSecBloumeidServerHint')}</p>
+        <F label={t('settings.extSecBloumeidEndpoint')}><Input value={s.bloumeidEndpoint} onChange={(e) => set('bloumeidEndpoint', e.target.value)} placeholder="https://id.votre-domaine.fr" /></F>
+        <F label={t('settings.extSecPublicKey')}><Input value={s.bloumeidPublicKey} onChange={(e) => set('bloumeidPublicKey', e.target.value)} placeholder="bid_pub_…" /></F>
+        <F label={t('settings.extSecSecretKey')}><AddonSecretField slug="security" k="bloumeidSecretKey" value={s.bloumeidSecretKey} set={(v) => set('bloumeidSecretKey', v)} placeholder="bid_sec_…" /></F>
+      </div>
+      <div className="rounded-md border bg-muted/20 p-3 space-y-3">
+        <div className="flex items-center justify-between"><Label className="text-sm font-medium">Fingerprint.com Pro</Label><Switch checked={s.fpProEnabled} onCheckedChange={(v) => set('fpProEnabled', v)} /></div>
+        <p className="text-xs text-muted-foreground">{t('settings.extSecFpProHint')}</p>
+        <F label={t('settings.extSecPublicKey')}><Input value={s.fpProPublicKey} onChange={(e) => set('fpProPublicKey', e.target.value)} /></F>
+        <F label={t('settings.extSecSecretKey')}><AddonSecretField slug="security" k="fpProSecretKey" value={s.fpProSecretKey} set={(v) => set('fpProSecretKey', v)} /></F>
+        <F label={t('settings.extSecRegion')}>
+          <select className="h-9 rounded-md border border-input bg-background px-3 text-sm" value={s.fpProRegion} onChange={(e) => set('fpProRegion', e.target.value as SecuritySettings['fpProRegion'])}>
+            <option value="eu">Europe (eu)</option><option value="us">États-Unis / US</option><option value="ap">Asie / Asia (ap)</option>
+          </select>
+        </F>
+      </div>
+      <div className="flex justify-end"><Button type="button" onClick={save} disabled={saving}>{t('common.save')}</Button></div>
     </div>
   );
 }

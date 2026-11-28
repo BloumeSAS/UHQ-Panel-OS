@@ -35,3 +35,7 @@ docker-compose*.yml
 **/*.spec.ts
 **/*.test.ts
 test
+
+# Dépendances et artefacts des addons clonés en local (le build les reclone depuis GitHub)
+**/node_modules
+uhq-panel-os-graphiste

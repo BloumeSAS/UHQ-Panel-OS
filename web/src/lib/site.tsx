@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import axios from 'axios';
+import { setSecurityConfig } from './securityAddon';
 
 export interface SiteStatus {
   setupCompleted: boolean;
@@ -8,6 +9,8 @@ export interface SiteStatus {
   logoUrl: string;
   /** Addon Vitrine actif : « / » affiche la vitrine aux visiteurs non connectés. */
   vitrine?: boolean;
+  /** Addon Sécurité actif : actions protégées par empreinte d'appareil + badge BloumeID. */
+  security?: { login: boolean; register: boolean; forgot: boolean; badge: boolean } | null;
   defaultLang: string;
   version: string;
   captchaProvider?: string;
@@ -79,6 +82,7 @@ export function SiteProvider({ children }: { children: React.ReactNode }) {
     // 2) Base OK → état du site (setup wizard si pas d'admin, sinon login).
     try {
       const { data } = await axios.get<SiteStatus>('/api/panel/setup/status');
+      setSecurityConfig(data.security);
       setStatus(data);
     } catch {
       // Base configurée mais statut illisible → on suppose NON installé → setup.

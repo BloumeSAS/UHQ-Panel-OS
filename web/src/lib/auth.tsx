@@ -1,3 +1,4 @@
+import { securityToken } from './securityAddon';
 import { createContext, useContext, useEffect, useState } from 'react';
 import { api, clearToken, getToken, setToken } from './api';
 
@@ -72,7 +73,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const login = async (email: string, password: string, captchaToken?: string): Promise<LoginResult> => {
-    const { data } = await api.post('/auth/login', { email, password, captchaToken });
+    const { data } = await api.post('/auth/login', { email, password, captchaToken, securityToken: await securityToken('login') });
     if (data.requires2fa) return { requires2fa: true, tempToken: data.tempToken };
     applyToken(data.token, data.user);
     return {};
@@ -84,7 +85,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const register = async (email: string, password: string, captchaToken?: string) => {
-    const { data } = await api.post('/auth/register', { email, password, captchaToken });
+    const { data } = await api.post('/auth/register', { email, password, captchaToken, securityToken: await securityToken('register') });
     applyToken(data.token, data.user);
   };
 

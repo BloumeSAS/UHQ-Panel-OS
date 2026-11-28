@@ -6,6 +6,8 @@ import { api, apiError } from '@/lib/api';
 import { Button, Card, CardContent, CardHeader, CardTitle, Input, Label } from '@/components/ui';
 import { Footer } from '@/components/Footer';
 import { CaptchaWidget } from '@/components/CaptchaWidget';
+import { SecurityBadge } from '@/components/SecurityBadge';
+import { securityToken } from '@/lib/securityAddon';
 
 export default function ForgotPassword() {
   const { status } = useSite();
@@ -49,6 +51,7 @@ export default function ForgotPassword() {
       await api.post('/auth/forgot-password', {
         email,
         captchaToken: needCaptcha ? captchaToken : undefined,
+        securityToken: await securityToken('forgot'),
       });
       setSent(true);
     } catch (err) {
@@ -103,6 +106,7 @@ export default function ForgotPassword() {
                   {t('forgotPassword.backToLogin')}
                 </Link>
               </p>
+              <SecurityBadge />
             </form>
           )}
         </CardContent>
